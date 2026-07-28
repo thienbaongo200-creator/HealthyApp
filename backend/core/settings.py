@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -25,8 +26,10 @@ SECRET_KEY = 'django-insecure-xfoye5(vcgspz^r82a15snl40rqtm7$gmg5qia$tcaobe9lz)_
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# Cấu hình bảo mật
 ALLOWED_HOSTS = []
 
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Application definition
 
@@ -37,9 +40,18 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Thư viện
+    'rest_framework',
+    'corsheaders',
+
+    # Applications
+    'accounts',
+    'health_metrics',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -74,8 +86,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'HealthApp',      
+        'USER': 'healthy_user',      
+        'PASSWORD': 'admin123',       
+        'HOST': 'localhost',       
+        'PORT': '5432',             
     }
 }
 
