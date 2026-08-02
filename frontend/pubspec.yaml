@@ -30,6 +30,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.2.0                    # Gọi API Django
+  watch_connectivity: ^0.2.2      # Kết nối Phone <-> Watch
+  pedometer: ^4.0.1               # Đo bước chân
+  permission_handler: ^12.0.3    # Quản lý quyền truy cập
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
