@@ -41,22 +41,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
-  crypto:
-    dependency: transitive
-    description:
-      name: crypto
-      sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.7"
-  cupertino_icons:
-    dependency: "direct main"
-    description:
-      name: cupertino_icons
-      sha256: "41e005c33bd814be4d3096aff55b1908d419fde52ca656c8c47719ec745873cd"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.9"
   fake_async:
     dependency: transitive
     description:
@@ -65,14 +49,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.3.3"
-  fixnum:
-    dependency: transitive
-    description:
-      name: fixnum
-      sha256: b6dc7065e46c974bc7c5f143080a6764ec7a4be6da1285ececdc37be96de53be
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.1"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -176,14 +152,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.9.1"
-  pedometer:
-    dependency: "direct main"
-    description:
-      name: pedometer
-      sha256: "146d9663d4af6041328ac15cd96cdcd426b866d277d72f540f701193a61a193d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.2.0"
   permission_handler:
     dependency: "direct main"
     description:
@@ -301,14 +269,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
-  uuid:
-    dependency: transitive
-    description:
-      name: uuid
-      sha256: "9b129329f58692f6e6578329498a8fe9fbe98f090beb764ffbb8ee2eadd01dcd"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.6.0"
   vector_math:
     dependency: transitive
     description:
@@ -325,22 +285,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "15.2.0"
-  watch_connectivity:
-    dependency: "direct main"
-    description:
-      name: watch_connectivity
-      sha256: "78539baf45557a3427a56e6940ec581eba444f08faf2c0a681ed9a186d4d88f6"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.9"
-  watch_connectivity_platform_interface:
-    dependency: transitive
-    description:
-      name: watch_connectivity_platform_interface
-      sha256: "68abe6b30b592537cb58a71e3643489e823daa4ef81677b15e47e905a1d06f00"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.4.0"
   web:
     dependency: transitive
     description:
@@ -351,4 +295,4 @@ packages:
     version: "1.1.1"
 sdks:
   dart: ">=3.12.2 <4.0.0"
-  flutter: ">=3.44.0"
+  flutter: ">=3.24.0"

@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-xfoye5(vcgspz^r82a15snl40rqtm7$gmg5qia$tcaobe9lz)_
 DEBUG = True
 
 # Cấu hình bảo mật
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '0.0.0.0']
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -86,14 +86,22 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'HealthApp',      
-        'USER': 'healthy_user',      
-        'PASSWORD': 'admin123',       
-        'HOST': 'localhost',       
-        'PORT': '5432',             
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# If you want to use PostgreSQL in production, uncomment and configure the block below:
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.getenv('POSTGRES_DB', 'HealthApp'),
+#         'USER': os.getenv('POSTGRES_USER', 'healthy_user'),
+#         'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'admin123'),
+#         'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+#         'PORT': os.getenv('POSTGRES_PORT', '5432'),
+#     }
+# }
 
 
 # Password validation

@@ -1,0 +1,15 @@
+# ============================================================
+# Healthy App — Backend Dependencies
+# Cài đặt:  pip install -r requirements.txt
+# ============================================================
+
+Django>=6.0,<7.0
+djangorestframework>=3.15,<4.0
+django-cors-headers>=4.0
+
+# Chỉ dùng khi chuyển sang PostgreSQL ở production (bỏ comment khi cần)
+# psycopg2-binary>=2.9
+
+# Tài liệu API tự động (Swagger/OpenAPI) — bỏ comment khi cần
+# drf-spectacular>=0.27
+

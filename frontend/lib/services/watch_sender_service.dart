@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class WatchSenderService {
-  static const String _defaultUrl = 'http://10.0.2.2:8080/sync';
+  static const String _defaultUrl = 'http://localhost:8080/sync';
 
   Future<bool> sendDataToPhone(Map<String, dynamic> healthData) async {
     try {

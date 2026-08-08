@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.frontend"
+    namespace = "com.example.healthy_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -35,8 +35,6 @@ android {
 }
 
 dependencies {
-    // Wear OS Data Layer API — bắt buộc để Phone-Wear giao tiếp qua MessageAPI
-    implementation("com.google.android.gms:play-services-wearable:18.1.0")
 }
 
 kotlin {
