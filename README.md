@@ -262,6 +262,73 @@ flutter run -d <wear_avd_id> --target lib/main_wear.dart
 
 ---
 
+## 🚀 QUY TRÌNH CHẠY DỰ ÁN (ĐÃ TỐI ƯU)
+
+> 💡 **Ghi chú:** Các bước dưới đây dùng **2 emulator cụ thể**: Phone (`emulator-5554`) và Wear OS (`emulator-5556`). Điều chỉnh ID emulator cho phù hợp với máy bạn (kiểm tra bằng `flutter devices`).
+
+### 🔹 BƯỚC 1: Khởi động Django Backend
+
+📟 *Mở Terminal 1*
+
+```powershell
+cd backend
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\venv\Scripts\Activate.ps1
+python manage.py runserver 0.0.0.0:8000
+```
+
+> Backend lắng nghe trên **tất cả interface** (`0.0.0.0:8000`) để emulator có thể truy cập qua `10.0.2.2`.
+
+---
+
+### 🔹 BƯỚC 2: Khởi động Phone App (Server trung gian)
+
+📟 *Mở Terminal 2*
+
+```powershell
+cd frontend
+flutter run -t lib/main.dart -d emulator-5554
+```
+
+> Phone App đóng vai trò **server trung gian**: vừa nhận dữ liệu từ Wear OS (port `8080`), vừa đẩy lên Django Backend qua REST API.
+
+---
+
+### 🔹 BƯỚC 3: Thiết lập "Cầu nối" mạng (BẮT BUỘC)
+
+📟 *Mở Terminal 3*
+
+Để đảm bảo Wear OS có thể "nói chuyện" được với Phone, bạn chạy lệnh này để mở cổng:
+
+```powershell
+# (1) Bắt cầu từ máy host vào Phone (5554)
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" -s emulator-5554 forward tcp:8080 tcp:8080
+
+# (2) Bắt cầu từ Wear (5556) ra máy host
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" -s emulator-5556 reverse tcp:8080 tcp:8080
+```
+
+> **Giải thích:**
+> - Lệnh `forward` (1): Giúp máy host / Wear OS mở cổng `8080` **đi vào** Phone emulator — nơi Phone App đang bind HTTP server.
+> - Lệnh `reverse` (2): Giúp Wear OS emulator (`5556`) **trỏ ra ngoài** cổng `8080` của máy host, từ đó chuyển tiếp tới Phone — đây là lý do `WatchSenderService` dùng `http://localhost:8080/sync`.
+
+> ⚠️ **Bắt buộc thực hiện** bước này trước khi chạy Wear App, nếu không Wear OS sẽ không kết nối được tới Phone.
+
+---
+
+### 🔹 BƯỚC 4: Khởi động Wear OS App
+
+📟 *Mở Terminal 4 (hoặc dùng lại Terminal 3 sau khi đã chạy xong lệnh Bước 3)*
+
+```powershell
+cd frontend
+flutter run -t lib/main_wear.dart -d emulator-5556
+```
+
+> Wear OS App sẽ gửi dữ liệu giả mỗi **5 giây** qua `http://localhost:8080/sync` → Phone nhận → Phone đẩy lên Django Backend → Dashboard cập nhật real-time.
+
+---
+
 ## 🔌 Tài liệu API
 
 ### 📡 Danh sách endpoints
