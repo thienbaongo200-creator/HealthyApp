@@ -1,22 +1,75 @@
 # Virtual Environment
 venv/
 backend/venv/
+env/
 
 # Python / Django
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+.installed.cfg
+*.egg
 db.sqlite3
+backend/db.sqlite3
 .env
+backend/.env
+.env.local
+.env.*.local
 *.log
+*.pot
+local_settings.py
+pip-log.txt
+pip-delete-this-directory.txt
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 
 # Flutter / Dart
 frontend/build/
 frontend/.dart_tool/
 frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/pubspec.lock
+frontend/ios/Pods/
+frontend/ios/Podfile.lock
+frontend/android/.gradle/
+frontend/android/build/
+frontend/macos/Pods/
+frontend/macos/Flutter/Flutter.podspec
+frontend/windows/flutter/generated_plugins.cmake
+frontend/windows/flutter/generated_plugin_registry.cc
+frontend/*.apk
+frontend/build-web/
 
 # IDE / Editor Junk
 .idea/
 *.iml
-.vscode/
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/*.code-snippets
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.eslintcache
+
+# OS
+desktop.ini
+
+# Misc
+.gradle/
+.m2/

@@ -86,22 +86,22 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'healthapp')),
+        'USER': os.getenv('POSTGRES_USER', os.getenv('DB_USER', 'healthy_user')),
+        'PASSWORD': os.getenv(
+            'POSTGRES_PASSWORD', os.getenv('DB_PASSWORD', 'admin123')
+        ),
+        'HOST': os.getenv('POSTGRES_HOST', os.getenv('DB_HOST', 'localhost')),
+        'PORT': os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '5432')),
     }
 }
 
-# If you want to use PostgreSQL in production, uncomment and configure the block below:
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv('POSTGRES_DB', 'HealthApp'),
-#         'USER': os.getenv('POSTGRES_USER', 'healthy_user'),
-#         'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'admin123'),
-#         'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
-#         'PORT': os.getenv('POSTGRES_PORT', '5432'),
-#     }
-# }
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}
 
 
 # Password validation

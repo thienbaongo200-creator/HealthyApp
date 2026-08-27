@@ -10,12 +10,12 @@ void main() {
     await tester.pumpWidget(const HealthApp());
     await tester.pumpAndSettle();
 
-    // Kiem tra tieu de app bar
-    expect(find.text('Healthy App'), findsOneWidget);
+    // Kiem tra tieu de man hinh
+    expect(find.text('Chào mừng bạn!'), findsOneWidget);
 
     // Kiem tra cac the chi so suc khoe
-    expect(find.text('Nhip tim'), findsOneWidget);
-    expect(find.text('Buoc chan'), findsOneWidget);
+    expect(find.text('Nhịp tim'), findsOneWidget);
+    expect(find.text('Bước đi'), findsOneWidget);
     expect(find.text('Calo'), findsOneWidget);
 
     // Kiem tra icons
@@ -24,6 +24,6 @@ void main() {
     expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
 
     // Kiem tra text trang thai ket noi dong ho
-    expect(find.text('Dang cho ket noi tu dong ho...'), findsOneWidget);
+    expect(find.text('Đang chờ kết nối...'), findsOneWidget);
   });
 }
