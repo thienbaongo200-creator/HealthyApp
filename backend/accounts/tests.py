@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from .models import UserProfile
+from medical_records.models import PersonProfile
 from rest_framework.test import APITestCase
 
 
@@ -53,7 +53,7 @@ class AccountIntegrationTests(APITestCase):
 		self.assertEqual(response.status_code, 201)
 		user = get_user_model().objects.get(username='new-user')
 		self.assertTrue(user.check_password('secret123'))
-		self.assertTrue(UserProfile.objects.filter(user=user).exists())
+		self.assertTrue(PersonProfile.objects.filter(user=user).exists())
 
 	def test_profile_update_requires_jwt_and_saves_data(self):
 		user = get_user_model().objects.create_user(
@@ -78,6 +78,6 @@ class AccountIntegrationTests(APITestCase):
 		)
 
 		self.assertEqual(response.status_code, 200)
-		profile = UserProfile.objects.get(user=user)
+		profile = PersonProfile.objects.get(user=user)
 		self.assertEqual(profile.gender, 'male')
-		self.assertEqual(profile.height, 175.0)
+		self.assertEqual(profile.height_cm, 175.0)

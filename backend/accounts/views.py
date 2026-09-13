@@ -6,7 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import UserProfile
+from medical_records.models import PersonProfile
 
 
 class RegisterView(APIView):
@@ -31,7 +31,7 @@ class RegisterView(APIView):
 
 		try:
 			user = User.objects.create_user(username=username, email=email, password=password)
-			UserProfile.objects.create(user=user)
+			PersonProfile.objects.get_or_create(user=user)
 		except IntegrityError:
 			return Response({'detail': 'Username or email is already in use.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -45,15 +45,15 @@ class ProfileView(APIView):
 	permission_classes = [IsAuthenticated]
 
 	def patch(self, request):
-		profile, _ = UserProfile.objects.get_or_create(user=request.user)
+		profile, _ = PersonProfile.objects.get_or_create(user=request.user)
 		date_of_birth = parse_date(str(request.data.get('date_of_birth', '')))
 		if request.data.get('date_of_birth') and date_of_birth is None:
 			return Response({'detail': 'date_of_birth must use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
 		profile.gender = str(request.data.get('gender', profile.gender)).strip()
 		profile.date_of_birth = date_of_birth or profile.date_of_birth
-		profile.height = request.data.get('height', profile.height)
-		profile.weight = request.data.get('weight', profile.weight)
+		profile.height_cm = request.data.get('height_cm', request.data.get('height', profile.height_cm))
+		profile.weight_kg = request.data.get('weight_kg', request.data.get('weight', profile.weight_kg))
 		profile.save()
 		return Response({'message': 'Cập nhật hồ sơ thành công.'}, status=status.HTTP_200_OK)
 

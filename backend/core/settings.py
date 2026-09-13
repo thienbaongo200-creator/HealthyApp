@@ -45,9 +45,12 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
 
+    # Simple JWT - blacklist refresh token
+    'rest_framework_simplejwt.token_blacklist',
+
     # Applications
     'accounts',
-    'health_metrics',
+    'medical_records.apps.MedicalRecordsConfig',
 ]
 
 MIDDLEWARE = [
@@ -101,8 +104,17 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ]
 }
 
+# Cấu hình Simple JWT
+SIMPLE_JWT = {
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
