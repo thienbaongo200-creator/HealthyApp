@@ -1,675 +1,220 @@
-# ⌚ Healthy App — Hệ Thống Theo Dõi Sức Khỏe Thời Gian Thực
+# Healthy App
 
-> **Healthy App** là hệ thống theo dõi chỉ số sức khỏe thời gian thực, kết nối **đồng hồ Wear OS → ứng dụng điện thoại Android → Django Backend**. Hệ thống đo nhịp tim, đếm bước chân, tính lượng calo tiêu thụ và đồng bộ dữ liệu lên server để lưu trữ, quản lý lịch sử.
+Healthy App là ứng dụng theo dõi sức khỏe cá nhân gồm ứng dụng Flutter cho điện thoại, ứng dụng Flutter cho Wear OS và backend Django REST Framework. Wear OS hiện tạo dữ liệu mô phỏng; ứng dụng Phone nhận snapshot từ đồng hồ, gom thành batch và gửi lên backend để lưu theo tài khoản.
 
-[![Django](https://img.shields.io/badge/Backend-Django%206.0-092E20?logo=django)](https://www.djangoproject.com/)
-[![DRF](https://img.shields.io/badge/API-Django%20REST%20Framework-red)](https://www.django-rest-framework.org/)
-[![Flutter](https://img.shields.io/badge/Frontend-Flutter%203.x-02569B?logo=flutter)](https://flutter.dev/)
-[![Wear OS](https://img.shields.io/badge/Wear%20OS-Supported-00C9A7?logo=wearos)](https://wearos.google.com/)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+> Dự án hiện tập trung vào đăng ký/đăng nhập JWT, hồ sơ cá nhân và bản ghi sức khỏe. Dữ liệu Wear OS hiện là dữ liệu mô phỏng, không phải dữ liệu đo y tế hoặc cảm biến thật.
 
----
+## Kiến trúc hệ thống
 
-## 📑 Mục lục
-
-- [📌 Giới thiệu dự án](#-giới-thiệu-dự-án)
-- [🏗️ Kiến trúc hệ thống](#️-kiến-trúc-hệ-thống)
-- [⚙️ Yêu cầu môi trường](#️-yêu-cầu-môi-trường)
-- [🚀 Hướng dẫn cài đặt & khởi chạy](#-hướng-dẫn-cài-đặt--khởi-chạy)
-- [🔌 Tài liệu API](#-tài-liệu-api)
-- [🧹 Quy trình dọn dẹp dự án](#-quy-trình-dọn-dẹp-dự-án)
-- [🛠️ Roadmap phát triển](#️-roadmap-phát-triển)
-- [📚 Tài liệu bổ sung](#-tài-liệu-bổ-sung)
-
----
-
-## 📌 Giới thiệu dự án
-
-### 🎯 Mục tiêu
-
-Xây dựng hệ thống **đo & đồng bộ chỉ số sức khỏe theo thời gian thực**:
-
-```
-⌚ Đồng hồ Wear OS (cảm biến)  →  📱 Điện thoại Android (hiển thị & đệm dữ liệu)  →  🖥️ Django Backend (lưu trữ & phân tích)
+```text
+Wear OS Emulator
+  └─ HTTP POST http://localhost:8080/sync
+       │ adb reverse (Wear Emulator → máy tính)
+       │ adb forward (máy tính → Phone thật)
+       ▼
+Phone thật — Flutter
+  ├─ HTTP listener :8080 nhận snapshot từ đồng hồ
+  ├─ Gom measurement và gửi batch có JWT
+  └─ Gọi Django API qua Wi-Fi LAN: 192.168.1.7:8000
+       ▼
+Django + Django REST Framework
+  └─ PostgreSQL trên máy tính
 ```
 
-### ✨ Chức năng chính
+Phone và máy tính cần cùng mạng Wi-Fi. Wear OS chạy trong Android Emulator và dùng hai đường chuyển tiếp ADB để gửi snapshot qua máy tính đến HTTP listener trên Phone. Backend Django phải lắng nghe trên `0.0.0.0:8000` để thiết bị Phone truy cập được qua LAN.
 
-| Chức năng | Mô tả | Trạng thái |
-|-----------|-------|:----------:|
-| ❤️ **Đo nhịp tim** | Hiển thị nhịp tim real-time (bpm) từ đồng hồ | ✅ Hoàn thành |
-| 👣 **Đếm bước chân** | Đếm số bước trong ngày | ✅ Hoàn thành |
-| 🔥 **Đo calo** | Tính toán lượng calo tiêu thụ (kcal) | ✅ Hoàn thành |
-| 📡 **Đồng bộ API** | Gửi dữ liệu sức khỏe lên Django REST API | ✅ Hoàn thành |
-| ⌚ **Kết nối Wear OS ↔ Phone** | Giao tiếp qua HTTP (Watch ↔ Phone ↔ Server) | ✅ Hoàn thành |
-| 🔐 **Xác thực người dùng** | Đăng ký, đăng nhập, token authentication | 🔜 Phát triển |
-| 📈 **Lịch sử & Biểu đồ** | Xem lại dữ liệu sức khỏe theo ngày/tuần/tháng | 🔜 Phát triển |
-| 🏃 **Mục tiêu cá nhân** | Đặt mục tiêu bước chân/calo hàng ngày | 🔜 Phát triển |
-| 📦 **Gửi Batch dữ liệu** | Gom nhiều bản ghi gửi 1 lần | 🔜 Phát triển |
-
-> 📝 **Ghi chú:** Ở giai đoạn hiện tại, đồng hồ Wear OS đang **mô phỏng dữ liệu bằng bộ sinh dữ liệu giả** (`Random()`) để demo luồng kết nối. Việc đọc cảm biến thật nằm trong roadmap.
-
----
-
-## 🏗️ Kiến trúc hệ thống
-
-### 🔄 Sơ đồ luồng dữ liệu (Data Flow)
-
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│ 1️⃣  WEAR OS (Đồng hồ)                                                     │
-│ ┌──────────────────────────────────────────────────────────────────────┐  │
-│ │  Flutter Wear App  (frontend/lib/main_wear.dart)                    │  │
-│ │  • Đọc cảm biến: nhịp tim, bước chân, calo                           │  │
-│ │  • WatchSenderService: đóng gói JSON                                 │  │
-│ └──────────────────────────┬───────────────────────────────────────────┘  │
-│                            │  HTTP POST  (mỗi 5 giây / batch)            │
-│                            ▼  http://<phone_ip>:8080/sync                │
-├────────────────────────────────────────────────────────────────────────────┤
-│ 2️⃣  PHONE APP (Điện thoại Android)                                        │
-│ ┌──────────────────────────────────────────────────────────────────────┐  │
-│ │  Flutter Mobile App  (frontend/lib/main.dart)                       │  │
-│ │  • WatchService.initPhoneListener() — HTTP Server port 8080         │  │
-│ │  • Nhận dữ liệu → Cập nhật Dashboard (setState)                     │  │
-│ │  • Buffer/Batch dữ liệu cục bộ (Hive/SQLite — roadmap)              │  │
-│ │  • ApiService.sendHealthData() → gọi REST API                       │  │
-│ └──────────────────────────┬───────────────────────────────────────────┘  │
-│                            │  HTTP (REST API)                             │
-│                            ▼  POST http://10.0.2.2:8000/api/health/       │
-├────────────────────────────────────────────────────────────────────────────┤
-│ 3️⃣  DJANGO BACKEND (Server)                                               │
-│ ┌──────────────────────────────────────────────────────────────────────┐  │
-│ │  Django 6.0 + Django REST Framework                                 │  │
-│ │  • core/          → settings, urls, wsgi/asgi                      │  │
-│ │  • health_metrics → model HealthData + serializer + view           │  │
-│ │  • accounts       → xác thực người dùng (đang phát triển)          │  │
-│ │  • Database: SQLite (dev) / PostgreSQL (production)                │  │
-│ └──────────────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────────┘
+```text
+HealthyApp/
+├── backend/
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── .env.example
+│   ├── core/                 # Settings và URL gốc của Django
+│   ├── accounts/             # Đăng ký, đăng nhập, profile, JWT
+│   └── medical_records/      # Profile và health measurements
+└── frontend/
+    ├── assets/images/        # Asset Flutter
+    ├── lib/main.dart         # Điểm vào ứng dụng Phone
+    ├── lib/main_wear.dart    # Điểm vào ứng dụng Wear OS
+    ├── lib/services/         # API, auth, listener và sender
+    ├── lib/views/            # Màn hình đăng nhập, hồ sơ và dashboard
+    └── lib/widgets/
 ```
 
-### 💻 Tech Stack
+## Phiên bản công nghệ
 
-| Thành phần | Công nghệ | Phiên bản | Vai trò |
-|-----------|-----------|:---------:|---------|
-| 🖥️ **Backend** | Django | ≥ 6.0 | Web framework chính |
-| 🖥️ **REST API** | Django REST Framework | ≥ 3.15 | Xây dựng API endpoints |
-| 🖥️ **CORS** | django-cors-headers | ≥ 4.0 | Cho phép Flutter app gọi API |
-| 🗄️ **Database** | SQLite / PostgreSQL | 14+ (PSQL) | Lưu trữ dữ liệu sức khỏe |
-| 📱 **Frontend** | Flutter | 3.x | Cross-platform UI |
-| 🎯 **Ngôn ngữ UI** | Dart | ^3.12.2 | Ngôn ngữ lập trình Flutter |
-| 🌐 **HTTP Client** | `http` (Dart package) | ^1.2.0 | Gọi API & truyền dữ liệu Watch ↔ Phone |
-| ⌚ **Wear OS** | Flutter Wear App | 3.x | App chạy trên đồng hồ |
-| 🔐 **Permissions** | `permission_handler` | ^12.0.3 | Xin quyền cảm biến |
-| 🗄️ **Local Storage** | Hive / SQLite | *(roadmap)* | Buffer dữ liệu khi mất mạng |
+Các phiên bản dưới đây được đối chiếu với cấu hình dự án và môi trường hiện có ngày **05/10/2026**. “Đã cài” là phiên bản tìm thấy trong môi trường trên máy hiện tại; “khai báo” là phiên bản yêu cầu trong manifest của repo. Các constraint bắt đầu bằng `^` là khoảng phiên bản tương thích, không phải một phiên bản cố định.
 
-> ⚠️ **Lưu ý kiến trúc:** Dự án hiện dùng **HTTP làm giao thức truyền tin** giữa Watch → Phone (thay vì `watch_connectivity`) để dễ chạy trên emulator. Trong kiến trúc production, Phone app sẽ **buffer dữ liệu cục bộ** rồi **gửi theo batch** lên server để tiết kiệm băng thông & pin.
+| Công nghệ | Khai báo/cấu hình dự án | Đã cài hoặc đã resolve trên máy hiện tại |
+|---|---|---|
+| Python | `requirements.txt` không pin Python; môi trường nên dùng Python 3.13 | Python **3.13.14** trong `backend/venv` |
+| Django | `Django==6.1` trong `backend/requirements.txt` | Django **6.0.6** trong `backend/venv` |
+| Django REST Framework | `djangorestframework==3.18.0` | **3.17.1** trong `backend/venv` |
+| django-cors-headers | `4.9.0` | **4.9.0** |
+| djangorestframework-simplejwt | `5.5.1` | **5.5.1** |
+| psycopg2-binary | `2.9.12` | **2.9.12** |
+| PyJWT | `2.13.0` | **2.13.0** |
+| python-dotenv | `1.1.1` | **1.2.3** |
+| python-decouple | `3.8` | **3.8** |
+| Flutter | Yêu cầu tối thiểu theo `pubspec.lock`: Flutter `>=3.38.4` | Flutter **3.47.5 stable** |
+| Dart | `environment.sdk: ^3.12.2` trong `pubspec.yaml` | Dart **3.13.4** |
+| `http` | Constraint `^1.2.0` | **1.6.0** trong `pubspec.lock` |
+| `dio` | Constraint `^5.11.1` | **5.11.1** |
+| `permission_handler` | Constraint `^12.0.3` | **12.0.3** |
+| `google_sign_in` | Constraint `^6.2.1` | **6.3.0** |
+| `flutter_secure_storage` | Constraint `^11.1.1` | **11.1.1** |
+| Android Gradle Plugin | `settings.gradle.kts` | **9.0.1** |
+| Kotlin Gradle Plugin | `settings.gradle.kts` | **2.3.20** |
+| Gradle Wrapper | `gradle-wrapper.properties` | **9.1.0** |
+| Java target / Android min SDK | `app/build.gradle.kts` | Java target **17**; Android `minSdk = 28` |
+| PostgreSQL Server | Backend dùng engine `django.db.backends.postgresql`; repo không pin phiên bản server | Chưa xác định từ source; tài liệu dự án yêu cầu PostgreSQL **14+** |
 
----
+**Lưu ý về backend:** môi trường `backend/venv` đang lệch với `requirements.txt`: Django đang là 6.0.6 thay vì 6.1, DRF là 3.17.1 thay vì 3.18.0, và `python-dotenv` là 1.2.3 thay vì 1.1.1. Cài requirements vào một virtual environment mới sẽ sử dụng các phiên bản pin trong file. Không xem phiên bản đang cài và phiên bản yêu cầu là đồng nhất.
 
-## ⚙️ Yêu cầu môi trường
+## Yêu cầu môi trường
 
-| Công nghệ | Phiên bản | Kiểm tra | Ghi chú |
-|-----------|:---------:|----------|---------|
-| **Python** | ≥ 3.10 | `python --version` | Bắt buộc cho Django |
-| **Django** | ≥ 6.0 | `django-admin --version` | Cài qua pip |
-| **Flutter SDK** | 3.x (≥ 3.44) | `flutter --version` | Bao gồm cả Dart SDK |
-| **Dart SDK** | ^3.12.2 | `dart --version` | Đi kèm Flutter SDK |
-| **Android Studio** | Hedgehog+ | `flutter doctor` | Cài Android SDK + Emulator |
-| **Android Emulator** | API 30+ | AVD Manager | Tạo 2 AVD: Phone & Wear OS |
-| **Wear OS Emulator** | Wear OS 3+ | AVD Manager | Cần Google Play Services |
-| **PostgreSQL** | 14+ | *(tùy chọn)* | Chỉ cho production |
-| **Git** | ≥ 2.0 | `git --version` | Quản lý phiên bản |
+- Windows, macOS hoặc Linux; các ví dụ bên dưới dùng PowerShell trên Windows.
+- Python **3.13** và `pip`.
+- PostgreSQL **14 trở lên**, đã cài và đang chạy; tạo database cùng tài khoản dùng cho ứng dụng.
+- Flutter SDK **3.38.4 trở lên** và Dart theo `frontend/pubspec.yaml`.
+- Android Studio/Android SDK, JDK 17-compatible với Android Gradle Plugin của dự án, ADB và Wear OS Emulator.
+- Điện thoại Android thật bật USB debugging; Phone và máy tính cùng mạng Wi-Fi.
+- IP Wi-Fi của máy tính trong cấu hình hiện tại: **`192.168.1.7`**. Nếu địa chỉ DHCP thay đổi, cập nhật `.env` hoặc truyền URL mới bằng `--dart-define`.
 
-### 📌 Chạy `flutter doctor` để kiểm tra môi trường
+## Cài đặt Backend
 
-```bash
-flutter doctor
-```
-
-Đảm bảo tất cả các mục đều hiện ✅ (đặc biệt là **Android toolchain** và **Android Studio**).
-
----
-
-## 🚀 Hướng dẫn cài đặt & khởi chạy
-
-### 🗂️ Cấu trúc dự án
-
-```
-healthy_app/
-├── README.md                  # Tài liệu này
-├── TODO.md                    # Kế hoạch phát triển
-├── .gitignore                 # Chống commit file rác (venv, cache, db, build)
-├── backend/                   # 🖥️ Django Backend
-└── frontend/                  # 📱 Flutter Frontend
-```
-
----
-
-### 🖥️ Bước 1 — Backend (Django)
-
-```bash
-# 1. Di chuyển vào thư mục backend
-cd backend
-
-# 2. Tạo virtual environment (đặt NGAY TRONG backend/)
-python -m venv venv
-
-# 3. Kích hoạt venv
-#    Windows (PowerShell):
-venv\Scripts\activate
-#    Linux / macOS:
-# source venv/bin/activate
-
-# 4. Cài đặt dependencies
-pip install -r requirements.txt
-
-# 5. Chạy migrations (tạo database)
-python manage.py migrate
-
-# 6. Tạo superuser (cho Django Admin)
-python manage.py createsuperuser
-
-# 7. Chạy development server
-python manage.py runserver
-```
-
-> ✅ Backend chạy tại **`http://localhost:8000/`**
-> - Django Admin: `http://localhost:8000/admin/`
-> - API Health: `http://localhost:8000/api/health/`
-
----
-
-### 📱 Bước 2 — Frontend (Flutter Phone App)
-
-```bash
-# 1. Di chuyển vào thư mục frontend
-cd frontend
-
-# 2. Cài đặt dependencies
-flutter pub get
-
-# 3. Kiểm tra cấu hình API (quan trọng!)
-```
-
-**⚙️ Cấu hình IP cho API:**
-
-File cấu hình: `frontend/lib/services/api_service.dart`
-
-```dart
-// MẶC ĐỊNH: dùng cho Android Emulator (10.0.2.2 = localhost của máy host)
-static const String baseUrl = 'http://10.0.2.2:8000/api';
-
-// Trên thiết bị thật: đổi thành IP LAN của máy tính
-// static const String baseUrl = 'http://192.168.1.10:8000/api';
-
-// Trên Web/Desktop: đổi thành localhost
-// static const String baseUrl = 'http://localhost:8000/api';
-```
-
-**Chạy app trên Phone Emulator:**
-
-```bash
-# Đảm bảo AVD Phone đang bật
-flutter emulators --launch <phone_avd_id>
-
-# Chạy app trên Android Emulator
-flutter run -d android
-```
-
----
-
-### ⌚ Bước 3 — Wear OS App (Emulator)
-
-```bash
-# 1. Tạo AVD Wear OS (Wear OS 3+, có Google Play)
-#    Android Studio → Device Manager → Create Device → Chọn "Wear OS"
-
-# 2. Chạy app Wear với target là main_wear.dart
-cd frontend
-flutter run -d <wear_avd_id> --target lib/main_wear.dart
-```
-
-> ⚙️ **Cấu hình địa chỉ Phone cho Watch:**
-> File: `frontend/lib/services/watch_sender_service.dart`
->
-> ```dart
-> // MẶC ĐỊNH: localhost:8080/sync — trỏ tới HTTP listener của Phone app
-> // (chạy trên cùng thiết bị/emulator, phone app bind port 8080)
-> static const String _defaultUrl = 'http://localhost:8080/sync';
->
-> // Trên thiết bị thật / emulator khác: đổi thành IP LAN của điện thoại
-> // static const String _defaultUrl = 'http://192.168.1.20:8080/sync';
-> ```
-
----
-
-### 🔌 Bước 4 — Kiểm tra luồng hoạt động
-
-| Bước | Kiểm tra | Kết quả mong đợi |
-|:----:|----------|------------------|
-| 1 | Backend `runserver` | Server chạy tại `localhost:8000` |
-| 2 | `GET http://127.0.0.1:8000/api/health/` | Trả về JSON array |
-| 3 | `curl -X POST http://127.0.0.1:8000/api/health/ -H "Content-Type: application/json" -d "{\"heart_rate\":70,\"steps\":1000,\"calories\":50.5}"` | Trả về `201 Created` |
-| 4 | Chạy Phone App trên emulator | Dashboard hiển thị 3 thẻ chỉ số |
-| 5 | Chạy Wear App | Đồng hồ gửi dữ liệu mỗi 5 giây → Phone nhận → Phone đẩy lên Server |
-| 6 | `GET http://127.0.0.1:8000/api/health/` (lại) | Có thêm bản ghi mới từ Phone |
-
-> 📌 **Lưu ý quan trọng khi test trên emulator:**
-> - `10.0.2.2` là địa chỉ đặc biệt để Android Emulator truy cập `localhost` của máy host.
-> - Backend phải cấu hình `ALLOWED_HOSTS` chứa `10.0.2.2` (xem phần Troubleshooting).
-> - Android 9+ chặn HTTP trần → đã bật `android:usesCleartextTraffic="true"` trong `AndroidManifest.xml`.
-
----
-
-## 🚀 QUY TRÌNH CHẠY DỰ ÁN (ĐÃ TỐI ƯU)
-
-> 💡 **Ghi chú:** Các bước dưới đây dùng **2 emulator cụ thể**: Phone (`emulator-5554`) và Wear OS (`emulator-5556`). Điều chỉnh ID emulator cho phù hợp với máy bạn (kiểm tra bằng `flutter devices`).
-
-### 🔹 BƯỚC 1: Khởi động Django Backend
-
-📟 *Mở Terminal 1*
+Mở PowerShell tại thư mục dự án:
 
 ```powershell
-cd backend
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+cd D:\HealthyApp\backend
+py -3.13 -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+Sửa `backend/.env` với thông tin PostgreSQL trên máy tính. Các tên biến dưới đây được hỗ trợ bởi `backend/core/settings.py`:
+
+```dotenv
+SECRET_KEY=<chuỗi bí mật đủ dài>
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.7,10.0.2.2
+
+DB_NAME=healthapp
+DB_USER=healthy_user
+DB_PASSWORD=<mật khẩu PostgreSQL>
+DB_HOST=localhost
+DB_PORT=5432
+
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+Tạo database `healthapp` và user PostgreSQL tương ứng trước khi chạy migration. Từ thư mục `backend`, chạy:
+
+```powershell
+python manage.py migrate
+python manage.py check
+python manage.py test
+python manage.py createsuperuser
+python manage.py runserver 0.0.0.0:8000
+```
+
+Backend lắng nghe trên mọi interface tại cổng `8000`; Phone truy cập API qua `http://192.168.1.7:8000`. Cho phép cổng `8000` qua firewall Windows. `backend/.env` chứa secret và mật khẩu, không commit file này.
+
+## Chạy hệ thống: Phone thật + Wear OS Emulator + Django
+
+### Bước 1 — Khởi chạy Backend
+
+Thực hiện cài đặt và cấu hình Backend ở trên. Giữ terminal chạy Django:
+
+```powershell
+cd D:\HealthyApp\backend
 .\venv\Scripts\Activate.ps1
 python manage.py runserver 0.0.0.0:8000
 ```
 
-> Backend lắng nghe trên **tất cả interface** (`0.0.0.0:8000`) để emulator có thể truy cập qua `10.0.2.2`.
+Đảm bảo máy tính vẫn dùng IP `192.168.1.7`, điện thoại cùng Wi-Fi và firewall cho phép kết nối tới cổng `8000`.
 
----
+### Bước 2 — Khởi chạy Phone trên điện thoại thật
 
-### 🔹 BƯỚC 2: Khởi động Phone App (Server trung gian)
+Kết nối điện thoại qua Gỡ lỗi không dây (Wireless Debugging):
+- Trên điện thoại, vào Cài đặt > Tùy chọn nhà phát triển > Bật gỡ lỗi không dây.
+- Chọn ghép nối thiết bị (bằng mã QR hoặc mã ghép nối) với Android Studio trên máy tính để thiết lập kết nối không dây
 
-📟 *Mở Terminal 2*
-
-```powershell
-cd frontend
-flutter run -t lib/main.dart -d emulator-5554
-```
-
-> Phone App đóng vai trò **server trung gian**: vừa nhận dữ liệu từ Wear OS (port `8080`), vừa đẩy lên Django Backend qua REST API.
-
----
-
-### 🔹 BƯỚC 3: Thiết lập "Cầu nối" mạng (BẮT BUỘC)
-
-📟 *Mở Terminal 3*
-
-Để đảm bảo Wear OS có thể "nói chuyện" được với Phone, bạn chạy lệnh này để mở cổng:
+Kiểm tra thiết bị: 
+- Mở terminal và chạy lệnh sau để lấy device ID thực tế của điện thoại:
 
 ```powershell
-# (1) Bắt cầu từ máy host vào Phone (5554)
-& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" -s emulator-5554 forward tcp:8080 tcp:8080
-
-# (2) Bắt cầu từ Wear (5556) ra máy host
-& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" -s emulator-5556 reverse tcp:8080 tcp:8080
+adb devices
 ```
 
-> **Giải thích:**
-> - Lệnh `forward` (1): Giúp máy host / Wear OS mở cổng `8080` **đi vào** Phone emulator — nơi Phone App đang bind HTTP server.
-> - Lệnh `reverse` (2): Giúp Wear OS emulator (`5556`) **trỏ ra ngoài** cổng `8080` của máy host, từ đó chuyển tiếp tới Phone — đây là lý do `WatchSenderService` dùng `http://localhost:8080/sync`.
-
-> ⚠️ **Bắt buộc thực hiện** bước này trước khi chạy Wear App, nếu không Wear OS sẽ không kết nối được tới Phone.
-
----
-
-### 🔹 BƯỚC 4: Khởi động Wear OS App
-
-📟 *Mở Terminal 4 (hoặc dùng lại Terminal 3 sau khi đã chạy xong lệnh Bước 3)*
+Chạy từ thư mục Flutter:
 
 ```powershell
-cd frontend
-flutter run -t lib/main_wear.dart -d emulator-5556
-```
-
-> Wear OS App sẽ gửi dữ liệu giả mỗi **5 giây** qua `http://localhost:8080/sync` → Phone nhận → Phone đẩy lên Django Backend → Dashboard cập nhật real-time.
-
----
-
-## 🔌 Tài liệu API
-
-### 📡 Danh sách endpoints
-
-| Method | Endpoint | Mô tả | Authentication | Trạng thái |
-|--------|----------|-------|:--------------:|:----------:|
-| `GET` | `/admin/` | Django Admin Dashboard | 🔐 Required | ✅ |
-| `GET` | `/api/health/` | Lấy danh sách bản ghi sức khỏe | ❌ AllowAny (tạm) | ✅ |
-| `POST` | `/api/health/` | Tạo 1 bản ghi sức khỏe mới | ❌ AllowAny (tạm) | ✅ |
-| `POST` | `/api/v1/health/batch/` | Gửi nhiều bản ghi 1 lần (batch) | 🔜 Planned | 🔜 Phát triển |
-
----
-
-### 1️⃣ `GET /api/health/`
-
-Lấy danh sách lịch sử đo sức khỏe (tối đa 50 bản ghi mới nhất nếu chưa đăng nhập).
-
-**Request:**
-
-```http
-GET /api/health/ HTTP/1.1
-Host: localhost:8000
-```
-
-**Response — `200 OK`:**
-
-```json
-[
-  {
-    "id": 1,
-    "user": null,
-    "heart_rate": 72,
-    "steps": 5423,
-    "calories": 245.5,
-    "created_at": "2026-07-29T10:30:00Z"
-  },
-  {
-    "id": 2,
-    "user": null,
-    "heart_rate": 85,
-    "steps": 1200,
-    "calories": 89.3,
-    "created_at": "2026-07-29T09:15:00Z"
-  }
-]
-```
-
----
-
-### 2️⃣ `POST /api/health/`
-
-Tạo một bản ghi sức khỏe mới (dữ liệu gửi từ Flutter lên).
-
-**Request:**
-
-```http
-POST /api/health/ HTTP/1.1
-Host: localhost:8000
-Content-Type: application/json
-
-{
-  "heart_rate": 75,
-  "steps": 3200,
-  "calories": 156.7
-}
-```
-
-**Response — `201 Created`:**
-
-```json
-{
-  "id": 3,
-  "user": null,
-  "heart_rate": 75,
-  "steps": 3200,
-  "calories": 156.7,
-  "created_at": "2026-07-29T14:00:00Z"
-}
-```
-
-**Response — `400 Bad Request` (thiếu trường bắt buộc):**
-
-```json
-{
-  "heart_rate": ["This field is required."]
-}
-```
-
----
-
-### 3️⃣ `POST /api/v1/health/batch/` *(Đang phát triển)*
-
-Gửi nhiều bản ghi cùng lúc trong một request. Đây là endpoint **khuyến nghị cho production** để giảm số lượng HTTP request, tiết kiệm pin và băng thông.
-
-**Request:**
-
-```http
-POST /api/v1/health/batch/ HTTP/1.1
-Host: localhost:8000
-Content-Type: application/json
-
-{
-  "records": [
-    {
-      "heart_rate": 72,
-      "steps": 5423,
-      "calories": 245.5,
-      "timestamp": "2026-07-29T10:30:00Z"
-    },
-    {
-      "heart_rate": 85,
-      "steps": 1200,
-      "calories": 89.3,
-      "timestamp": "2026-07-29T10:35:00Z"
-    },
-    {
-      "heart_rate": 91,
-      "steps": 1800,
-      "calories": 120.0,
-      "timestamp": "2026-07-29T10:40:00Z"
-    }
-  ]
-}
-```
-
-**Response — `201 Created`:**
-
-```json
-{
-  "status": "success",
-  "message": "Đã lưu 3 bản ghi thành công.",
-  "created_ids": [10, 11, 12]
-}
-```
-
-**Response — `400 Bad Request` (dữ liệu không hợp lệ):**
-
-```json
-{
-  "status": "error",
-  "message": "Có 1 bản ghi không hợp lệ.",
-  "errors": [
-    {
-      "index": 1,
-      "error": {
-        "heart_rate": ["This field is required."]
-      }
-    }
-  ]
-}
-```
-
-> 💡 **Lưu ý:** Endpoint batch hiện đang trong roadmap phát triển. Backend hiện tại chỉ hỗ trợ `POST /api/health/` (single record). Kiến trúc batch sẽ được triển khai khi hoàn thiện tính năng buffer dữ liệu cục bộ trên Phone app.
-
----
-
-## 🧹 Quy trình dọn dẹp dự án
-
-> 🧹 **Ghi chú:** Dự án hiện không còn kèm script tự động dọn dẹp (`clean_project.ps1`). Vui lòng dùng các lệnh thủ công bên dưới để dọn file rác.
-
-### 🗑️ Danh sách file/thư mục có thể xoá
-
-| Nhóm | File / Thư mục | Lý do |
-|:----:|----------------|-------|
-| 🐍 **Python cache** | `backend/**/__pycache__/`, `*.pyc` | Cache biên dịch Python, tự sinh lại |
-| 🏗️ **Build cache** | `frontend/build/`, `.dart_tool/`, `.flutter-plugins` | Build artifacts, tự sinh lại |
-| 📱 **Android build** | `frontend/android/.gradle/`, `frontend/android/app/build/` | Build cache Gradle |
-| 🗄️ **DB tạm** | `backend/db.sqlite3` | Database dev, có thể reset |
-| 📄 **IDE files** | `frontend/frontend.iml`, `.idea/` | File cấu hình IDE, không cần trong VCS |
-| 📦 **Deps thừa (Flutter)** | *(đã xoá)* — `watch_connectivity`, `pedometer`, `cupertino_icons` | Đã loại khỏi `pubspec.yaml` |
-| 📦 **Deps thừa (Python)** | *(không có)* | Backend đã dọn: chỉ giữ Django + DRF + CORS |
-| 🐍 **VirtualEnv sai vị trí** | `venv/` (thư mục gốc) | Phải đặt trong `backend/venv/` (đã khắc phục) |
-| 🖥️ **Platform thừa** | `frontend/ios/`, `web/`, `linux/`, `macos/`, `windows/` | Đã xoá — dự án chỉ dùng Android + Wear OS |
-
-### 🧹 Lệnh dọn dẹp nhanh (PowerShell)
-
-```powershell
-# ===== Xoá Python cache =====
-Get-ChildItem -Path "backend" -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
-Get-ChildItem -Path "backend" -Recurse -Filter *.pyc | Remove-Item -Force
-
-# ===== Xoá Flutter build cache =====
-Remove-Item -Recurse -Force "frontend\build" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "frontend\.dart_tool" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "frontend\android\.gradle" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "frontend\android\app\build" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "frontend\android\.idea" -ErrorAction SilentlyContinue
-
-# ===== Xoá DB tạm =====
-Remove-Item -Force "backend\db.sqlite3" -ErrorAction SilentlyContinue
-
-# ===== Xoá IDE files =====
-Remove-Item -Force "frontend\frontend.iml" -ErrorAction SilentlyContinue
-
-# ===== Xoá platform thừa (tuỳ chọn) =====
-# Remove-Item -Recurse -Force "frontend\ios" -ErrorAction SilentlyContinue
-# Remove-Item -Recurse -Force "frontend\web" -ErrorAction SilentlyContinue
-# Remove-Item -Recurse -Force "frontend\linux" -ErrorAction SilentlyContinue
-# Remove-Item -Recurse -Force "frontend\macos" -ErrorAction SilentlyContinue
-# Remove-Item -Recurse -Force "frontend\windows" -ErrorAction SilentlyContinue
-```
-
-### 🧹 Lệnh dọn dẹp nhanh (Bash / Linux / macOS)
-
-```bash
-# ===== Xoá Python cache =====
-find backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
-find backend -type f -name "*.pyc" -delete
-
-# ===== Xoá Flutter build cache =====
-rm -rf frontend/build frontend/.dart_tool frontend/android/.gradle
-rm -rf frontend/android/app/build frontend/android/.idea
-
-# ===== Xoá DB tạm =====
-rm -f backend/db.sqlite3
-
-# ===== Xoá IDE files =====
-rm -f frontend/frontend.iml
-
-# ===== Xoá platform thừa (tuỳ chọn) =====
-# rm -rf frontend/ios frontend/web frontend/linux frontend/macos frontend/windows
-```
-
-### 📦 Dọn dẹp dependencies thừa trong `pubspec.yaml`
-
-> ✅ **Đã hoàn tất:** `frontend/pubspec.yaml` hiện chỉ còn giữ các dependencies thực sự sử dụng:
->
-> ```yaml
-> dependencies:
->   flutter:
->     sdk: flutter
->   http: ^1.2.0                    # Gọi API Django
->   permission_handler: ^12.0.3    # Quản lý quyền truy cập
-> ```
->
-> Các gói đã được xoá trước đó (không cần làm lại): `watch_connectivity`, `pedometer`, `cupertino_icons`.
-
-Sau khi thay đổi dependencies, chạy lại để cập nhật lockfile:
-
-```bash
-cd frontend
+cd D:\HealthyApp\frontend
 flutter pub get
+flutter run -t lib/main.dart -d <phone-device-id> --dart-define=API_BASE_URL=http://192.168.1.7:8000/api
 ```
 
-### 🗂️ Cấu trúc dự án sau khi dọn dẹp
+Trong ứng dụng, mở dashboard để Phone khởi tạo HTTP listener tại cổng `8080`. API URL mặc định đã trỏ tới IP trên, nhưng lệnh trên truyền giá trị rõ ràng để có thể dễ thay đổi nếu IP máy tính đổi.
 
-```
-healthy_app/
-├── README.md                           # Tài liệu dự án (file này)
-├── TODO.md                             # Kế hoạch phát triển
-│
-├── backend/                            # 🖥️ Django Backend
-│   ├── manage.py                       # CLI Django
-│   ├── requirements.txt                # Dependencies Python
-│   ├── core/                           # Project config
-│   │   ├── __init__.py
-│   │   ├── settings.py                 # Cấu hình Django
-│   │   ├── urls.py                     # URL routing
-│   │   ├── wsgi.py                     # WSGI entrypoint
-│   │   └── asgi.py                     # ASGI entrypoint
-│   ├── accounts/                       # Auth app (đang phát triển)
-│   │   ├── __init__.py
-│   │   ├── admin.py
-│   │   ├── apps.py
-│   │   ├── models.py
-│   │   ├── tests.py
-│   │   ├── views.py
-│   │   └── migrations/
-│   │       └── __init__.py
-│   └── health_metrics/                 # Health Metrics app ✅
-│       ├── __init__.py
-│       ├── admin.py                    # Django Admin config
-│       ├── apps.py
-│       ├── models.py                   # HealthData model
-│       ├── serializers.py              # HealthDataSerializer
-│       ├── tests.py
-│       ├── urls.py                     # /api/health/ routing
-│       ├── views.py                    # GET/POST handler
-│       └── migrations/
-│           ├── __init__.py
-│           └── 0001_initial.py
-│
-└── frontend/                           # 📱 Flutter Frontend
-    ├── pubspec.yaml                    # Dependencies
-    ├── analysis_options.yaml           # Lint rules
-    ├── lib/
-    │   ├── main.dart                   # Phone App (Dashboard)
-    │   ├── main_wear.dart              # Wear OS App
-    │   └── services/
-    │       ├── api_service.dart        # REST API Client
-    │       ├── watch_service.dart      # HTTP Server listener
-    │       └── watch_sender_service.dart # HTTP sender
-    ├── test/
-    │   └── widget_test.dart            # Widget test
-    └── android/                        # Android platform config
-        ├── build.gradle.kts
-        ├── settings.gradle.kts
-        ├── gradle.properties
-        └── app/
-            ├── build.gradle.kts
-            └── src/
-                ├── main/
-                │   ├── AndroidManifest.xml
-                │   ├── kotlin/.../
-                │   │   └── MainActivity.kt
-                │   └── res/.../
-                ├── debug/
-                │   └── AndroidManifest.xml
-                └── profile/
-                    └── AndroidManifest.xml
+### Bước 3 — Tạo ADB forward/reverse cho Wear OS Emulator
+
+Khởi động Wear OS Emulator trong Android Studio, giữ điện thoại kết nối qua ADB và xác định đúng hai device ID bằng `adb devices`. Mở terminal mới và chạy:
+
+```powershell
+adb -s <phone-device-id> forward tcp:8080 tcp:8080
+adb -s <wear-device-id> reverse tcp:8080 tcp:8080
 ```
 
----
+`adb reverse` chuyển cổng `8080` trên Wear Emulator về cổng `8080` của máy tính; `adb forward` chuyển tiếp cổng máy tính tới listener trên Phone thật. Giữ cả hai kết nối ADB hoạt động trong khi thử nghiệm. Nếu thiết bị ngắt kết nối, chạy lại các lệnh này.
 
-## 🛠️ Roadmap phát triển
+### Bước 4 — Khởi chạy Wear OS app và kiểm tra đồng bộ
 
-> Chi tiết đầy đủ tại [TODO.md](./TODO.md)
+Mở terminal khác:
 
-| Mức độ | Mục tiêu | Thời gian dự kiến |
-|:------:|----------|:-----------------:|
-| 🔴 **Cao** | Bảo mật (Secret Key, Debug, CORS), Accounts App, Frontend implement, Sửa test | Tuần 1–2 |
-| 🟡 **Trung bình** | Hiệu năng (pagination, batch API, validation), Testing (unit + widget), Flutter architecture | Tuần 3–4 |
-| 🟢 **Thấp** | Code quality, UX/UI, Documentation, Deploy & CI/CD | Tuần 5–6 |
+```powershell
+cd D:\HealthyApp\frontend
+flutter run -t lib/main_wear.dart -d <wear-device-id> --dart-define=WATCH_SYNC_URL=http://localhost:8080/sync
+```
 
----
+Wear OS mặc định dùng `http://localhost:8080/sync`; `WATCH_SYNC_URL` ở trên ghi rõ endpoint cho emulator. Mở chế độ **Vận động** để gửi mẫu mỗi 5 giây; chế độ nghỉ gửi mỗi 60 giây. Kiểm tra log của Phone để xác nhận có nhận snapshot và sau đó đồng bộ batch lên Django.
 
-## 📚 Tài liệu bổ sung
+## API chính
 
-> 📝 **Ghi chú:** Các tài liệu `ONBOARDING_GUIDE.md` và `CONNECTION_DEBUG_GUIDE.md` trước đây được link trong thư mục `docs/` hiện **không còn tồn tại** trong dự án. Nội dung hữu ích đã được tổng hợp trực tiếp vào README này (phần Hướng dẫn cài đặt, Kiểm tra luồng, và Quy trình dọn dẹp).
+Các endpoint được đăng ký trong `backend/core/urls.py` và app URLs:
 
-| Tài liệu | Mô tả | Vị trí |
-|----------|-------|--------|
-| 📋 **Kế hoạch phát triển** | TODO chi tiết theo từng tuần | `TODO.md` |
-| 📖 **README này** | Giới thiệu, hướng dẫn cài đặt, API, dọn dẹp | `README.md` |
+| Method | Endpoint | Mục đích | Quyền |
+|---|---|---|---|
+| `POST` | `/api/auth/register/` | Tạo tài khoản và profile | Công khai |
+| `POST` | `/api/auth/login/` | Đăng nhập, trả JWT | Công khai |
+| `PATCH` | `/api/auth/profile/` | Cập nhật profile người dùng hiện tại | JWT |
+| `POST` | `/api/auth/logout/` | Logout/revoke refresh token | JWT |
+| `POST` | `/api/auth/token/refresh/` | Cấp access token mới | Refresh token |
+| `GET`, `POST` | `/api/medical/measurements/` | Liệt kê/tạo measurement của người dùng | JWT |
+| `GET`, `PUT`, `PATCH`, `DELETE` | `/api/medical/measurements/<id>/` | Đọc/sửa/xóa measurement thuộc người dùng | JWT |
+| `POST` | `/api/medical/measurements/batch/` | Tạo nhiều measurement trong một request | JWT |
 
----
+Measurement lưu `device_id`, `measured_at`, `idempotency_key`, `heart_rate`, `steps`, `calories` và `activity_state`. Mỗi batch nhận tối đa 500 mẫu; endpoint liệt kê phân trang 100 bản ghi. Backend lọc dữ liệu theo người dùng đã xác thực và dùng cặp profile + idempotency key để chống tạo trùng khi gửi lại.
 
-### 📄 License
+## Kiểm tra Flutter
 
-Dự án này được phát triển với mục đích **học tập và quản lý sức khỏe cá nhân**.
+Từ `frontend/`:
 
----
+```powershell
+flutter analyze
+flutter test
+```
 
-> ⭐ **Nếu bạn thấy dự án hữu ích, hãy để lại một star trên GitHub!**
+## Ghi chú triển khai và bảo mật
+
+- HTTP và `android:usesCleartextTraffic="true"` hiện phục vụ phát triển trong mạng LAN. Production cần HTTPS và cấu hình Android Network Security phù hợp.
+- `DEBUG=True` và các host LAN chỉ dùng trong môi trường phát triển; trước khi triển khai cần tắt debug, giới hạn `ALLOWED_HOSTS`, CORS và quản lý secret ngoài Git.
+- CORS chủ yếu áp dụng cho trình duyệt/Flutter Web; app Flutter Android native gọi API không chịu chính sách CORS của trình duyệt.
+- Dữ liệu Wear OS hiện là dữ liệu mô phỏng, không thay thế tư vấn hoặc chẩn đoán y tế.
+- Không commit `backend/.env`, mật khẩu, khóa ký ứng dụng hoặc file tài liệu cá nhân.
+
+## License
+
+Dự án phục vụ mục đích học tập và quản lý sức khỏe cá nhân.
