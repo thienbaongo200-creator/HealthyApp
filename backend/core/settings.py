@@ -33,7 +33,13 @@ if not SECRET_KEY:
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 # Cấu hình bảo mật hosts
-ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')]
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv(
+        'ALLOWED_HOSTS',
+        'localhost,127.0.0.1,10.0.2.2,192.168.1.7',
+    ).split(',')
+]
 
 # Cấu hình CORS chuẩn bảo mật
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Tự động True khi dev (DEBUG=True) và False khi lên production (DEBUG=False)
@@ -99,11 +105,9 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'healthapp')),
-        'USER': os.getenv('POSTGRES_USER', os.getenv('DB_USER', 'healthy_user')),
-        'PASSWORD': os.getenv(
-            'POSTGRES_PASSWORD', os.getenv('DB_PASSWORD', 'admin123')
-        ),
+        'NAME': os.getenv('POSTGRES_DB', os.getenv('DB_NAME')),
+        'USER': os.getenv('POSTGRES_USER', os.getenv('DB_USER')),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', os.getenv('DB_PASSWORD')),
         'HOST': os.getenv('POSTGRES_HOST', os.getenv('DB_HOST', 'localhost')),
         'PORT': os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '5432')),
     }

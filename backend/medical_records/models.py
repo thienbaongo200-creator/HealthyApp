@@ -16,6 +16,11 @@ class PersonProfile(models.Model):
 
 
 class HealthMeasurement(models.Model):
+    ACTIVITY_STATE_CHOICES = [
+        ('resting', 'Resting'),
+        ('active', 'Active'),
+    ]
+
     profile = models.ForeignKey(PersonProfile, on_delete=models.CASCADE, related_name='measurements')
     device_id = models.CharField(max_length=100)
     measured_at = models.DateTimeField()
@@ -23,12 +28,23 @@ class HealthMeasurement(models.Model):
     heart_rate = models.PositiveIntegerField()
     steps = models.PositiveIntegerField(default=0)
     calories = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    activity_state = models.CharField(
+        max_length=10,
+        choices=ACTIVITY_STATE_CHOICES,
+        default='resting',
+    )
     
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=['profile', 'idempotency_key'],
                 name='unique_profile_measurement_key',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['profile', '-measured_at'],
+                name='measurement_profile_time_idx',
             ),
         ]
 
