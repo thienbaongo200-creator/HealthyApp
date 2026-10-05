@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'api_config.dart';
 
 class ApiClient {
   late final Dio dio;
@@ -8,8 +9,7 @@ class ApiClient {
   ApiClient() {
     dio = Dio(
       BaseOptions(
-        // URL kết nối backend (Dùng 10.0.2.2 cho Android Emulator)
-        baseUrl: 'http://10.0.2.2:8000/api/',
+        baseUrl: '$apiBaseUrl/',
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
         headers: {
@@ -55,7 +55,7 @@ class AuthInterceptor extends QueuedInterceptor {
 
         // Gọi API lấy Access Token mới (dùng Dio riêng để tránh vòng lặp interceptor)
         final response = await Dio().post(
-          'http://10.0.2.2:8000/api/auth/token/refresh/',
+          '$apiBaseUrl/auth/token/refresh/',
           data: {'refresh': refreshToken},
         );
 
@@ -82,7 +82,6 @@ class AuthInterceptor extends QueuedInterceptor {
       } catch (e) {
         // Refresh token cũng chết -> Xóa dữ liệu và chuyển về Login
         await storage.deleteAll();
-        // TODO: Điều hướng về màn hình đăng nhập ở đây nếu cần
       }
     }
     return super.onError(err, handler);

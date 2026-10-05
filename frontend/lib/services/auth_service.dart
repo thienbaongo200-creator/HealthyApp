@@ -1,6 +1,6 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_client.dart';
+import 'package:flutter/foundation.dart'; // for debugPrint
 
 class AuthService {
   final ApiClient _apiClient = ApiClient();
@@ -10,22 +10,20 @@ class AuthService {
   Future<bool> login(String username, String password) async {
     try {
       final response = await _apiClient.dio.post(
-        'auth/login/', // Điều chỉnh đường dẫn endpoint login của Django nếu cần
+        'auth/login/',
         data: {'username': username, 'password': password},
       );
 
       if (response.statusCode == 200) {
-        // Giả sử Django trả về access và refresh token trong response.data
         final accessToken = response.data['access'];
         final refreshToken = response.data['refresh'];
 
-        // Lưu vào secure storage
         await _storage.write(key: 'access_token', value: accessToken);
         await _storage.write(key: 'refresh_token', value: refreshToken);
         return true;
       }
     } catch (e) {
-      print("Lỗi đăng nhập: $e");
+      debugPrint("Lỗi đăng nhập: $e");
     }
     return false;
   }

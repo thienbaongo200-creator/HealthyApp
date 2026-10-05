@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'services/mock_health_data_service.dart';
 import 'services/watch_sender_service.dart'; // ✅ Đổi sang service gửi HTTP mới
 
 void main() {
@@ -34,9 +34,11 @@ class WearDashboard extends StatefulWidget {
 
 class _WearDashboardState extends State<WearDashboard> {
   int _heartRate = 75;
-  int _steps = 1200;
+  int _steps = 0;
+  double _calories = 0;
   Timer? _timer;
   bool _isPermissionGranted = false;
+  final MockHealthDataService _mockData = MockHealthDataService();
 
   // ✅ Khởi tạo Sender Service chuẩn HTTP
   final WatchSenderService _senderService = WatchSenderService();
@@ -76,39 +78,43 @@ class _WearDashboardState extends State<WearDashboard> {
 
   void _startMockDataAndSync() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (!mounted) return;
+    _scheduleNextSample();
+  }
 
-      final newHeartRate = 65 + Random().nextInt(35);
-      final newSteps = _steps + Random().nextInt(10);
-      final calculatedCalories = double.parse(
-        (newSteps * 0.04).toStringAsFixed(1),
-      );
-
-      setState(() {
-        _heartRate = newHeartRate;
-        _steps = newSteps;
-      });
-
-      // ✅ Đóng gói JSON gửi qua HTTP POST (10.0.2.2:8080/sync)
-      final payload = {
-        'heartRate': _heartRate,
-        'steps': _steps,
-        'calories': calculatedCalories,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-
-      try {
-        final success = await _senderService.sendDataToPhone(payload);
-        if (success) {
-          debugPrint('[Wear] ✅ Đã gửi thành công: $payload');
-        } else {
-          debugPrint('[Wear] ⚠️ Gửi thất bại, sẽ thử lại sau 5s...');
-        }
-      } catch (e) {
-        debugPrint('[Wear Error] ❌ Lỗi gửi dữ liệu: $e');
-      }
+  void _scheduleNextSample() {
+    if (!mounted) return;
+    final interval = _mockData.activityState == MockActivityState.active
+        ? const Duration(seconds: 5)
+        : const Duration(seconds: 60);
+    _timer = Timer(interval, () {
+      unawaited(_generateAndSync());
     });
+  }
+
+  Future<void> _generateAndSync() async {
+    if (!mounted) return;
+
+    final sample = _mockData.nextSample();
+    setState(() {
+      _heartRate = sample.heartRate;
+      _steps = sample.steps;
+      _calories = sample.calories;
+    });
+
+    try {
+      await _senderService.sendDataToPhone(sample.toJson());
+    } finally {
+      _scheduleNextSample();
+    }
+  }
+
+  void _setActivityState(MockActivityState state) {
+    if (_mockData.activityState == state) return;
+    setState(() {
+      _mockData.activityState = state;
+    });
+    _timer?.cancel();
+    _scheduleNextSample();
   }
 
   @override
@@ -154,9 +160,30 @@ class _WearDashboardState extends State<WearDashboard> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _isPermissionGranted
-                      ? 'HTTP Syncing (5s)...'
-                      : 'Check Permissions',
+                  '${_calories.toStringAsFixed(1)} kcal',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<MockActivityState>(
+                  segments: const [
+                    ButtonSegment(
+                      value: MockActivityState.resting,
+                      label: Text('Nghỉ'),
+                    ),
+                    ButtonSegment(
+                      value: MockActivityState.active,
+                      label: Text('Vận động'),
+                    ),
+                  ],
+                  selected: {_mockData.activityState},
+                  onSelectionChanged: (selection) =>
+                      _setActivityState(selection.first),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_mockData.activityState == MockActivityState.active ? 'Active' : 'Resting'}'
+                  ' • ${_mockData.activityState == MockActivityState.active ? '5' : '60'}s'
+                  '${_isPermissionGranted ? ' • Permissions OK' : ' • Check permissions'}',
                   style: TextStyle(
                     color: _isPermissionGranted
                         ? Colors.greenAccent

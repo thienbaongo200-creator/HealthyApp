@@ -171,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           Center(
                             child: Image.asset(
-                              'lib/assets/images/heartbeat.png',
+                              'assets/images/heartbeat.png',
                               width: 80,
                               height: 80,
                               fit: BoxFit.contain,
@@ -407,12 +407,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 size: 20,
                               ),
                               SizedBox(width: 8),
-                              Text(
-                                'Đăng nhập với Facebook',
-                                style: TextStyle(
-                                  color: Color(0xFF33691E),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
+                              Flexible(
+                                child: Text(
+                                  'Đăng nhập với Facebook',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Color(0xFF33691E),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
                             ],
@@ -447,12 +451,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 size: 24,
                               ),
                               SizedBox(width: 4),
-                              Text(
-                                'Đăng nhập với Google',
-                                style: TextStyle(
-                                  color: Color(0xFF33691E),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
+                              Flexible(
+                                child: Text(
+                                  'Đăng nhập với Google',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Color(0xFF33691E),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
                             ],

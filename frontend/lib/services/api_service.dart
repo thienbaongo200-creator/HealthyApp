@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
+import 'api_config.dart';
 
 class ApiService {
-  // 10.0.2.2 là địa chỉ IP localhost của máy chủ host từ góc nhìn của Android Emulator
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  static const String baseUrl = apiBaseUrl;
 
   static String? _token;
   static final ApiService instance = ApiService();
@@ -132,6 +132,46 @@ class ApiService {
     } catch (e, st) {
       developer.log(
         '[API] Lỗi kết nối API: $e',
+        name: 'ApiService',
+        level: 1000,
+        error: e,
+        stackTrace: st,
+      );
+      return false;
+    }
+  }
+
+  static Future<bool> sendHealthMeasurements(
+    List<Map<String, dynamic>> measurements,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/medical/measurements/batch/'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (_token != null) 'Authorization': 'Bearer $_token',
+            },
+            body: jsonEncode({'measurements': measurements}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 201) {
+        developer.log(
+          '[API] Đã đồng bộ ${measurements.length} bản ghi sức khỏe.',
+          name: 'ApiService',
+        );
+        return true;
+      }
+      developer.log(
+        '[API] Lỗi đồng bộ batch (${response.statusCode}): ${response.body}',
+        name: 'ApiService',
+        level: 900,
+      );
+      return false;
+    } catch (e, st) {
+      developer.log(
+        '[API] Lỗi kết nối batch API: $e',
         name: 'ApiService',
         level: 1000,
         error: e,

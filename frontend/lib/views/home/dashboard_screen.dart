@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/mock_health_data_service.dart';
 import 'package:frontend/services/watch_service.dart';
 import 'package:frontend/widgets/gradient_button.dart';
 import 'package:frontend/widgets/sky_background.dart';
@@ -24,20 +25,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Lịch sử nhịp tim gần nhất để vẽ biểu đồ (tối đa 12 điểm)
   final List<int> _heartRateHistory = [];
+  final List<Map<String, dynamic>> _pendingMeasurements = [];
 
   late final StreamSubscription<Map<String, dynamic>> _wearSubscription;
+  Timer? _batchFlushTimer;
+  bool _isFlushingBatch = false;
 
   @override
   void initState() {
     super.initState();
+    _batchFlushTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_flushMeasurements()),
+    );
 
     // Lắng nghe dữ liệu từ Wear (HTTP POST /sync từ WatchSenderService)
     _wearSubscription = WatchService().wearDataStream.listen(
       (data) {
         if (!mounted) return;
 
-        final heartRate = data['heartRate'] as int?;
-        final steps = data['steps'] as int?;
+        final heartRate =
+            (data['heart_rate'] as num?)?.toInt() ??
+            (data['heartRate'] as num?)?.toInt();
+        final steps = (data['steps'] as num?)?.toInt();
         final calories = (data['calories'] as num?)?.toDouble();
 
         if (heartRate == null || steps == null || calories == null) {
@@ -58,16 +68,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
         });
 
-        // Gửi dữ liệu lên API Backend
-        ApiService.sendHealthData(
-          heartRate: heartRate,
-          steps: steps,
-          calories: calories,
-        ).then((success) {
-          if (!success) {
-            debugPrint('[Phone] Dong bo du lieu len API that bai');
-          }
+        final measuredAt =
+            DateTime.tryParse(
+              (data['measured_at'] ?? data['timestamp'])?.toString() ?? '',
+            ) ??
+            DateTime.now().toUtc();
+        _pendingMeasurements.add({
+          'device_id': data['device_id']?.toString() ?? 'wear-os',
+          'measured_at': measuredAt.toUtc().toIso8601String(),
+          'idempotency_key':
+              data['idempotency_key']?.toString() ?? createIdempotencyKey(),
+          'heart_rate': heartRate,
+          'steps': steps,
+          'calories': calories,
+          'activity_state': data['activity_state'] == 'active'
+              ? 'active'
+              : 'resting',
         });
+        if (_pendingMeasurements.length >= 10) {
+          unawaited(_flushMeasurements());
+        }
       },
       onError: (error) {
         debugPrint('[Phone] Loi khi nhan message tu Wear: $error');
@@ -98,8 +118,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _flushMeasurements() async {
+    if (_isFlushingBatch || _pendingMeasurements.isEmpty) return;
+    _isFlushingBatch = true;
+    try {
+      while (_pendingMeasurements.isNotEmpty) {
+        final batch = _pendingMeasurements.take(100).toList(growable: false);
+        final success = await ApiService.sendHealthMeasurements(batch);
+        if (!success) {
+          debugPrint(
+            '[Phone] Batch sync failed; ${_pendingMeasurements.length} records retained for retry.',
+          );
+          return;
+        }
+        _pendingMeasurements.removeRange(0, batch.length);
+      }
+    } finally {
+      _isFlushingBatch = false;
+    }
+  }
+
   @override
   void dispose() {
+    _batchFlushTimer?.cancel();
     _wearSubscription.cancel();
     super.dispose();
   }
@@ -170,22 +211,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Chào mừng bạn!",
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2E7D32),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Chào mừng bạn!",
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2E7D32),
+                            ),
                           ),
-                        ),
-                        Text(
-                          "Theo dõi sức khỏe của bạn ngay hôm nay",
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                      ],
+                          Text(
+                            "Theo dõi sức khỏe của bạn ngay hôm nay",
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                        ],
+                      ),
                     ),
                     const CircleAvatar(radius: 24, child: Icon(Icons.person)),
                   ],
