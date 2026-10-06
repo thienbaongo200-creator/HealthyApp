@@ -15,7 +15,7 @@ Wear OS Emulator
 Phone thật — Flutter
   ├─ HTTP listener :8080 nhận snapshot từ đồng hồ
   ├─ Gom measurement và gửi batch có JWT
-  └─ Gọi Django API qua Wi-Fi LAN: 192.168.1.7:8000
+  └─ Gọi Django API qua Wi-Fi LAN: 192.168.1.3:8000
        ▼
 Django + Django REST Framework
   └─ PostgreSQL trên máy tính
@@ -79,7 +79,7 @@ Các phiên bản dưới đây được đối chiếu với cấu hình dự �
 - Flutter SDK **3.38.4 trở lên** và Dart theo `frontend/pubspec.yaml`.
 - Android Studio/Android SDK, JDK 17-compatible với Android Gradle Plugin của dự án, ADB và Wear OS Emulator.
 - Điện thoại Android thật bật USB debugging; Phone và máy tính cùng mạng Wi-Fi.
-- IP Wi-Fi của máy tính trong cấu hình hiện tại: **`192.168.1.7`**. Nếu địa chỉ DHCP thay đổi, cập nhật `.env` hoặc truyền URL mới bằng `--dart-define`.
+- IP Wi-Fi của máy tính trong cấu hình hiện tại: **`192.168.1.3`**. Nếu địa chỉ DHCP thay đổi, cập nhật `.env` hoặc truyền URL mới bằng `--dart-define`.
 
 ## Cài đặt Backend
 
@@ -99,7 +99,7 @@ Sửa `backend/.env` với thông tin PostgreSQL trên máy tính. Các tên bi�
 ```dotenv
 SECRET_KEY=<chuỗi bí mật đủ dài>
 DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.7,10.0.2.2
+ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.3,10.0.2.2
 
 DB_NAME=healthapp
 DB_USER=healthy_user
@@ -120,7 +120,7 @@ python manage.py createsuperuser
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Backend lắng nghe trên mọi interface tại cổng `8000`; Phone truy cập API qua `http://192.168.1.7:8000`. Cho phép cổng `8000` qua firewall Windows. `backend/.env` chứa secret và mật khẩu, không commit file này.
+Backend lắng nghe trên mọi interface tại cổng `8000`; Phone truy cập API qua `http://192.168.1.3:8000`. Cho phép cổng `8000` qua firewall Windows. `backend/.env` chứa secret và mật khẩu, không commit file này.
 
 ## Chạy hệ thống: Phone thật + Wear OS Emulator + Django
 
@@ -134,9 +134,9 @@ cd D:\HealthyApp\backend
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Đảm bảo máy tính vẫn dùng IP `192.168.1.7`, điện thoại cùng Wi-Fi và firewall cho phép kết nối tới cổng `8000`.
+Lưu ý: Đảm bảo máy tính và điện thoại kết nối cùng một mạng Wi-Fi. (IP LAN của máy tính trong ví dụ này là 192.168.1.5)
 
-### Bước 2 — Khởi chạy Phone trên điện thoại thật
+### Bước 2 — Khởi chạy App trên điện thoại thật
 
 Kết nối điện thoại qua Gỡ lỗi không dây (Wireless Debugging):
 - Trên điện thoại, vào Cài đặt > Tùy chọn nhà phát triển > Bật gỡ lỗi không dây.
@@ -149,12 +149,24 @@ Kiểm tra thiết bị:
 adb devices
 ```
 
+Lấy IP LAN của máy tính:
+- Chạy lệnh trên PowerShell để tìm địa chỉ IPv4 của Wi-Fi:
+
+```powershell
+ipconfig (Ví dụ: 192.168.1.5)
+```
+
 Chạy từ thư mục Flutter:
 
 ```powershell
 cd D:\HealthyApp\frontend
 flutter pub get
-flutter run -t lib/main.dart -d <phone-device-id> --dart-define=API_BASE_URL=http://192.168.1.7:8000/api
+flutter run -t lib/main.dart -d <YOUR_DEVICE_ID> --dart-define=API_BASE_URL=http://<YOUR_LAN_IP>:8000/api
+```
+
+Ví dụ thực tế: 
+```powershell
+flutter run -t lib/main.dart -d adb-R5CX826Q9VB-IjsOKx._adb-tls-connect._tcp --dart-define=API_BASE_URL=[http://192.168.1.5:8000/api](http://192.168.1.5:8000/api)
 ```
 
 Trong ứng dụng, mở dashboard để Phone khởi tạo HTTP listener tại cổng `8080`. API URL mặc định đã trỏ tới IP trên, nhưng lệnh trên truyền giá trị rõ ràng để có thể dễ thay đổi nếu IP máy tính đổi.
@@ -196,6 +208,8 @@ Các endpoint được đăng ký trong `backend/core/urls.py` và app URLs:
 | `GET`, `PUT`, `PATCH`, `DELETE` | `/api/medical/measurements/<id>/` | Đọc/sửa/xóa measurement thuộc người dùng | JWT |
 | `POST` | `/api/medical/measurements/batch/` | Tạo nhiều measurement trong một request | JWT |
 
+Đăng nhập bằng Flutter gọi `POST /api/auth/login/` với JSON `{"account":"<username-or-email>","password":"<password>"}`. `account` được hỗ trợ bởi `LoginView` tùy chỉnh; đây không phải payload mặc định của `TokenObtainPairView`. Lỗi kết nối, timeout và mã HTTP được ghi dưới tag `LoginScreen`; xem trên thiết bị bằng `flutter logs -d <phone-device-id>`. Không ghi password hoặc JWT vào log.
+
 Measurement lưu `device_id`, `measured_at`, `idempotency_key`, `heart_rate`, `steps`, `calories` và `activity_state`. Mỗi batch nhận tối đa 500 mẫu; endpoint liệt kê phân trang 100 bản ghi. Backend lọc dữ liệu theo người dùng đã xác thực và dùng cặp profile + idempotency key để chống tạo trùng khi gửi lại.
 
 ## Kiểm tra Flutter
@@ -218,3 +232,40 @@ flutter test
 ## License
 
 Dự án phục vụ mục đích học tập và quản lý sức khỏe cá nhân.
+
+## LAN troubleshooting (physical Android phone)
+
+`API_BASE_URL` is a compile-time `String.fromEnvironment` value. The default `10.0.2.2` is for Android Emulator only. For a real phone, use the current IPv4 address of the PC's Wi-Fi adapter; `localhost` on the phone means the phone itself. Wireless ADB installs and debugs the app but does not tunnel API traffic.
+
+On Windows, run `ipconfig`, identify the Wi-Fi IPv4 address (not `169.254.x.x`), then start Django bound to all interfaces:
+
+```powershell
+cd D:\HealthyApp\backend
+python manage.py runserver 0.0.0.0:8000
+```
+
+Verify Django locally and the listening port from Windows:
+
+```powershell
+curl.exe -i http://127.0.0.1:8000/api/auth/login/
+Test-NetConnection -ComputerName <LAN-IP> -Port 8000
+```
+
+A `405 Method Not Allowed` for GET on the login URL still confirms the server was reached. From the phone browser, open `http://<LAN-IP>:8000/`. If local PC access works but phone access fails, check that Windows classifies Wi-Fi as a Private network, allow inbound TCP 8000 in Windows Firewall, and check the router for AP/client isolation. Ensure phone and PC are on the same non-guest network.
+
+Run the app with the actual PC address (replace the placeholder):
+
+```powershell
+cd D:\HealthyApp\frontend
+flutter run -t lib/main.dart -d <phone-device-id> --dart-define=API_BASE_URL=http://<LAN-IP>:8000/api
+```
+
+Inspect device logs and the URL logged by ApiService:
+
+```powershell
+flutter logs -d <phone-device-id>
+adb -s <phone-device-id> logcat -c
+adb -s <phone-device-id> logcat | Select-String 'ApiService|LoginScreen|CLEARTEXT|SocketException|Connection refused'
+```
+
+Login posts JSON `{"account":"username-or-email","password":"..."}` to `POST /api/auth/login/`; the custom Django view accepts that shape and returns an `access` JWT. It allows anonymous login and does not require a CSRF token because the API uses JWT, not session authentication. CORS is enforced by browsers and does not block native Android HTTP requests. Never log passwords or JWTs.

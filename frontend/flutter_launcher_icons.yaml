@@ -1,0 +1,5 @@
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false  # Tạm thời để false nếu bạn chưa làm iOS, hoặc để true nếu đã tạo thư mục AppIcon
+  image_path: "assets/icon.jpg"
+  min_sdk_android: 21

@@ -33,14 +33,17 @@ if not SECRET_KEY:
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 # Cấu hình bảo mật hosts
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.getenv(
-        'ALLOWED_HOSTS',
-        'localhost,127.0.0.1,10.0.2.2,192.168.1.7',
-    ).split(',')
-]
-
+if DEBUG:
+    # Khi đang phát triển (DEBUG = True): Cho phép tất cả các host nội bộ / wildcard để không bị lỗi khi đổi IP Wi-Fi
+    ALLOWED_HOSTS = ['*']
+else:
+    # Khi lên production (DEBUG = False): Đọc chuẩn từ biến môi trường .env để bảo mật
+    ALLOWED_HOSTS = [
+        host.strip()
+        for host in os.getenv('ALLOWED_HOSTS', '').split(',')
+        if host.strip()
+    ]
+    
 # Cấu hình CORS chuẩn bảo mật
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Tự động True khi dev (DEBUG=True) và False khi lên production (DEBUG=False)
 CORS_ALLOWED_ORIGINS = [

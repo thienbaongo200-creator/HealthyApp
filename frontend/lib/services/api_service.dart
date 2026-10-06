@@ -3,8 +3,22 @@ import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import 'api_config.dart';
 
+class ApiException implements Exception {
+  const ApiException(this.statusCode, this.message);
+
+  final int statusCode;
+  final String message;
+
+  @override
+  String toString() => 'HTTP $statusCode: $message';
+}
+
 class ApiService {
   static const String baseUrl = apiBaseUrl;
+  static const Duration _loginTimeout = Duration(seconds: 15);
+
+  static Future<http.Response> _send(Future<http.Response> request) =>
+      request.timeout(_loginTimeout);
 
   static String? _token;
   static final ApiService instance = ApiService();
@@ -15,7 +29,7 @@ class ApiService {
     required String password,
   }) async {
     try {
-      final response = await http.post(
+      final response = await _send(http.post(
         Uri.parse('$baseUrl/auth/register/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -23,7 +37,7 @@ class ApiService {
           'email': email,
           'password': password,
         }),
-      );
+      ));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return {
         'success': response.statusCode == 201,
@@ -44,7 +58,7 @@ class ApiService {
     required double weight,
   }) async {
     try {
-      final response = await http.patch(
+      final response = await _send(http.patch(
         Uri.parse('$baseUrl/auth/profile/'),
         headers: {
           'Content-Type': 'application/json',
@@ -56,7 +70,7 @@ class ApiService {
           'height': height,
           'weight': weight,
         }),
-      );
+      ));
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return {
         'success': response.statusCode >= 200 && response.statusCode < 300,
@@ -70,23 +84,58 @@ class ApiService {
     }
   }
 
-  Future<String?> login(String account, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/login/'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'account': account, 'password': password}),
+  Future<String> login(String account, String password) async {
+    final uri = Uri.parse('$baseUrl/auth/login/');
+    developer.log('Login request to $uri', name: 'ApiService');
+
+    final response = await _send(
+      http.post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'account': account, 'password': password}),
+        ),
     );
-    if (response.statusCode != 200) return null;
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return data['access'] as String? ?? data['token'] as String?;
+
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      if (response.statusCode != 200) {
+        throw ApiException(
+          response.statusCode,
+          'Server trả về nội dung không phải JSON.',
+        );
+      }
+      rethrow;
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('API login response must be a JSON object.');
+    }
+
+    if (response.statusCode != 200) {
+      final detail = decoded['detail'] ?? decoded['message'];
+      throw ApiException(
+        response.statusCode,
+        detail is String ? detail : 'Yêu cầu đăng nhập không thành công.',
+      );
+    }
+
+    final accessToken = decoded['access'] ?? decoded['token'];
+    if (accessToken is! String || accessToken.isEmpty) {
+      throw const FormatException(
+        'API login response does not contain an access token.',
+      );
+    }
+    return accessToken;
   }
 
   Future<String?> loginWithGoogle(String accessToken) async {
-    final response = await http.post(
+    final response = await _send(http.post(
       Uri.parse('$baseUrl/auth/google/'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'access_token': accessToken}),
-    );
+    ));
     if (response.statusCode != 200) return null;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['access'] as String? ?? data['token'] as String?;
@@ -102,7 +151,7 @@ class ApiService {
     required double calories,
   }) async {
     try {
-      final response = await http.post(
+      final response = await _send(http.post(
         Uri.parse('$baseUrl/health/'),
         headers: {
           'Content-Type': 'application/json',
@@ -113,7 +162,7 @@ class ApiService {
           'steps': steps,
           'calories': calories,
         }),
-      );
+      ));
 
       if (response.statusCode == 201) {
         developer.log(
@@ -145,16 +194,16 @@ class ApiService {
     List<Map<String, dynamic>> measurements,
   ) async {
     try {
-      final response = await http
-          .post(
+      final response = await _send(
+        http.post(
             Uri.parse('$baseUrl/medical/measurements/batch/'),
             headers: {
               'Content-Type': 'application/json',
               if (_token != null) 'Authorization': 'Bearer $_token',
             },
             body: jsonEncode({'measurements': measurements}),
-          )
-          .timeout(const Duration(seconds: 10));
+          ),
+      );
 
       if (response.statusCode == 201) {
         developer.log(

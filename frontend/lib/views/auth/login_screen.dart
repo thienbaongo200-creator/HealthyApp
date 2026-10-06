@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 import '../../services/api_service.dart';
 import '../../widgets/sky_background.dart';
 import '../../widgets/gradient_button.dart';
@@ -40,24 +45,88 @@ class _LoginScreenState extends State<LoginScreen> {
     String password = _passwordController.text;
 
     try {
-      final String? token = await _apiService.login(inputAccount, password);
-      if (token != null) {
-        _apiService.setToken(token);
-        _showSnackBar('Đăng nhập thành công!', const Color(0xFF43A047));
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
-          );
-        }
-      } else {
+      final token = await _apiService.login(inputAccount, password);
+      _apiService.setToken(token);
+      _showSnackBar('Đăng nhập thành công!', const Color(0xFF43A047));
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
+        );
+      }
+    } on ApiException catch (e, stackTrace) {
+      developer.log(
+        'Login API returned HTTP ${e.statusCode}: ${e.message}',
+        name: 'LoginScreen',
+        level: 900,
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (e.statusCode == 401) {
         _showSnackBar(
           'Tài khoản hoặc mật khẩu không chính xác!',
           Colors.redAccent,
         );
+      } else {
+        _showSnackBar(
+          'Server trả về lỗi HTTP ${e.statusCode}.',
+          Colors.redAccent,
+        );
       }
-    } catch (e) {
-      _showSnackBar('Mất kết nối server hoặc lỗi hệ thống!', Colors.redAccent);
+    } on SocketException catch (e, stackTrace) {
+      developer.log(
+        'Login socket error: $e',
+        name: 'LoginScreen',
+        level: 1000,
+        error: e,
+        stackTrace: stackTrace,
+      );
+      _showSnackBar(
+        'Không kết nối được server. Kiểm tra IP, Wi-Fi và firewall.',
+        Colors.redAccent,
+      );
+    } on TimeoutException catch (e, stackTrace) {
+      developer.log(
+        'Login timed out: $e',
+        name: 'LoginScreen',
+        level: 1000,
+        error: e,
+        stackTrace: stackTrace,
+      );
+      _showSnackBar(
+        'Server không phản hồi trong thời gian chờ.',
+        Colors.redAccent,
+      );
+    } on http.ClientException catch (e, stackTrace) {
+      developer.log(
+        'Login HTTP client error: $e',
+        name: 'LoginScreen',
+        level: 1000,
+        error: e,
+        stackTrace: stackTrace,
+      );
+      _showSnackBar(
+        'Lỗi HTTP client. Xem log để biết chi tiết.',
+        Colors.redAccent,
+      );
+    } on FormatException catch (e, stackTrace) {
+      developer.log(
+        'Invalid login API response: $e',
+        name: 'LoginScreen',
+        level: 1000,
+        error: e,
+        stackTrace: stackTrace,
+      );
+      _showSnackBar('Server trả về dữ liệu không hợp lệ.', Colors.redAccent);
+    } catch (e, stackTrace) {
+      developer.log(
+        'Unexpected login error: $e',
+        name: 'LoginScreen',
+        level: 1000,
+        error: e,
+        stackTrace: stackTrace,
+      );
+      _showSnackBar('Lỗi không xác định khi đăng nhập.', Colors.redAccent);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
