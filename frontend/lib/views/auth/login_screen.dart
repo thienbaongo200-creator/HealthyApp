@@ -6,8 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import '../../services/api_service.dart';
-import '../../widgets/sky_background.dart';
-import '../../widgets/gradient_button.dart';
+import '../../widgets/widgets.dart';
 import 'profile_setup_screen.dart';
 import 'register_screen.dart';
 
@@ -203,9 +202,11 @@ class _LoginScreenState extends State<LoginScreen> {
               16 + MediaQuery.of(context).viewInsets.bottom,
             ),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: Form(
-              key: _formKey,
-              child: Column(
+            child: GlassCard(
+              padding: const EdgeInsets.all(20),
+              child: Form(
+                key: _formKey,
+                child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -573,6 +574,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
+                ),
               ),
             ),
           ),

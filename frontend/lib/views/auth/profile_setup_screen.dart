@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import '../../widgets/sky_background.dart';
+import '../../widgets/widgets.dart';
 import '../home/dashboard_screen.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -219,12 +219,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           ),
                         ),
                         const SizedBox(height: 28),
-                        Container(
+                        GlassCard(
                           width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
                           padding: const EdgeInsets.all(20),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,

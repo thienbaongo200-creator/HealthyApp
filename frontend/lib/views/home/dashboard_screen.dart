@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/services/mock_health_data_service.dart';
 import 'package:frontend/services/watch_service.dart';
+import 'package:frontend/widgets/widgets.dart';
+
+import 'family_members_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -139,6 +142,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const ListTile(title: Text('Chọn hồ sơ đang xem')),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFE6F4F1),
+                child: Icon(Icons.groups_outlined, color: _teal),
+              ),
+              title: const Text('Quản lý thành viên gia đình'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.pop(context, '__manage_members__'),
+            ),
+            const Divider(height: 1),
             for (final name in ['Tôi', 'Bố', 'Mẹ'])
               ListTile(
                 leading: CircleAvatar(
@@ -159,6 +172,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+    if (member == '__manage_members__' && mounted) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const FamilyMembersScreen(),
+        ),
+      );
+      return;
+    }
     if (member != null && mounted) setState(() => _member = member);
   }
 
@@ -166,20 +187,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Widget child,
     EdgeInsets padding = const EdgeInsets.all(18),
   }) {
-    return Container(
+    return GlassCard(
       padding: padding,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE7EFED)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF244842).withValues(alpha: .045),
-            blurRadius: 18,
-            offset: const Offset(0, 7),
-          ),
-        ],
-      ),
+      borderRadius: 18,
+      blur: 10,
+      backgroundColor: const Color(0xEFFFFFFF),
+      borderColor: const Color(0xCCFFFFFF),
       child: child,
     );
   }
@@ -188,7 +201,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _canvas,
-      body: SafeArea(
+      body: SkyBackground(
+        child: SafeArea(
         child: RefreshIndicator(
           color: _teal,
           onRefresh: _refreshData,
@@ -473,6 +487,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
       floatingActionButton: FloatingActionButton(

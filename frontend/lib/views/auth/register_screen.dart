@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import '../../widgets/sky_background.dart';
-import '../../widgets/gradient_button.dart';
+import '../../widgets/widgets.dart';
 import 'profile_setup_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -160,19 +159,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 28),
 
                   // 🌿 Card form
-                  Container(
+                  GlassCard(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-                          blurRadius: 25,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
                     child: Column(
                       children: [
                         // Username
