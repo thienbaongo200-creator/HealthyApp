@@ -13,6 +13,7 @@ import 'family_members_screen.dart';
 import 'health_journal_screen.dart';
 import 'ai_assistant_screen.dart';
 import 'quick_add_screen.dart';
+import 'health_trends_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -135,6 +136,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _refreshData() async {
     await Future<void>.delayed(const Duration(milliseconds: 350));
     if (mounted) _showMessage('Đã làm mới dữ liệu sức khỏe');
+  }
+
+  Future<void> _openTrends() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => HealthTrendsScreen(member: _member),
+      ),
+    );
   }
 
   Future<void> _selectMember() async {
@@ -395,7 +404,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
               const SizedBox(height: 23),
-              _sectionTitle('Xu hướng nhịp tim', 'Trong ngày'),
+              _sectionTitle('Xu hướng sức khỏe', 'Trong ngày'),
               const SizedBox(height: 12),
               _card(
                 child: Column(
@@ -443,6 +452,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           : _HeartRateChart(values: List.of(_heartRateHistory)),
                     ),
                   ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _openTrends,
+                  icon: const Icon(Icons.insights_outlined, size: 17),
+                  label: const Text('Chi tiết thống kê'),
+                  style: TextButton.styleFrom(foregroundColor: _teal),
                 ),
               ),
               const SizedBox(height: 16),
@@ -720,7 +738,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 MaterialPageRoute<void>(
                 builder: (_) => switch (index) {
                   1 => HealthJournalScreen(initialMember: _member),
-                  2 => const AiAssistantScreen(),
+                  2 => AiAssistantScreen(initialMember: _member),
                   _ => DevicesScreen(
                       isWatchConnected: _wearConnected,
                       pendingMeasurements: _pendingMeasurements.length,
