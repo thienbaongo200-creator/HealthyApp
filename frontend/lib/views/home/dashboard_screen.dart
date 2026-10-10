@@ -8,6 +8,7 @@ import 'package:frontend/services/mock_health_data_service.dart';
 import 'package:frontend/services/watch_service.dart';
 import 'package:frontend/widgets/widgets.dart';
 
+import 'devices_screen.dart';
 import 'family_members_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -701,9 +702,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final selected = _selectedTab == index;
     return Expanded(
       child: InkWell(
-        onTap: () {
+        onTap: () async {
           setState(() => _selectedTab = index);
-          if (index != 0) _showMessage('$label sẽ sớm được bổ sung');
+          if (index == 3) {
+            await Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => DevicesScreen(
+                    isWatchConnected: _wearConnected,
+                    pendingMeasurements: _pendingMeasurements.length,
+                    onSync: _flushMeasurements,
+                  ),
+                ),
+              );
+            if (mounted) setState(() => _selectedTab = 0);
+          } else if (index != 0) {
+            _showMessage('$label sẽ sớm được bổ sung');
+          }
         },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
