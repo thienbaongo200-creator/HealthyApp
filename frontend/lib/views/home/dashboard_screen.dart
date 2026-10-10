@@ -12,6 +12,7 @@ import 'devices_screen.dart';
 import 'family_members_screen.dart';
 import 'health_journal_screen.dart';
 import 'ai_assistant_screen.dart';
+import 'quick_add_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -494,8 +495,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () =>
-            _showMessage('Ghi nhận chỉ số sức khỏe sẽ sớm được bổ sung'),
+        onPressed: () async {
+          final saved = await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+              builder: (_) => QuickAddScreen(member: _member),
+            ),
+          );
+          if (saved == true && mounted) {
+            _showMessage('Bản ghi đã được lưu trên thiết bị.');
+          }
+        },
         backgroundColor: _teal,
         foregroundColor: Colors.white,
         elevation: 4,
