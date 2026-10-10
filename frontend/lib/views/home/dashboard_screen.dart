@@ -10,6 +10,7 @@ import 'package:frontend/widgets/widgets.dart';
 
 import 'devices_screen.dart';
 import 'family_members_screen.dart';
+import 'health_journal_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -704,14 +705,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: InkWell(
         onTap: () async {
           setState(() => _selectedTab = index);
-          if (index == 3) {
+          if (index == 1 || index == 3) {
             await Navigator.of(context).push<void>(
                 MaterialPageRoute<void>(
-                  builder: (_) => DevicesScreen(
-                    isWatchConnected: _wearConnected,
-                    pendingMeasurements: _pendingMeasurements.length,
-                    onSync: _flushMeasurements,
-                  ),
+                builder: (_) => index == 1
+                    ? HealthJournalScreen(initialMember: _member)
+                    : DevicesScreen(
+                        isWatchConnected: _wearConnected,
+                        pendingMeasurements: _pendingMeasurements.length,
+                        onSync: _flushMeasurements,
+                      ),
                 ),
               );
             if (mounted) setState(() => _selectedTab = 0);

@@ -229,4 +229,30 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<List<Map<String, dynamic>>> fetchHealthMeasurements() async {
+    final response = await _send(
+      http.get(
+        Uri.parse('$baseUrl/medical/measurements/'),
+        headers: {
+          'Accept': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+      ),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, 'Không thể tải nhật ký sức khỏe.');
+    }
+
+    final payload = jsonDecode(response.body);
+    final records = payload is List
+        ? payload
+        : payload is Map<String, dynamic>
+        ? payload['results']
+        : null;
+    if (records is! List) {
+      throw const FormatException('Measurement response must contain a list.');
+    }
+    return records.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
 }
