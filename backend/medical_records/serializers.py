@@ -1,18 +1,32 @@
 from rest_framework import serializers
-from .models import HealthMeasurement, PersonProfile
+
+from health_measurements.models import HealthMeasurement
+from profiles.models import PersonProfile
+
 
 class HealthMeasurementSerializer(serializers.ModelSerializer):
     class Meta:
         model = HealthMeasurement
         fields = [
-            'device_id',
-            'measured_at',
-            'idempotency_key',
-            'heart_rate',
-            'steps',
-            'calories',
-            'activity_state',
+            "measurement_type",
+            "value",
+            "value_secondary",
+            "unit",
+            "measured_at",
+            "start_time",
+            "end_time",
+            "source",
+            "device",
+            "idempotency_key",
         ]
+        extra_kwargs = {
+            "device": {"required": False, "allow_null": True},
+            "idempotency_key": {"required": False, "allow_null": True},
+            "value_secondary": {"required": False, "allow_null": True},
+            "start_time": {"required": False, "allow_null": True},
+            "end_time": {"required": False, "allow_null": True},
+        }
+
 
 class HealthMeasurementBatchSerializer(serializers.Serializer):
     measurements = HealthMeasurementSerializer(
@@ -22,12 +36,15 @@ class HealthMeasurementBatchSerializer(serializers.Serializer):
     )
 
     def create(self, validated_data):
-        user = self.context['request'].user
-        profile, _ = PersonProfile.objects.get_or_create(user=user)
-        measurements_data = validated_data.get('measurements', [])
+        account = self.context["request"].user
+        profile, _ = PersonProfile.objects.get_or_create(
+            account=account,
+            profile_type="SELF",
+            defaults={"full_name": account.email.partition("@")[0]},
+        )
         measurements = [
             HealthMeasurement(profile=profile, **item)
-            for item in measurements_data
+            for item in validated_data["measurements"]
         ]
         return HealthMeasurement.objects.bulk_create(
             measurements,

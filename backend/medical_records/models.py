@@ -1,112 +1,161 @@
-from django.conf import settings
-from django.db import connections, models
-from django.db.models.signals import post_save
-from django.dispatch import receiver
+import uuid
+
+from django.db import models
 
 
-class PersonProfile(models.Model):
-    # Khai báo khóa ngoại trỏ tới AUTH_USER_MODEL thay vì import trực tiếp
-    account = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='person_profiles'
+class MedicalHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        "profiles.PersonProfile",
+        on_delete=models.CASCADE,
+        related_name="medical_histories",
     )
-    profile_type = models.CharField(max_length=20, default='SELF') # SELF hoặc DEPENDENT
-    full_name = models.CharField(max_length=255, blank=True)
-    gender = models.CharField(max_length=20, blank=True)
-    date_of_birth = models.DateField(null=True, blank=True)
-    height_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    is_archived = models.BooleanField(default=False)
+    condition = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    diagnosed_at = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        identifier = self.account.email if self.account else "No Account"
-        return f"Profile: {self.full_name or 'Unnamed'} ({identifier})"
+        return self.condition
 
 
-class HealthMeasurement(models.Model):
-    ACTIVITY_STATE_CHOICES = [
-        ('resting', 'Resting'),
-        ('active', 'Active'),
-    ]
-
-    profile = models.ForeignKey(PersonProfile, on_delete=models.CASCADE, related_name='measurements')
-    measurement_type = models.CharField(max_length=50, default='heart_rate')
-    value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    value_secondary = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    unit = models.CharField(max_length=20, blank=True)
-    measured_at = models.DateTimeField()
-    start_time = models.DateTimeField(null=True, blank=True)
-    end_time = models.DateTimeField(null=True, blank=True)
-    source = models.CharField(max_length=50, default='manual')
-    idempotency_key = models.UUIDField(null=True, blank=True)
-    
-    # Giữ lại các trường tương thích phiên bản cũ nếu cần
-    heart_rate = models.PositiveIntegerField(null=True, blank=True)
-    steps = models.PositiveIntegerField(default=0)
-    calories = models.DecimalField(max_digits=8, decimal_places=2, default=0)
-    activity_state = models.CharField(
-        max_length=10,
-        choices=ACTIVITY_STATE_CHOICES,
-        default='resting',
+class Allergy(models.Model):
+    SEVERITY_CHOICES = (
+        ("MILD", "Mild"),
+        ("MODERATE", "Moderate"),
+        ("SEVERE", "Severe"),
     )
-    
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['profile', 'idempotency_key'],
-                name='unique_profile_measurement_key',
-            ),
-        ]
-        indexes = [
-            models.Index(
-                fields=['profile', '-measured_at'],
-                name='measurement_profile_time_idx',
-            ),
-        ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        "profiles.PersonProfile",
+        on_delete=models.CASCADE,
+        related_name="allergies",
+    )
+    allergen = models.CharField(max_length=255)
+    reaction = models.TextField(blank=True)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, blank=True)
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        email_str = self.profile.account.email if self.profile and self.profile.account else "Unlinked"
-        return f"{email_str} - {self.measured_at}"
+        return self.allergen
 
 
-@receiver(post_save, sender=settings.AUTH_USER_MODEL)
-def create_user_profile(sender, instance, created, raw=False, using=None, **kwargs):
-    if not created or raw:
-        return
-
-    database = using or instance._state.db
-    if database is None:
-        raise RuntimeError("Cannot create a profile for an account without a database.")
-
-    connection = connections[database]
-    table_name = PersonProfile._meta.db_table
-    account_column = PersonProfile._meta.get_field('account').column
-
-    with connection.cursor() as cursor:
-        tables = connection.introspection.table_names(cursor)
-        if table_name not in tables:
-            raise RuntimeError(
-                f"Cannot create an account profile: table {table_name!r} "
-                f"does not exist in database {database!r}. Run migrations first."
-            )
-        columns = {
-            column.name
-            for column in connection.introspection.get_table_description(cursor, table_name)
-        }
-        if account_column not in columns:
-            raise RuntimeError(
-                f"Cannot create an account profile: column "
-                f"{table_name}.{account_column} does not exist in database "
-                f"{database!r}. Check and apply migrations first."
-            )
-
-    PersonProfile.objects.using(database).get_or_create(
-        account_id=instance.pk,
-        profile_type='SELF',
-        defaults={'full_name': instance.email.partition('@')[0]},
+class Visit(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        "profiles.PersonProfile",
+        on_delete=models.CASCADE,
+        related_name="visits",
     )
+    provider_name = models.CharField(max_length=255, blank=True)
+    facility_name = models.CharField(max_length=255, blank=True)
+    visited_at = models.DateTimeField()
+    reason = models.TextField(blank=True)
+    diagnosis = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.profile} - {self.visited_at:%Y-%m-%d}"
+
+
+class Medication(models.Model):
+    STATUS_CHOICES = (
+        ("ACTIVE", "Active"),
+        ("COMPLETED", "Completed"),
+        ("DISCONTINUED", "Discontinued"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        "profiles.PersonProfile",
+        on_delete=models.CASCADE,
+        related_name="medications",
+    )
+    visit = models.ForeignKey(
+        Visit,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="medications",
+    )
+    name = models.CharField(max_length=255)
+    dosage = models.CharField(max_length=255, blank=True)
+    frequency = models.CharField(max_length=255, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    instructions = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="ACTIVE")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class LabResult(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        "profiles.PersonProfile",
+        on_delete=models.CASCADE,
+        related_name="lab_results",
+    )
+    visit = models.ForeignKey(
+        Visit,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lab_results",
+    )
+    test_name = models.CharField(max_length=255)
+    result = models.TextField()
+    unit = models.CharField(max_length=100, blank=True)
+    reference_range = models.CharField(max_length=255, blank=True)
+    tested_at = models.DateTimeField()
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.test_name
+
+
+class MedicalDocument(models.Model):
+    DOCUMENT_TYPE_CHOICES = (
+        ("PRESCRIPTION", "Prescription"),
+        ("LAB_RESULT", "Lab result"),
+        ("IMAGING", "Imaging"),
+        ("OTHER", "Other"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        "profiles.PersonProfile",
+        on_delete=models.CASCADE,
+        related_name="medical_documents",
+    )
+    visit = models.ForeignKey(
+        Visit,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="documents",
+    )
+    document_type = models.CharField(
+        max_length=20,
+        choices=DOCUMENT_TYPE_CHOICES,
+        default="OTHER",
+    )
+    title = models.CharField(max_length=255)
+    file_url = models.URLField(max_length=2048)
+    description = models.TextField(blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title

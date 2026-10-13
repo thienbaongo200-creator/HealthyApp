@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
-from .models import HealthMeasurement
+from health_measurements.models import HealthMeasurement
 from .serializers import HealthMeasurementSerializer, HealthMeasurementBatchSerializer
 
 
@@ -18,7 +18,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return HealthMeasurement.objects.filter(
-            profile__user=self.request.user,
+            profile__account=self.request.user,
         ).order_by('-measured_at')
 
 class HealthMeasurementBatchCreateView(APIView):
