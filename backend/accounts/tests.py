@@ -1,6 +1,20 @@
 from accounts.models import Account
+from django.db import IntegrityError, transaction
+from django.test import TestCase
 from profiles.models import PersonProfile
 from rest_framework.test import APITestCase
+
+
+class AccountModelTests(TestCase):
+    def test_email_must_be_unique_in_database(self):
+        Account.objects.create_user(email="unique@example.com", password="safe-password")
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Account.objects.create_user(
+                    email="unique@example.com",
+                    password="another-safe-password",
+                )
 
 
 class LoginViewTests(APITestCase):
