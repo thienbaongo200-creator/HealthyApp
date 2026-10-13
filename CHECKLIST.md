@@ -24,7 +24,7 @@
 
 ### Công việc
 
-- [ ] Lập bảng ánh xạ 16 thực thể, trường, PK/FK, UNIQUE, index và enum từ Data Dictionary (Bảng 2.24–2.40).
+- [~] Lập bảng ánh xạ 16 thực thể, trường, PK/FK, UNIQUE, index và enum từ Data Dictionary (Bảng 2.24–2.40).
   - Tài liệu nguồn: `docs/Chuong2_HoanChinh.docx`.
   - Đầu ra: cập nhật `README.md` hoặc tài liệu API hiện có; không tạo schema thứ hai trái với Chương 2.
 - [~] Chốt quy ước endpoint, tiền tố `/api`, dấu `/` cuối URL, request/response, phân trang và mã lỗi.
@@ -32,14 +32,14 @@
   - Chốt tương thích `/api/auth/token/refresh/` hiện có với endpoint tài liệu `/auth/refresh`; cập nhật tài liệu hoặc route theo một quy ước duy nhất.
 - [~] Kiểm kê dữ liệu đang lưu trong `PersonProfile`, `HealthMeasurement` và app cũ `health_metrics`; xác định ánh xạ dữ liệu sang schema đích.
   - File cần rà: `backend/medical_records/models.py`, `backend/health_metrics/models.py`, các migration hiện có.
-- [ ] Viết kế hoạch migration theo giai đoạn cho PK UUID và quan hệ hiện có; xác định backup/rollback trước khi migrate dữ liệu.
-- [ ] Xác định thứ tự phát hành migration và phiên bản API để tránh frontend/backend lệch hợp đồng.
+- [~] Viết kế hoạch migration theo giai đoạn cho PK UUID và quan hệ hiện có; xác định backup/rollback trước khi migrate dữ liệu.
+- [~] Xác định thứ tự phát hành migration và phiên bản API để tránh frontend/backend lệch hợp đồng.
 
 ### Definition of Done
 
-- [ ] Có danh sách 16 bảng và mapping trường được đối chiếu trực tiếp với Data Dictionary.
+- [~] Có danh sách 16 bảng và mapping trường được đối chiếu trực tiếp với Data Dictionary.
 - [~] Mọi endpoint chính có method, quyền, schema đầu vào/đầu ra và status code thống nhất.
-- [ ] Có phương án bảo toàn dữ liệu cũ, backup và rollback; không thay PK trực tiếp mà chưa có kế hoạch migrate.
+- [~] Có phương án bảo toàn dữ liệu cũ, backup và rollback; không thay PK trực tiếp mà chưa có kế hoạch migrate.
 
 ---
 
@@ -58,13 +58,13 @@
 - [~] Tạo model `Household`, `HouseholdMember`, `ProfileShare`.
   - Ràng buộc: `UNIQUE(household_id, profile_id)`; `UNIQUE(member_id, profile_id)`; member có role/status và thời hạn invitation như Data Dictionary.
 - [~] Tạo model `Device`; đặt `device_identifier UNIQUE`, profile FK và trạng thái ghép nối/thu hồi.
-- [ ] Tạo model y tế `MedicalHistory`, `Allergy`, `Visit`, `Medication`, `LabResult`, `MedicalDocument` với FK profile và FK Visit → Medication theo tài liệu.
+- [~] Tạo model y tế `MedicalHistory`, `Allergy`, `Visit`, `Medication`, `LabResult`, `MedicalDocument` với FK profile và FK Visit → Medication theo tài liệu.
 - [~] Thay `HealthMeasurement` hiện có bằng schema đa loại: `measurement_type`, `value`, `value_secondary`, `unit`, `measured_at`, `start_time`, `end_time`, `source`, `device` FK nullable, `idempotency_key` nullable và audit timestamps.
   - Ràng buộc: `UNIQUE(profile_id, idempotency_key)`; index `(profile_id, measurement_type, measured_at DESC)`.
-- [ ] Tạo `AIInsight`, `Conversation`, `Message` theo Data Dictionary; Conversation liên kết Account và Profile, Message liên kết Conversation.
+- [~] Tạo `AIInsight`, `Conversation`, `Message` theo Data Dictionary; Conversation liên kết Account và Profile, Message liên kết Conversation.
 - [~] Thêm `ai_consent` mặc định false và `ai_consent_at` nullable cho Account (cùng trường/quan hệ cần thiết để biểu diễn consent người giám hộ cho DEPENDENT theo quyết định schema đã chốt).
 - [~] Tạo/cập nhật migrations; chạy `makemigrations --check`, `migrate` trên database sạch và database có dữ liệu mẫu.
-- [ ] Cập nhật `admin.py`/đăng ký admin cho các model cần kiểm tra vận hành.
+- [x] Cập nhật `admin.py`/đăng ký admin cho các model cần kiểm tra vận hành.
 
 ### File/module dự kiến
 
@@ -82,17 +82,16 @@
 
 - [~] Có đủ 16 thực thể: Account, PersonProfile, Household, HouseholdMember, ProfileShare, Device, MedicalHistory, Allergy, Visit, Medication, LabResult, MedicalDocument, HealthMeasurement, AIInsight, Conversation, Message.
 - [~] PK/FK, nullable, enum, default, UNIQUE và index khớp Data Dictionary; migrations tái tạo được schema trên DB sạch.
-- [ ] Có test model cho unique constraints, FK, hồ sơ nhiều tài khoản và hồ sơ phụ thuộc.
+- [x] Có test model cho unique constraints, FK, hồ sơ nhiều tài khoản và hồ sơ phụ thuộc.
 - [ ] Nâng cấp từ DB cũ không làm mất dữ liệu; migration được thử trên bản sao dữ liệu và có hướng rollback.
 
-### Ghi nhận rà soát 2026-10-13
+### Ghi nhận rà soát cập nhật
 
-- Sprint 0 chưa có bảng mapping 16 thực thể hoặc kế hoạch backup/rollback. README mới ghi hợp đồng cho các route auth và measurement cũ; chưa bao phủ đủ các nhóm API mục tiêu.
-- Đã có `Account` custom với UUID và trường consent; `profiles.PersonProfile` hỗ trợ account nullable, UUID, hồ sơ SELF/DEPENDENT, cùng các model cơ bản cho Household, ProfileShare, Device và HealthMeasurement.
-- Chưa có các model MedicalHistory, Allergy, Visit, Medication, LabResult, MedicalDocument, AIInsight, Conversation hoặc Message.
-- Còn hai định nghĩa `PersonProfile` và hai định nghĩa `HealthMeasurement` trong `profiles`/`health_measurements` và `medical_records`; các schema/migration hiện chưa được hợp nhất. Model/migration chưa đủ chứng minh chuyển dữ liệu an toàn từ DB hiện hữu.
-- Xác minh: `manage.py check` đạt; `makemigrations --check --dry-run` thất bại vì phát sinh đề xuất migration `accounts.0002_alter_account_user_permissions`; `manage.py test` chạy 7 test và cả 7 lỗi do test cũ còn dùng `username`, `auth.User` hoặc quan hệ profile cũ.
-- Vì vậy chưa đạt DoD Sprint 0 hoặc Sprint 1; các mục `[~]` chỉ phản ánh đã có một phần code/tài liệu, không phải đã nghiệm thu.
+- `docs/MIGRATION_AND_BACKUP_PLAN.md` hiện đã được đồng bộ với các model thực tế theo field, choices, null/blank và quan hệ; tài liệu cũng nêu rõ sai khác còn lại so với Data Dictionary. Vì các sai khác đặc tả chưa được quyết định và API contract toàn diện chưa hoàn tất, Sprint 0 vẫn chưa đạt DoD.
+- Đã bổ sung model tests cho unique email, device identifier, idempotency key, household/share constraints; quan hệ nhiều profile trên account, dependent chưa gắn account, cùng hành vi CASCADE và SET_NULL. Kiểm thử migration guard cũng xác nhận bảng legacy có dữ liệu sẽ làm migration dừng an toàn.
+- `medical_records.0002` được thêm `RunPython` guard để từ chối chạy nếu bảng legacy `PersonProfile` hoặc `HealthMeasurement` còn dữ liệu. Guard này ngăn mất dữ liệu nhưng **không tự chuyển đổi dữ liệu**; việc nâng cấp database cũ còn cần backup, mapping/import, đối soát và rehearsal trên staging.
+- Đã chạy lại xác minh: `manage.py check` đạt, không có lỗi; `makemigrations --check --dry-run` báo `No changes detected`; `manage.py test` chạy 21 tests và tất cả đều đạt. Chưa có bằng chứng rehearsal với database legacy có dữ liệu hoặc backup/restore trên staging.
+- Kết luận: Sprint 0 và Sprint 1 **chưa hoàn thành toàn bộ DoD**. Unit tests model đã đạt; còn thiếu chốt Data Dictionary/API contract và chứng minh chuyển đổi dữ liệu legacy an toàn trước khi nghiệm thu.
 
 ---
 

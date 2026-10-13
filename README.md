@@ -208,7 +208,7 @@ Các endpoint được đăng ký trong `backend/core/urls.py` và app URLs:
 | `GET`, `PUT`, `PATCH`, `DELETE` | `/api/medical/measurements/<id>/` | Đọc/sửa/xóa measurement thuộc người dùng | JWT |
 | `POST` | `/api/medical/measurements/batch/` | Tạo nhiều measurement trong một request | JWT |
 
-Đăng nhập bằng Flutter gọi `POST /api/auth/login/` với JSON `{"account":"<username-or-email>","password":"<password>"}`. `account` được hỗ trợ bởi `LoginView` tùy chỉnh; đây không phải payload mặc định của `TokenObtainPairView`. Lỗi kết nối, timeout và mã HTTP được ghi dưới tag `LoginScreen`; xem trên thiết bị bằng `flutter logs -d <phone-device-id>`. Không ghi password hoặc JWT vào log.
+Đăng nhập bằng Flutter gọi `POST /api/auth/login/` với JSON `{"email":"<email>","password":"<password>"}`. Trường `email` được hỗ trợ bởi `LoginView` tùy chỉnh; đây không phải payload mặc định của `TokenObtainPairView`. Lỗi kết nối, timeout và mã HTTP được ghi dưới tag `LoginScreen`; xem trên thiết bị bằng `flutter logs -d <phone-device-id>`. Không ghi password hoặc JWT vào log.
 
 Measurement lưu `device_id`, `measured_at`, `idempotency_key`, `heart_rate`, `steps`, `calories` và `activity_state`. Mỗi batch nhận tối đa 500 mẫu; endpoint liệt kê phân trang 100 bản ghi. Backend lọc dữ liệu theo người dùng đã xác thực và dùng cặp profile + idempotency key để chống tạo trùng khi gửi lại.
 
