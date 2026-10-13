@@ -5,6 +5,25 @@ import uuid
 from django.db import migrations, models
 
 
+def prevent_legacy_data_loss(apps, schema_editor):
+    LegacyProfile = apps.get_model("medical_records", "PersonProfile")
+    LegacyMeasurement = apps.get_model("medical_records", "HealthMeasurement")
+    database = schema_editor.connection.alias
+
+    profile_count = LegacyProfile.objects.using(database).count()
+    measurement_count = LegacyMeasurement.objects.using(database).count()
+    if profile_count or measurement_count:
+        raise RuntimeError(
+            "Refusing to delete legacy medical_records data: "
+            f"found {profile_count} PersonProfile row(s) and "
+            f"{measurement_count} HealthMeasurement row(s). "
+            "Back up the database, export and explicitly map these records "
+            "to profiles.PersonProfile and health_measurements.HealthMeasurement, "
+            "verify the imported data, then rerun migrations. This migration "
+            "only proceeds when both legacy tables are empty."
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -13,6 +32,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            prevent_legacy_data_loss,
+            reverse_code=migrations.RunPython.noop,
+        ),
         migrations.CreateModel(
             name='Allergy',
             fields=[
