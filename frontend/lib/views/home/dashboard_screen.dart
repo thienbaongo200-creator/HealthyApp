@@ -14,6 +14,7 @@ import 'health_journal_screen.dart';
 import 'ai_assistant_screen.dart';
 import 'quick_add_screen.dart';
 import 'health_trends_screen.dart';
+import 'main_navigation_wrapper.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -202,10 +203,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return GlassCard(
       padding: padding,
-      borderRadius: 18,
+      borderRadius: 20,
       blur: 10,
-      backgroundColor: const Color(0xEFFFFFFF),
-      borderColor: const Color(0xCCFFFFFF),
+      backgroundColor: Colors.white.withValues(alpha: .46),
+      borderColor: Colors.white.withValues(alpha: .62),
+      borderWidth: .5,
       child: child,
     );
   }
@@ -529,26 +531,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: const Icon(Icons.add_rounded, size: 30),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 12,
-        notchMargin: 8,
-        shape: const CircularNotchedRectangle(),
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              _navItem(0, Icons.home_rounded, 'Trang chủ'),
-              _navItem(1, Icons.menu_book_rounded, 'Nhật ký'),
-              const SizedBox(width: 55),
-              _navItem(2, Icons.chat_bubble_outline_rounded, 'Tư vấn'),
-              _navItem(3, Icons.watch_outlined, 'Thiết bị'),
-            ],
-          ),
-        ),
-      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      bottomNavigationBar: MainNavigationWrapper(selectedIndex: _selectedTab, onSelected: _selectNavigationTab),
     );
   }
 
@@ -727,56 +711,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ),
   );
 
-  Widget _navItem(int index, IconData icon, String label) {
-    final selected = _selectedTab == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () async {
-          setState(() => _selectedTab = index);
-          if (index >= 1 && index <= 3) {
-            await Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                builder: (_) => switch (index) {
-                  1 => HealthJournalScreen(initialMember: _member),
-                  2 => AiAssistantScreen(initialMember: _member),
-                  _ => DevicesScreen(
-                      isWatchConnected: _wearConnected,
-                      pendingMeasurements: _pendingMeasurements.length,
-                      onSync: _flushMeasurements,
-                    ),
-                },
-                ),
-              );
-            if (mounted) setState(() => _selectedTab = 0);
-          } else if (index != 0) {
-            _showMessage('$label sẽ sớm được bổ sung');
-          }
+  Future<void> _selectNavigationTab(int index) async {
+    if (index == 0) return;
+    setState(() => _selectedTab = index);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => switch (index) {
+          1 => HealthJournalScreen(initialMember: _member),
+          2 => AiAssistantScreen(initialMember: _member),
+          _ => DevicesScreen(isWatchConnected: _wearConnected, pendingMeasurements: _pendingMeasurements.length, onSync: _flushMeasurements),
         },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 21,
-              color: selected ? _teal : const Color(0xFF9AA6A3),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 9,
-                color: selected ? _teal : const Color(0xFF9AA6A3),
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
       ),
     );
+    if (mounted) setState(() => _selectedTab = 0);
   }
 }
-
 class _HeartRateChart extends StatelessWidget {
   const _HeartRateChart({required this.values});
   final List<int> values;

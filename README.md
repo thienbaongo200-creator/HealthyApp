@@ -130,7 +130,7 @@ Thực hiện cài đặt và cấu hình Backend ở trên. Giữ terminal ch�
 
 ```powershell
 cd D:\HealthyApp\backend
-.\venv\Scripts\Activate.ps1
+Pp: .\venv\Scripts\Activate.ps1 , cmd: venv\Scripts\activate.bat      
 python manage.py runserver 0.0.0.0:8000
 ```
 

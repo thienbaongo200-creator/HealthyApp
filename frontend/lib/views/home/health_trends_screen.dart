@@ -3,6 +3,7 @@ import 'package:frontend/services/manual_measurement_store.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 import 'quick_add_screen.dart';
+import 'main_navigation_wrapper.dart';
 
 class HealthTrendsScreen extends StatefulWidget {
   const HealthTrendsScreen({super.key, this.member = 'Tôi'});
@@ -219,25 +220,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 12,
-        notchMargin: 8,
-        shape: const CircularNotchedRectangle(),
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              _navItem(Icons.home_rounded, 'Trang chủ', onTap: () => Navigator.pop(context)),
-              _navItem(Icons.menu_book_rounded, 'Nhật ký'),
-              const SizedBox(width: 55),
-              _navItem(Icons.chat_bubble_outline_rounded, 'Tư vấn'),
-              _navItem(Icons.watch_outlined, 'Thiết bị'),
-            ],
-          ),
-        ),
-      ),
+      bottomNavigationBar: MainNavigationWrapper(selectedIndex: 0, onSelected: (index) { if (index == 0) Navigator.pop(context); }),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final saved = await Navigator.of(context).push<bool>(
@@ -252,7 +235,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: const Icon(Icons.add_rounded, size: 30),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -491,29 +474,6 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
               ),
             ),
           ],
-        ),
-      );
-
-  Widget _navItem(
-    IconData icon,
-    String label, {
-    VoidCallback? onTap,
-  }) =>
-      Expanded(
-        child: InkWell(
-          onTap: onTap ?? () => _showMessage('$label sẽ được bổ sung sau.'),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 21, color: const Color(0xFF9AA6A3)),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                style: const TextStyle(color: Color(0xFF9AA6A3), fontSize: 9),
-              ),
-            ],
-          ),
         ),
       );
 

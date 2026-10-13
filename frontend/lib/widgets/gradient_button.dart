@@ -28,8 +28,8 @@ class GradientButton extends StatelessWidget {
     final colors =
         gradientColors ??
         const [
-          Color(0xFF42A5F5), // Xanh dương nhẹ
-          Color(0xFF43A047), // Xanh lá
+          Color(0xFF4CAF50),
+          Color(0xFF52B788),
         ];
 
     return Container(

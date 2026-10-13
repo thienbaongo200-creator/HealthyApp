@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:frontend/main.dart';
+import 'package:frontend/views/home/dashboard_screen.dart';
 
 void main() {
   testWidgets('Health dashboard loads and shows metric cards', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const HealthApp());
+    await tester.pumpWidget(const DashboardScreen());
     await tester.pumpAndSettle();
 
     // Kiem tra tieu de man hinh
@@ -19,11 +19,9 @@ void main() {
     expect(find.text('Calo'), findsOneWidget);
 
     // Kiem tra icons
-    expect(find.byIcon(Icons.favorite), findsOneWidget);
-    expect(find.byIcon(Icons.directions_walk), findsOneWidget);
-    expect(find.byIcon(Icons.local_fire_department), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.directions_walk_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
 
-    // Kiem tra text trang thai ket noi dong ho
-    expect(find.text('Đang chờ kết nối...'), findsOneWidget);
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/widgets/widgets.dart';
+import 'main_navigation_wrapper.dart';
 
 class HealthJournalScreen extends StatefulWidget {
   const HealthJournalScreen({super.key, this.initialMember = 'Tôi'});
@@ -266,25 +267,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 12,
-        notchMargin: 8,
-        shape: const CircularNotchedRectangle(),
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              _navItem(Icons.home_rounded, 'Trang chủ', onTap: () => Navigator.pop(context)),
-              _navItem(Icons.menu_book_rounded, 'Nhật ký', selected: true),
-              const SizedBox(width: 55),
-              _navItem(Icons.chat_bubble_outline_rounded, 'Tư vấn'),
-              _navItem(Icons.watch_outlined, 'Thiết bị'),
-            ],
-          ),
-        ),
-      ),
+      bottomNavigationBar: MainNavigationWrapper(selectedIndex: 1, onSelected: (index) { if (index == 0) Navigator.pop(context); }),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showMessage('Ghi nhận chỉ số sẽ sớm được bổ sung.'),
         backgroundColor: _teal,
@@ -292,7 +275,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: const Icon(Icons.add_rounded, size: 30),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -485,38 +468,6 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
             ),
             if (action != null) ...[const SizedBox(height: 8), action],
           ],
-        ),
-      );
-
-  Widget _navItem(
-    IconData icon,
-    String label, {
-    bool selected = false,
-    VoidCallback? onTap,
-  }) =>
-      Expanded(
-        child: InkWell(
-          onTap: onTap ?? () => _showMessage('$label sẽ được bổ sung sau.'),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 21,
-                color: selected ? _teal : const Color(0xFF9AA6A3),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: selected ? _teal : const Color(0xFF9AA6A3),
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
         ),
       );
 

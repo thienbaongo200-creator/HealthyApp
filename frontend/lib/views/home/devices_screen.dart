@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'main_navigation_wrapper.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 class DevicesScreen extends StatefulWidget {
@@ -317,24 +318,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 12,
-        notchMargin: 8,
-        shape: const CircularNotchedRectangle(),
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              _navItem(Icons.home_rounded, 'Trang chủ', onTap: () => Navigator.pop(context)),
-              _navItem(Icons.menu_book_rounded, 'Nhật ký'),
-              const SizedBox(width: 55),
-              _navItem(Icons.chat_bubble_outline_rounded, 'Tư vấn'),
-              _navItem(Icons.watch_outlined, 'Thiết bị', selected: true),
-            ],
-          ),
-        ),
+      bottomNavigationBar: MainNavigationWrapper(
+        selectedIndex: 3,
+        onSelected: (index) {
+          if (index == 0) Navigator.pop(context);
+          if (index == 1 || index == 2) _showMessage(index == 1 ? 'Nhật ký' : 'Tư vấn');
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showMessage('Ghi nhận chỉ số sẽ sớm được bổ sung.'),
@@ -343,39 +332,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: const Icon(Icons.add_rounded, size: 30),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  Widget _navItem(
-    IconData icon,
-    String label, {
-    bool selected = false,
-    VoidCallback? onTap,
-  }) =>
-      Expanded(
-        child: InkWell(
-          onTap: onTap ?? () => _showMessage('$label sẽ được bổ sung sau.'),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 21,
-                color: selected ? _teal : const Color(0xFF9AA6A3),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: selected ? _teal : const Color(0xFF9AA6A3),
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+
 }
