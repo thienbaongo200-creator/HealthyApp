@@ -32,7 +32,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
         shared_profile_ids = list(ProfileShare.objects.filter(
             member__profile__in=user_profiles,
             member__status='ACTIVE',
-            share_level__in=['VIEW_ONLY', 'VIEW_AND_LOG', 'FULL']
+            share_level__in=['VIEW_ONLY', 'VIEW_AND_LOG']
         ).values_list('profile_id', flat=True))
         
         # 3. Other profiles are visible only in households where this user is an active OWNER.
