@@ -2,9 +2,13 @@ from django.contrib.auth import authenticate, get_user_model
 from django.db import IntegrityError
 from django.utils.dateparse import parse_date
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from profiles.models import PersonProfile
@@ -124,22 +128,34 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        try:
-            refresh_token = request.data.get("refresh")
-            if not refresh_token:
-                return Response(
-                    {"error": "Refresh token is required"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        try:
             token = RefreshToken(refresh_token)
+        except (TokenError, AuthenticationFailed):
+            return Response(
+                {"detail": "Refresh token is invalid or revoked."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_user_id = token.get(api_settings.USER_ID_CLAIM)
+        if str(token_user_id) != str(request.user.pk):
+            raise PermissionDenied(
+                "You can only revoke a refresh token belonging to your account."
+            )
+
+        try:
             token.blacklist()
             return Response(
                 {"message": "Successfully logged out"},
                 status=status.HTTP_205_RESET_CONTENT,
             )
-        except Exception as error:
-            return Response(
-                {"error": str(error)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except AttributeError as error:
+            raise RuntimeError(
+                "Refresh token blacklisting is not installed or enabled."
+            ) from error

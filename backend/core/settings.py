@@ -30,7 +30,7 @@ if not SECRET_KEY:
     raise ValueError("The SECRET_KEY setting must not be empty in environment variables!")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+DEBUG = os.getenv('DEBUG', 'False').strip().lower() in {'true', '1', 'yes'}
 
 # Cấu hình bảo mật hosts
 if DEBUG:
@@ -43,6 +43,27 @@ else:
         for host in os.getenv('ALLOWED_HOSTS', '').split(',')
         if host.strip()
     ]
+    if not ALLOWED_HOSTS:
+        raise ValueError("ALLOWED_HOSTS must be configured when DEBUG is False.")
+
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = (
+    int(os.getenv('SECURE_HSTS_SECONDS', '31536000')) if not DEBUG else 0
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    os.getenv('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'True').strip().lower()
+    in {'true', '1', 'yes'}
+    if not DEBUG
+    else False
+)
+SECURE_HSTS_PRELOAD = (
+    os.getenv('SECURE_HSTS_PRELOAD', 'False').strip().lower()
+    in {'true', '1', 'yes'}
+    if not DEBUG
+    else False
+)
     
 # Cấu hình CORS chuẩn bảo mật
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Tự động True khi dev (DEBUG=True) và False khi lên production (DEBUG=False)

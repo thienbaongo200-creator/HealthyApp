@@ -4,7 +4,7 @@ from health_measurements.models import HealthMeasurement
 from profiles.models import PersonProfile
 
 
-class HealthMeasurementSerializer(serializers.ModelSerializer):
+class HealthMeasurementFieldsSerializer(serializers.ModelSerializer):
     class Meta:
         model = HealthMeasurement
         fields = [
@@ -28,20 +28,42 @@ class HealthMeasurementSerializer(serializers.ModelSerializer):
         }
 
 
+class HealthMeasurementSerializer(HealthMeasurementFieldsSerializer):
+    profile_id = serializers.UUIDField(required=False, write_only=True)
+
+    class Meta(HealthMeasurementFieldsSerializer.Meta):
+        fields = [*HealthMeasurementFieldsSerializer.Meta.fields, "profile_id"]
+
+    def create(self, validated_data):
+        validated_data.pop("profile_id", None)
+        return super().create(validated_data)
+
+    def validate(self, attrs):
+        if self.instance is not None and "profile_id" in self.initial_data:
+            raise serializers.ValidationError(
+                {"profile_id": "A measurement cannot be moved to another profile."}
+            )
+        return attrs
+
+
 class HealthMeasurementBatchSerializer(serializers.Serializer):
-    measurements = HealthMeasurementSerializer(
+    profile_id = serializers.UUIDField(required=False, write_only=True)
+    measurements = HealthMeasurementFieldsSerializer(
         many=True,
         allow_empty=False,
         max_length=500,
     )
 
     def create(self, validated_data):
-        account = self.context["request"].user
-        profile, _ = PersonProfile.objects.get_or_create(
-            account=account,
-            profile_type="SELF",
-            defaults={"full_name": account.email.partition("@")[0]},
-        )
+        profile = validated_data.pop("profile", None)
+        validated_data.pop("profile_id", None)
+        if profile is None:
+            account = self.context["request"].user
+            profile, _ = PersonProfile.objects.get_or_create(
+                account=account,
+                profile_type="SELF",
+                defaults={"full_name": account.email.partition("@")[0]},
+            )
         measurements = [
             HealthMeasurement(profile=profile, **item)
             for item in validated_data["measurements"]

@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status
+from rest_framework.exceptions import PermissionDenied
 from core.permissions import IsProfileOwnerOrShared, PermissionService
 from health_measurements.models import HealthMeasurement
 from profiles.models import PersonProfile
@@ -52,23 +53,65 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             profile_id__in=allowed_profile_ids
         ).order_by('-measured_at')
 
+    def perform_create(self, serializer):
+        profile_id = serializer.validated_data.get("profile_id")
+        if profile_id is None:
+            profile, _ = PersonProfile.objects.get_or_create(
+                account=self.request.user,
+                profile_type="SELF",
+                defaults={"full_name": self.request.user.email.partition("@")[0]},
+            )
+        else:
+            if not PermissionService.has_profile_access(
+                self.request.user,
+                profile_id,
+                required_permission="edit",
+            ):
+                raise PermissionDenied(
+                    "You do not have permission to add measurements to this profile."
+                )
+            profile = PersonProfile.objects.get(pk=profile_id)
+
+        if not PermissionService.has_profile_access(
+            self.request.user,
+            profile.pk,
+            required_permission="edit",
+        ):
+            raise PermissionDenied(
+                "You do not have permission to add measurements to this profile."
+            )
+
+        serializer.save(profile=profile)
+
+
 class HealthMeasurementBatchCreateView(APIView):
     permission_classes = [IsProfileOwnerOrShared]
 
     def post(self, request, *args, **kwargs):
-        target_profile_id = request.data.get('profile_id')
-        
-        # Kiểm tra chống IDOR bắt buộc đối với APIView (yêu cầu quyền 'edit' / VIEW_AND_LOG)
-        if target_profile_id:
-            if not PermissionService.has_profile_access(request.user, target_profile_id, required_permission='edit'):
-                return Response(
-                    {"detail": "Bạn không có quyền ghi dữ liệu lên hồ sơ này."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
-        serializer = HealthMeasurementBatchSerializer(data=request.data, context={'request': request})
+        serializer = HealthMeasurementBatchSerializer(
+            data=request.data,
+            context={"request": request},
+        )
         if serializer.is_valid():
-            serializer.save()
+            profile_id = serializer.validated_data.get("profile_id")
+            if profile_id is None:
+                profile, _ = PersonProfile.objects.get_or_create(
+                    account=request.user,
+                    profile_type="SELF",
+                    defaults={"full_name": request.user.email.partition("@")[0]},
+                )
+            else:
+                if not PermissionService.has_profile_access(
+                    request.user,
+                    profile_id,
+                    required_permission="edit",
+                ):
+                    raise PermissionDenied(
+                        "Bạn không có quyền ghi dữ liệu lên hồ sơ này."
+                    )
+                profile = PersonProfile.objects.get(pk=profile_id)
+
+            serializer.save(profile=profile)
             return Response(
                 {
                     "status": "success",

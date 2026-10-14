@@ -1,5 +1,8 @@
 from accounts.models import Account
 from django.test import TestCase
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
 
 from .models import PersonProfile
 
@@ -46,3 +49,49 @@ class PersonProfileModelTests(TestCase):
 
         profile.refresh_from_db()
         self.assertIsNone(profile.account)
+
+
+class PersonProfileAPITests(APITestCase):
+    def setUp(self):
+        self.account = Account.objects.create_user(
+            email="profile-api@example.com",
+            password="test-password-123",
+        )
+        self.client.force_authenticate(user=self.account)
+
+    def test_create_list_update_and_archive_profile(self):
+        create_response = self.client.post(
+            reverse("profile-list"),
+            {
+                "profile_type": "DEPENDENT",
+                "full_name": "Dependent Profile",
+                "gender": "female",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        profile_id = create_response.data["id"]
+        profile = PersonProfile.objects.get(pk=profile_id)
+        self.assertEqual(profile.account, self.account)
+        self.assertEqual(profile.profile_type, "DEPENDENT")
+
+        list_response = self.client.get(reverse("profile-list"))
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data), 1)
+
+        update_response = self.client.patch(
+            reverse("profile-detail", kwargs={"pk": profile_id}),
+            {"full_name": "Updated Dependent"},
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+
+        archive_response = self.client.delete(
+            reverse("profile-detail", kwargs={"pk": profile_id}),
+        )
+        self.assertEqual(
+            archive_response.status_code,
+            status.HTTP_204_NO_CONTENT,
+        )
+        profile.refresh_from_db()
+        self.assertTrue(profile.is_archived)
