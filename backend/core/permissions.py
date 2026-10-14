@@ -57,9 +57,9 @@ class PermissionService:
         
         for share in shares:
             level = getattr(share, 'share_level', '')
-            if required_permission == 'view' and level in ['VIEW_ONLY', 'VIEW_AND_LOG', 'FULL']:
+            if required_permission == 'view' and level in ['VIEW_ONLY', 'VIEW_AND_LOG']:
                 return True
-            if required_permission == 'edit' and level in ['VIEW_AND_LOG', 'FULL']:
+            if required_permission == 'edit' and level == 'VIEW_AND_LOG':
                 return True
 
         return False
