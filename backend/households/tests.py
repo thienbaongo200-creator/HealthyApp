@@ -207,6 +207,73 @@ class HouseholdAPITests(APITestCase):
         )
         self.assertFalse(HouseholdMember.objects.filter(pk=membership.pk).exists())
 
+    def test_invite_share_level_defaults_to_view_only_and_rejects_full(self):
+        household = Household.objects.create(
+            name="Safe Sharing Household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.owner,
+            profile=self.owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        invite_url = reverse(
+            "household-member-list",
+            kwargs={"household_id": household.pk},
+        )
+
+        invalid_invite = self.client.post(
+            invite_url,
+            {
+                "email": self.invitee.email,
+                "share_level": "FULL",
+            },
+            format="json",
+        )
+        self.assertEqual(
+            invalid_invite.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertFalse(
+            HouseholdMember.objects.filter(
+                household=household,
+                account=self.invitee,
+            ).exists()
+        )
+
+        invite = self.client.post(
+            invite_url,
+            {"email": self.invitee.email},
+            format="json",
+        )
+        self.assertEqual(invite.status_code, status.HTTP_201_CREATED)
+        membership = HouseholdMember.objects.get(pk=invite.data["id"])
+        share = ProfileShare.objects.get(
+            member=membership,
+            profile=self.owner_profile,
+        )
+        self.assertEqual(share.share_level, "VIEW_ONLY")
+
+        invalid_update = self.client.patch(
+            reverse(
+                "household-member-detail",
+                kwargs={
+                    "household_id": household.pk,
+                    "member_id": membership.pk,
+                },
+            ),
+            {"share_level": "FULL"},
+            format="json",
+        )
+        self.assertEqual(
+            invalid_update.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        share.refresh_from_db()
+        self.assertEqual(share.share_level, "VIEW_ONLY")
+
     def test_non_owner_cannot_invite_household_member(self):
         household = Household.objects.create(
             name="Restricted Household",
