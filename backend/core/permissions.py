@@ -48,10 +48,11 @@ class PermissionService:
             if member_record and member_record.role == 'OWNER':
                 return True
 
-        # 3. Kiểm tra qua ProfileShare (Chia sẻ trực tiếp profile cho user)
+        # 3. Kiểm tra qua ProfileShare (Chia sẻ trực tiếp profile cho user với member phải đang ACTIVE)
         shares = ProfileShare.objects.filter(
             profile=profile,
-            member__profile__in=user_profiles
+            member__profile__in=user_profiles,
+            member__status='ACTIVE'
         )
         
         for share in shares:

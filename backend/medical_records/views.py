@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status
-from core.permissions import IsProfileOwnerOrShared, PermissionService # Sửa lại tên import chuẩn
+from core.permissions import IsProfileOwnerOrShared, PermissionService
 from health_measurements.models import HealthMeasurement
 from profiles.models import PersonProfile
 from households.models import HouseholdMember, ProfileShare
@@ -14,10 +14,6 @@ class HealthMeasurementPagination(PageNumberPagination):
 class HealthMeasurementViewSet(viewsets.ModelViewSet):
     serializer_class = HealthMeasurementSerializer
     permission_classes = [IsProfileOwnerOrShared]
-    pagination_class = HealthMeasurementPagination # Lúc này Python đã nhận diện được class này
-class HealthMeasurementViewSet(viewsets.ModelViewSet):
-    serializer_class = HealthMeasurementSerializer
-    permission_classes = [IsProfileOwnerOrShared]
     pagination_class = HealthMeasurementPagination
 
     def get_queryset(self):
@@ -25,27 +21,31 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return HealthMeasurement.objects.none()
 
-        # Lấy tất cả profile mà user này có quyền truy cập (Chính chủ + Được share + Trong Household)
+        # Lấy tất cả profile hợp lệ của user đang đăng nhập
         user_profiles = PersonProfile.objects.filter(account=user, is_archived=False)
         
         # 1. Profile của chính user
         owned_profile_ids = list(user_profiles.values_list('id', flat=True))
         
-        # 2. Profile được chia sẻ qua ProfileShare
+        # 2. Profile được chia sẻ qua ProfileShare (thành viên ACTIVE và có cấp độ quyền xem)
         shared_profile_ids = list(ProfileShare.objects.filter(
-            member__in=user_profiles, can_view=True, is_active=True
+            member__profile__in=user_profiles,
+            member__status='ACTIVE',
+            share_level__in=['VIEW_ONLY', 'VIEW_AND_LOG', 'FULL']
         ).values_list('profile_id', flat=True))
         
-        # 3. Profile trong cùng Household (nếu cần cho phép xem)
-        household_ids = HouseholdMember.objects.filter(
-            profile__in=user_profiles, status='ACTIVE'
+        # 3. Other profiles are visible only in households where this user is an active OWNER.
+        owner_household_ids = HouseholdMember.objects.filter(
+            profile__in=user_profiles,
+            status='ACTIVE',
+            role='OWNER',
         ).values_list('household_id', flat=True)
-        
         household_profile_ids = list(HouseholdMember.objects.filter(
-            household_id__in=household_ids, status='ACTIVE'
+            household_id__in=owner_household_ids,
+            status='ACTIVE',
         ).values_list('profile_id', flat=True))
 
-        # Gộp tất cả các ID profile được phép xem
+        # Gộp tất cả các ID profile được phép xem vào tập duy nhất
         allowed_profile_ids = set(owned_profile_ids + shared_profile_ids + household_profile_ids)
 
         return HealthMeasurement.objects.filter(
@@ -56,12 +56,10 @@ class HealthMeasurementBatchCreateView(APIView):
     permission_classes = [IsProfileOwnerOrShared]
 
     def post(self, request, *args, **kwargs):
-        # 1. Lấy profile_id từ request data (hoặc URL params tùy theo payload của bạn)
-        target_profile_id = request.data.get('profile_id') # Hoặc lấy từ serializer validation tùy thiết kế
+        target_profile_id = request.data.get('profile_id')
         
-        # Kiểm tra chống IDOR bắt buộc đối với APIView
+        # Kiểm tra chống IDOR bắt buộc đối với APIView (yêu cầu quyền 'edit' / VIEW_AND_LOG)
         if target_profile_id:
-            # Yêu cầu quyền 'edit' (VIEW_AND_LOG) vì đây là hành vi tạo/ghi dữ liệu
             if not PermissionService.has_profile_access(request.user, target_profile_id, required_permission='edit'):
                 return Response(
                     {"detail": "Bạn không có quyền ghi dữ liệu lên hồ sơ này."},

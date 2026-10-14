@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from django.test import SimpleTestCase
 from django.test import TestCase
 from health_measurements.models import HealthMeasurement
+from households.models import Household, HouseholdMember
 from profiles.models import PersonProfile
 from rest_framework.test import APIClient
 
@@ -186,3 +187,78 @@ class HealthMeasurementBatchApiTests(TestCase):
         self.assertEqual(first_response.status_code, 201)
         self.assertEqual(retry_response.status_code, 201)
         self.assertEqual(HealthMeasurement.objects.count(), 1)
+
+    def test_list_does_not_include_profiles_from_households_where_user_is_only_member(self):
+        user_profile = PersonProfile.objects.create(
+            account=self.account,
+            profile_type="SELF",
+            full_name="Household User",
+        )
+        owner_household = Household.objects.create(
+            name="Owned household",
+            created_by=self.account,
+        )
+        HouseholdMember.objects.create(
+            household=owner_household,
+            profile=user_profile,
+            account=self.account,
+            role="OWNER",
+            status="ACTIVE",
+        )
+
+        owner_visible_profile = PersonProfile.objects.create(
+            profile_type="DEPENDENT",
+            full_name="Owner household profile",
+        )
+        HouseholdMember.objects.create(
+            household=owner_household,
+            profile=owner_visible_profile,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+
+        member_household = Household.objects.create(
+            name="Member household",
+            created_by=self.account,
+        )
+        HouseholdMember.objects.create(
+            household=member_household,
+            profile=user_profile,
+            account=self.account,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+        member_only_profile = PersonProfile.objects.create(
+            profile_type="DEPENDENT",
+            full_name="Member-only household profile",
+        )
+        HouseholdMember.objects.create(
+            household=member_household,
+            profile=member_only_profile,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+
+        HealthMeasurement.objects.create(
+            profile=owner_visible_profile,
+            measurement_type="HEART_RATE",
+            value=81,
+            unit="bpm",
+            measured_at="2026-10-04T05:00:00Z",
+            source="MANUAL",
+        )
+        HealthMeasurement.objects.create(
+            profile=member_only_profile,
+            measurement_type="HEART_RATE",
+            value=119,
+            unit="bpm",
+            measured_at="2026-10-04T06:00:00Z",
+            source="MANUAL",
+        )
+
+        response = self.client.get("/api/medical/measurements/")
+
+        self.assertEqual(response.status_code, 200)
+        result_values = {item["value"] for item in response.data["results"]}
+        self.assertIn("81.00", result_values)
+        self.assertNotIn("119.00", result_values)

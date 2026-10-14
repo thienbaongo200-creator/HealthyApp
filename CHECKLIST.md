@@ -101,15 +101,15 @@
 
 ### Công việc
 
-- [ ] Tạo `PermissionService`/permission classes dùng chung; kiểm tra JWT trước, sau đó xác minh hồ sơ đích.
+- [~] Tạo `PermissionService`/permission classes dùng chung; kiểm tra JWT trước, sau đó xác minh hồ sơ đích.
   - Gợi ý: `backend/core/permissions.py` hoặc `backend/permissions/services.py`.
-- [ ] Cài chuỗi quyền theo Sơ đồ 2.4: Account → HouseholdMember có `ACTIVE` → vai trò → ProfileShare → PersonProfile.
-- [ ] Cho phép chính chủ truy cập hồ sơ liên kết; Owner được quyền theo Bảng 2.42; Member/Caregiver chỉ được xem hồ sơ được chia sẻ.
-- [ ] Với ghi chỉ số trên hồ sơ chia sẻ, bắt buộc `VIEW_AND_LOG`; `VIEW_ONLY` chỉ được đọc.
-- [ ] Member/Caregiver không được ghi hồ sơ người khác ngoài ngoại lệ được đặc tả; không cho client tự quyết `profile_id`, owner, role hoặc quyền.
-- [ ] Bảo đảm mọi queryset lọc theo tập profile đã cấp quyền; kiểm tra object-level permission cho cả GET/POST/PUT/PATCH/DELETE.
+- [~] Cài chuỗi quyền theo Sơ đồ 2.4: Account → HouseholdMember có `ACTIVE` → vai trò → ProfileShare → PersonProfile.
+- [~] Cho phép chính chủ truy cập hồ sơ liên kết; Owner được quyền theo Bảng 2.42; Member/Caregiver chỉ được xem hồ sơ được chia sẻ.
+- [~] Với ghi chỉ số trên hồ sơ chia sẻ, bắt buộc `VIEW_AND_LOG`; `VIEW_ONLY` chỉ được đọc.
+- [~] Member/Caregiver không được ghi hồ sơ người khác ngoài ngoại lệ được đặc tả; không cho client tự quyết `profile_id`, owner, role hoặc quyền.
+- [~] Bảo đảm mọi queryset lọc theo tập profile đã cấp quyền; kiểm tra object-level permission cho cả GET/POST/PUT/PATCH/DELETE.
 - [ ] Với quyền quản lý Household: chỉ Owner được mời, đổi role/quyền, xóa thành viên; ngăn xóa Owner duy nhất; chỉ người được mời được phản hồi invitation.
-- [ ] Dùng 403 cho người đã xác thực nhưng không có quyền; không trả nội dung tài nguyên ngoài phạm vi.
+- [~] Dùng 403 cho người đã xác thực nhưng không có quyền; không trả nội dung tài nguyên ngoài phạm vi.
 
 ### File/module dự kiến
 
@@ -121,10 +121,23 @@
 
 ### Definition of Done
 
-- [ ] Test ma trận Owner/Member/Caregiver cho hồ sơ của mình, hồ sơ được chia sẻ, hồ sơ không chia sẻ, lời mời PENDING và user ngoài Household.
+- [~] Test ma trận Owner/Member/Caregiver cho hồ sơ của mình, hồ sơ được chia sẻ, hồ sơ không chia sẻ, lời mời PENDING và user ngoài Household.
 - [ ] Test IDOR: thay `profile_id` trong URL/body không thể đọc, sửa, xóa hoặc tạo bản ghi trên profile trái quyền.
-- [ ] Test `VIEW_ONLY` đọc được nhưng ghi bị 403; `VIEW_AND_LOG` chỉ có quyền ghi đúng loại thao tác được cho phép.
+- [~] Test `VIEW_ONLY` đọc được nhưng ghi bị 403; `VIEW_AND_LOG` chỉ có quyền ghi đúng loại thao tác được cho phép.
 - [ ] Mọi endpoint dữ liệu cá nhân chạy permission backend; UI ẩn/hiện nút không được dùng làm lớp bảo mật.
+
+### Ghi nhận rà soát Sprint 2
+
+- **Ngày rà soát:** 2026-10-13. **Kết luận:** Sprint 2 chưa đạt DoD; chưa xác nhận được khai thác trái phép trên endpoint hiện có, nhưng có lỗi chức năng và thiếu sót kiểm soát/test khiến không thể nghiệm thu bảo mật.
+- **Đã có một phần:** DRF cấu hình JWT authentication và `IsAuthenticated` mặc định (`backend/core/settings.py:124-130`); `PermissionService` kiểm tra xác thực, quyền owner của profile, Household owner đang ACTIVE và cấp chia sẻ (`backend/core/permissions.py:16-62`). Serializer measurement không nhận `profile` từ client; batch gán profile SELF của account đang đăng nhập (`backend/medical_records/serializers.py:7-50`). Batch endpoint trả 403 nếu target profile không cho phép ghi (`backend/medical_records/views.py:60-69`).
+- **Đã sửa ở lần kiểm tra tiếp theo:** queryset ProfileShare dùng quan hệ `member__profile`, trạng thái ACTIVE và `share_level` thực tế; nhánh chia sẻ của `PermissionService` cũng yêu cầu membership ACTIVE. Đã giới hạn quyền Household OWNER vào các household mà người dùng thực sự có vai trò OWNER ACTIVE, thay vì lấy profile từ tất cả household mà họ tham gia (`backend/medical_records/views.py:30-43`, `backend/core/permissions.py:52-60`).
+- **Regression test:** đã thêm API test chứng minh user là OWNER ở household A nhưng chỉ là MEMBER ở household B vẫn thấy measurement thuộc household A và không thấy measurement thuộc household B (`backend/medical_records/tests.py`, `HealthMeasurementBatchApiTests.test_list_does_not_include_profiles_from_households_where_user_is_only_member`).
+- **Chưa triển khai:** chưa có API Household cho invite/response/quản lý thành viên; core chỉ include account và medical routes (`backend/core/urls.py:20-24`), router medical hiện chỉ đăng ký measurements (`backend/medical_records/urls.py:5-10`), `backend/households/views.py` và `backend/profiles/views.py` chưa có API tương ứng. Do đó, quyền Owner-only, ngăn xóa Owner duy nhất và phản hồi invitation bởi invitee chưa được thực hiện/kiểm chứng.
+- **Thiếu test:** `backend/core/tests/test_permissions.py:39-65` mới kiểm tra owner, outsider, VIEW_ONLY và VIEW_AND_LOG ở service-level; chưa có caregiver, household-owner đối với profile khác hoặc pending membership. `backend/medical_records/tests.py` chưa phủ đầy đủ HTTP 403/IDOR trên các thao tác create/update/partial_update/destroy. Household tests chưa kiểm thử invitation hay owner-only actions.
+- **Xác minh sau sửa:** `manage.py test medical_records.tests` đạt 6 tests; test regression mới cùng `core.tests.test_permissions` đạt 4 tests; `git diff --check` đạt. Sprint 2 vẫn chưa đạt DoD do thiếu API quản lý Household và ma trận/test API đầy đủ.
+- **Chưa triển khai:** chưa có API Household cho invite/response/quản lý thành viên; core chỉ include account và medical routes (`backend/core/urls.py:20-24`), router medical hiện chỉ đăng ký measurements (`backend/medical_records/urls.py:5-10`), `backend/households/views.py` và `backend/profiles/views.py` chưa có API tương ứng. Do đó, quyền Owner-only, ngăn xóa Owner duy nhất và phản hồi invitation bởi invitee chưa được thực hiện/kiểm chứng.
+- **Thiếu test:** `backend/core/tests/test_permissions.py:39-65` mới kiểm tra owner, outsider, VIEW_ONLY và VIEW_AND_LOG ở service-level; chưa có caregiver, household-owner đối với profile khác, pending membership hoặc test HTTP. `backend/medical_records/tests.py:141-180` kiểm tra batch/idempotency nhưng chưa có 403/IDOR. Household tests chưa kiểm thử invitation hay owner-only actions. Chưa có test API cho list/detail và retrieve/create/update/partial_update/destroy.
+- **Phân loại kết quả:** lỗi phạm vi queryset liên household và thiếu xác minh membership ACTIVE đã được sửa và có regression test; trước khi sửa, rà soát xếp nguy cơ lẫn dữ liệu household ở mức HIGH. Không còn giữ các lỗi này như phát hiện mở. Các thiếu sót triển khai và test còn lại vẫn ngăn nghiệm thu Sprint 2.
 
 ---
 
