@@ -125,10 +125,10 @@ is the model default. Auto timestamps use Django `auto_now_add` or `auto_now`.
 
 ## 3. Migration and API rollout
 
-The current API URL configuration exposes auth routes and measurement routes
-under `/api/auth/` and `/api/medical/`. Other model groups have no registered
-API routes in the current `core.urls`. Do not treat the following rollout
-order as evidence that those endpoints exist:
+The current API URL configuration exposes authentication, profile, household,
+and measurement routes. Medical-record CRUD (other than measurements),
+devices, and AI services still have no registered API routes. Do not treat the
+following rollout order as evidence that those endpoints exist:
 
 1. Auth and Account
 2. Profiles
@@ -140,6 +140,41 @@ order as evidence that those endpoints exist:
 Deploy schema changes before clients that depend on them. Keep the API contract
 (method, URL, authentication/authorization, payload, response and status
 codes) synchronized with routes and tests before enabling each client feature.
+
+The implemented profile endpoints are `/api/profiles/` and
+`/api/profiles/{id}/`; profile creation binds the new profile to the
+authenticated account, and DELETE archives it. Household endpoints are
+`/api/households/`, `/api/households/{id}/members/`,
+`/api/households/{id}/members/{member_id}/`, and
+`/api/households/invitations/`. Invitations are limited to existing accounts,
+expire after seven days, and may only be accepted or declined by the invited
+account. Only an active household owner may invite, update, or remove members;
+an owner membership cannot be removed through this API.
+
+Measurement clients must send one typed observation per item. Required item
+fields are `measurement_type`, `value`, `unit`, `source`, and `measured_at`;
+`idempotency_key` is recommended for retries. For example:
+
+```json
+{
+  "measurements": [
+    {
+      "measurement_type": "HEART_RATE",
+      "value": 78,
+      "unit": "bpm",
+      "source": "WEAR_OS",
+      "measured_at": "2026-10-14T03:00:00Z",
+      "idempotency_key": "sample-001-heart-rate"
+    }
+  ]
+}
+```
+
+Send this payload to `POST /api/medical/measurements/batch/` to create a batch
+for the authenticated account's SELF profile. An optional top-level
+`profile_id` selects another profile only when the account has edit permission.
+The single-observation endpoint `POST /api/medical/measurements/` uses the same
+item fields and optional `profile_id`.
 
 ## 4. Safe handling of legacy medical data
 

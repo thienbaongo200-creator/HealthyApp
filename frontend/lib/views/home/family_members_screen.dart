@@ -103,7 +103,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
             itemCount: _members.length + 1,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               if (index == 0) {
                 return GlassCard(
@@ -323,7 +323,7 @@ class _MemberEditorState extends State<_MemberEditor> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _relation,
+                initialValue: _relation,
                 decoration: const InputDecoration(labelText: 'Mối quan hệ'),
                 items: [
                   if (widget.member?.relation == 'Chủ hồ sơ')

@@ -427,7 +427,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         _analysisLoaded && _peakHeartRate != null && _peakHeartRate! > 120;
     final hasMeasurements = _analysisLoaded && _measurementsInPeriod != 0;
     final title = hasHighHeartRate
-        ? 'Nhịp tim cao nhất: ${_peakHeartRate} bpm'
+        ? 'Nhịp tim cao nhất: $_peakHeartRate bpm'
         : _analysisLoaded && hasMeasurements
         ? 'Chưa thấy nhịp tim vượt ngưỡng minh họa'
         : 'Nhịp tim vượt ngưỡng';

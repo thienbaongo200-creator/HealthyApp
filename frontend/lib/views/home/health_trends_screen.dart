@@ -477,11 +477,6 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
         ),
       );
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
 }
 
 class _PressureRecord {

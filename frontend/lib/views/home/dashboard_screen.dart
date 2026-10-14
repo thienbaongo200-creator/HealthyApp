@@ -74,18 +74,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
               (data['measured_at'] ?? data['timestamp'])?.toString() ?? '',
             ) ??
             DateTime.now().toUtc();
-        _pendingMeasurements.add({
-          'device_id': data['device_id']?.toString() ?? 'wear-os',
-          'measured_at': measuredAt.toUtc().toIso8601String(),
-          'idempotency_key':
-              data['idempotency_key']?.toString() ?? createIdempotencyKey(),
-          'heart_rate': heartRate,
-          'steps': steps,
-          'calories': calories,
-          'activity_state': data['activity_state'] == 'active'
-              ? 'active'
-              : 'resting',
-        });
+        final measuredAtIso = measuredAt.toUtc().toIso8601String();
+        final sampleKey =
+            data['idempotency_key']?.toString() ?? createIdempotencyKey();
+        _pendingMeasurements.addAll([
+          {
+            'measurement_type': 'HEART_RATE',
+            'value': heartRate,
+            'unit': 'bpm',
+            'source': 'WEAR_OS',
+            'measured_at': measuredAtIso,
+            'idempotency_key': '${sampleKey}_heart_rate',
+          },
+          {
+            'measurement_type': 'STEPS',
+            'value': steps,
+            'unit': 'steps',
+            'source': 'WEAR_OS',
+            'measured_at': measuredAtIso,
+            'idempotency_key': '${sampleKey}_steps',
+          },
+          {
+            'measurement_type': 'CALORIES',
+            'value': calories,
+            'unit': 'kcal',
+            'source': 'WEAR_OS',
+            'measured_at': measuredAtIso,
+            'idempotency_key': '${sampleKey}_calories',
+          },
+        ]);
         if (_pendingMeasurements.length >= 10) unawaited(_flushMeasurements());
       },
       onError: (Object error) {
@@ -188,9 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     if (member == '__manage_members__' && mounted) {
       await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => const FamilyMembersScreen(),
-        ),
+        MaterialPageRoute<void>(builder: (_) => const FamilyMembersScreen()),
       );
       return;
     }
@@ -218,300 +233,302 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: _canvas,
       body: SkyBackground(
         child: SafeArea(
-        child: RefreshIndicator(
-          color: _teal,
-          onRefresh: _refreshData,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Chào mừng bạn!',
-                          style: TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w800,
-                            color: _ink,
-                            letterSpacing: -.5,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Cùng chăm sóc sức khỏe mỗi ngày',
-                          style: TextStyle(
-                            color: Colors.blueGrey.shade500,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: () =>
-                        _showMessage('Cài đặt sẽ sớm được bổ sung'),
-                    icon: const Icon(Icons.settings_outlined),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: _ink,
-                      side: const BorderSide(color: Color(0xFFE7EFED)),
-                    ),
-                    tooltip: 'Cài đặt',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: _selectMember,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 13,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: const Color(0xFFE7EFED)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.person_outline,
-                            size: 18,
-                            color: _teal,
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            'Đang xem: $_member',
-                            style: const TextStyle(
-                              color: _ink,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.keyboard_arrow_down,
-                            size: 18,
-                            color: _ink,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  _connectionPill(),
-                ],
-              ),
-              const SizedBox(height: 23),
-              _sectionTitle('Trạng thái sức khỏe', 'Cập nhật gần đây'),
-              const SizedBox(height: 12),
-              _card(
-                child: Column(
+          child: RefreshIndicator(
+            color: _teal,
+            onRefresh: _refreshData,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _metric(
-                            icon: Icons.favorite_rounded,
-                            color: const Color(0xFFE66B71),
-                            label: 'Nhịp tim',
-                            value: _heartRate > 0 ? '$_heartRate' : '—',
-                            unit: 'bpm',
-                          ),
-                        ),
-                        _metricDivider(),
-                        Expanded(
-                          child: _metric(
-                            icon: Icons.bedtime_rounded,
-                            color: const Color(0xFF8B83D7),
-                            label: 'Giấc ngủ',
-                            value: '—',
-                            unit: 'chưa có dữ liệu',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 15),
-                      child: Divider(height: 1, color: Color(0xFFEDF1F0)),
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _metric(
-                            icon: Icons.water_drop_rounded,
-                            color: const Color(0xFF52A8D5),
-                            label: 'Oxy máu',
-                            value: '—',
-                            unit: 'chưa có dữ liệu',
-                          ),
-                        ),
-                        _metricDivider(),
-                        Expanded(
-                          child: _metric(
-                            icon: Icons.monitor_heart_rounded,
-                            color: const Color(0xFF28A99A),
-                            label: 'Huyết áp',
-                            value: '—',
-                            unit: 'chưa có dữ liệu',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 23),
-              _sectionTitle('Hoạt động hôm nay', 'Mục tiêu hằng ngày'),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _activityCard(
-                      Icons.directions_walk_rounded,
-                      'Bước đi',
-                      _steps > 0 ? _steps.toString() : '—',
-                      'bước',
-                      const Color(0xFF438ED8),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _activityCard(
-                      Icons.local_fire_department_rounded,
-                      'Calo',
-                      _wearConnected ? _calories.toStringAsFixed(0) : '—',
-                      'kcal',
-                      const Color(0xFFE39A47),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _activityCard(
-                      Icons.directions_run_rounded,
-                      'Vận động',
-                      '—',
-                      'phút',
-                      const Color(0xFF7D9B68),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 23),
-              _sectionTitle('Xu hướng sức khỏe', 'Trong ngày'),
-              const SizedBox(height: 12),
-              _card(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          _heartRate > 0 ? '$_heartRate' : '—',
-                          style: const TextStyle(
-                            color: _ink,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 28,
-                          ),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.only(left: 5, bottom: 5),
-                          child: Text(
-                            'bpm hiện tại',
-                            style: TextStyle(
-                              color: Color(0xFF83918F),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _heartRateHistory.length >= 2
-                              ? 'Dữ liệu từ đồng hồ'
-                              : 'Chưa có đủ dữ liệu',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF83918F),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 116,
-                      width: double.infinity,
-                      child: _heartRateHistory.length < 2
-                          ? _emptyChart()
-                          : _HeartRateChart(values: List.of(_heartRateHistory)),
-                    ),
-                  ],
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: _openTrends,
-                  icon: const Icon(Icons.insights_outlined, size: 17),
-                  label: const Text('Chi tiết thống kê'),
-                  style: TextButton.styleFrom(foregroundColor: _teal),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _card(
-                padding: const EdgeInsets.all(15),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEAF6F3),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.lightbulb_outline_rounded,
-                        color: _teal,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Một chút nhắc nhở',
+                            'Chào mừng bạn!',
                             style: TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w800,
                               color: _ink,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
+                              letterSpacing: -.5,
                             ),
                           ),
-                          SizedBox(height: 3),
+                          const SizedBox(height: 4),
                           Text(
-                            'Đeo đồng hồ để cập nhật chỉ số hoạt động.',
+                            'Cùng chăm sóc sức khỏe mỗi ngày',
                             style: TextStyle(
-                              color: Color(0xFF83918F),
-                              fontSize: 12,
+                              color: Colors.blueGrey.shade500,
+                              fontSize: 13,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    IconButton.filledTonal(
+                      onPressed: () =>
+                          _showMessage('Cài đặt sẽ sớm được bổ sung'),
+                      icon: const Icon(Icons.settings_outlined),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: _ink,
+                        side: const BorderSide(color: Color(0xFFE7EFED)),
+                      ),
+                      tooltip: 'Cài đặt',
+                    ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: _selectMember,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: const Color(0xFFE7EFED)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.person_outline,
+                              size: 18,
+                              color: _teal,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              'Đang xem: $_member',
+                              style: const TextStyle(
+                                color: _ink,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.keyboard_arrow_down,
+                              size: 18,
+                              color: _ink,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    _connectionPill(),
+                  ],
+                ),
+                const SizedBox(height: 23),
+                _sectionTitle('Trạng thái sức khỏe', 'Cập nhật gần đây'),
+                const SizedBox(height: 12),
+                _card(
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metric(
+                              icon: Icons.favorite_rounded,
+                              color: const Color(0xFFE66B71),
+                              label: 'Nhịp tim',
+                              value: _heartRate > 0 ? '$_heartRate' : '—',
+                              unit: 'bpm',
+                            ),
+                          ),
+                          _metricDivider(),
+                          Expanded(
+                            child: _metric(
+                              icon: Icons.bedtime_rounded,
+                              color: const Color(0xFF8B83D7),
+                              label: 'Giấc ngủ',
+                              value: '—',
+                              unit: 'chưa có dữ liệu',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 15),
+                        child: Divider(height: 1, color: Color(0xFFEDF1F0)),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metric(
+                              icon: Icons.water_drop_rounded,
+                              color: const Color(0xFF52A8D5),
+                              label: 'Oxy máu',
+                              value: '—',
+                              unit: 'chưa có dữ liệu',
+                            ),
+                          ),
+                          _metricDivider(),
+                          Expanded(
+                            child: _metric(
+                              icon: Icons.monitor_heart_rounded,
+                              color: const Color(0xFF28A99A),
+                              label: 'Huyết áp',
+                              value: '—',
+                              unit: 'chưa có dữ liệu',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 23),
+                _sectionTitle('Hoạt động hôm nay', 'Mục tiêu hằng ngày'),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _activityCard(
+                        Icons.directions_walk_rounded,
+                        'Bước đi',
+                        _steps > 0 ? _steps.toString() : '—',
+                        'bước',
+                        const Color(0xFF438ED8),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _activityCard(
+                        Icons.local_fire_department_rounded,
+                        'Calo',
+                        _wearConnected ? _calories.toStringAsFixed(0) : '—',
+                        'kcal',
+                        const Color(0xFFE39A47),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _activityCard(
+                        Icons.directions_run_rounded,
+                        'Vận động',
+                        '—',
+                        'phút',
+                        const Color(0xFF7D9B68),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 23),
+                _sectionTitle('Xu hướng sức khỏe', 'Trong ngày'),
+                const SizedBox(height: 12),
+                _card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            _heartRate > 0 ? '$_heartRate' : '—',
+                            style: const TextStyle(
+                              color: _ink,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 28,
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.only(left: 5, bottom: 5),
+                            child: Text(
+                              'bpm hiện tại',
+                              style: TextStyle(
+                                color: Color(0xFF83918F),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _heartRateHistory.length >= 2
+                                ? 'Dữ liệu từ đồng hồ'
+                                : 'Chưa có đủ dữ liệu',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF83918F),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 116,
+                        width: double.infinity,
+                        child: _heartRateHistory.length < 2
+                            ? _emptyChart()
+                            : _HeartRateChart(
+                                values: List.of(_heartRateHistory),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: _openTrends,
+                    icon: const Icon(Icons.insights_outlined, size: 17),
+                    label: const Text('Chi tiết thống kê'),
+                    style: TextButton.styleFrom(foregroundColor: _teal),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _card(
+                  padding: const EdgeInsets.all(15),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF6F3),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.lightbulb_outline_rounded,
+                          color: _teal,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Một chút nhắc nhở',
+                              style: TextStyle(
+                                color: _ink,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Đeo đồng hồ để cập nhật chỉ số hoạt động.',
+                              style: TextStyle(
+                                color: Color(0xFF83918F),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -532,7 +549,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: const Icon(Icons.add_rounded, size: 30),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      bottomNavigationBar: MainNavigationWrapper(selectedIndex: _selectedTab, onSelected: _selectNavigationTab),
+      bottomNavigationBar: MainNavigationWrapper(
+        selectedIndex: _selectedTab,
+        onSelected: _selectNavigationTab,
+      ),
     );
   }
 
@@ -719,13 +739,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (_) => switch (index) {
           1 => HealthJournalScreen(initialMember: _member),
           2 => AiAssistantScreen(initialMember: _member),
-          _ => DevicesScreen(isWatchConnected: _wearConnected, pendingMeasurements: _pendingMeasurements.length, onSync: _flushMeasurements),
+          _ => DevicesScreen(
+            isWatchConnected: _wearConnected,
+            pendingMeasurements: _pendingMeasurements.length,
+            onSync: _flushMeasurements,
+          ),
         },
       ),
     );
     if (mounted) setState(() => _selectedTab = 0);
   }
 }
+
 class _HeartRateChart extends StatelessWidget {
   const _HeartRateChart({required this.values});
   final List<int> values;
