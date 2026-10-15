@@ -1,74 +1,61 @@
 from rest_framework import serializers
 
-from health_measurements.models import HealthMeasurement
-from profiles.models import PersonProfile
+from .models import MedicalDocument
 
 
-class HealthMeasurementFieldsSerializer(serializers.ModelSerializer):
+class MedicalDocumentSerializer(serializers.ModelSerializer):
+    profile_id = serializers.UUIDField()
+    file = serializers.FileField(write_only=True, required=True, allow_empty_file=False)
+    file_name = serializers.SerializerMethodField()
+
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    ALLOWED_FILE_TYPES = {
+        ".pdf": {"application/pdf", "application/octet-stream"},
+        ".jpg": {"image/jpeg", "application/octet-stream"},
+        ".jpeg": {"image/jpeg", "application/octet-stream"},
+        ".png": {"image/png", "application/octet-stream"},
+    }
+
     class Meta:
-        model = HealthMeasurement
-        fields = [
-            "measurement_type",
-            "value",
-            "value_secondary",
-            "unit",
-            "measured_at",
-            "start_time",
-            "end_time",
-            "source",
-            "device",
-            "idempotency_key",
-        ]
-        extra_kwargs = {
-            "device": {"required": False, "allow_null": True},
-            "idempotency_key": {"required": False, "allow_null": True},
-            "value_secondary": {"required": False, "allow_null": True},
-            "start_time": {"required": False, "allow_null": True},
-            "end_time": {"required": False, "allow_null": True},
-        }
-
-
-class HealthMeasurementSerializer(HealthMeasurementFieldsSerializer):
-    profile_id = serializers.UUIDField(required=False, write_only=True)
-
-    class Meta(HealthMeasurementFieldsSerializer.Meta):
-        fields = [*HealthMeasurementFieldsSerializer.Meta.fields, "profile_id"]
+        model = MedicalDocument
+        fields = (
+            "id",
+            "profile_id",
+            "visit",
+            "document_type",
+            "title",
+            "file_name",
+            "file_url",
+            "file",
+            "description",
+            "uploaded_at",
+        )
+        read_only_fields = ("id", "file_url", "uploaded_at")
 
     def create(self, validated_data):
-        validated_data.pop("profile_id", None)
+        validated_data.pop("profile_id")
         return super().create(validated_data)
 
-    def validate(self, attrs):
-        if self.instance is not None and "profile_id" in self.initial_data:
+    def get_file_name(self, instance):
+        if instance.file:
+            return instance.file.name.rsplit("/", 1)[-1]
+        return instance.file_url.rsplit("/", 1)[-1] if instance.file_url else ""
+
+    def validate_file(self, uploaded_file):
+        if uploaded_file.size > self.MAX_FILE_SIZE:
+            raise serializers.ValidationError("File size must not exceed 10 MB.")
+
+        extension = "." + uploaded_file.name.rsplit(".", 1)[-1].lower()
+        allowed_content_types = self.ALLOWED_FILE_TYPES.get(extension)
+        if allowed_content_types is None:
             raise serializers.ValidationError(
-                {"profile_id": "A measurement cannot be moved to another profile."}
+                "Only PDF, JPEG, and PNG files are supported."
             )
-        return attrs
 
-
-class HealthMeasurementBatchSerializer(serializers.Serializer):
-    profile_id = serializers.UUIDField(required=False, write_only=True)
-    measurements = HealthMeasurementFieldsSerializer(
-        many=True,
-        allow_empty=False,
-        max_length=500,
-    )
-
-    def create(self, validated_data):
-        profile = validated_data.pop("profile", None)
-        validated_data.pop("profile_id", None)
-        if profile is None:
-            account = self.context["request"].user
-            profile, _ = PersonProfile.objects.get_or_create(
-                account=account,
-                profile_type="SELF",
-                defaults={"full_name": account.email.partition("@")[0]},
+        content_type = getattr(uploaded_file, "content_type", None)
+        if content_type and content_type not in allowed_content_types:
+            raise serializers.ValidationError(
+                "The file extension and content type do not match."
             )
-        measurements = [
-            HealthMeasurement(profile=profile, **item)
-            for item in validated_data["measurements"]
-        ]
-        return HealthMeasurement.objects.bulk_create(
-            measurements,
-            ignore_conflicts=True,
-        )
+
+        return uploaded_file

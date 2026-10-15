@@ -14,6 +14,7 @@ class HealthMeasurement(models.Model):
         ('WEIGHT', 'Weight'),
         ('HEIGHT', 'Height'),
         ('TEMPERATURE', 'Temperature'),
+        ('SLEEP', 'Sleep'),
     )
     SOURCE_CHOICES = (
         ('MANUAL', 'Manual'),

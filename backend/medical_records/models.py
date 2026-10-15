@@ -3,6 +3,11 @@ import uuid
 from django.db import models
 
 
+def medical_document_upload_path(instance, filename):
+    extension = filename.rsplit(".", 1)[-1].lower()
+    return f"medical_documents/{instance.profile_id}/{uuid.uuid4().hex}.{extension}"
+
+
 class MedicalHistory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     profile = models.ForeignKey(
@@ -153,7 +158,12 @@ class MedicalDocument(models.Model):
         default="OTHER",
     )
     title = models.CharField(max_length=255)
-    file_url = models.URLField(max_length=2048)
+    file_url = models.URLField(max_length=2048, blank=True)
+    file = models.FileField(
+        upload_to=medical_document_upload_path,
+        null=True,
+        blank=True,
+    )
     description = models.TextField(blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
