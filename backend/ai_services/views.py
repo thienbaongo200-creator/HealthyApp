@@ -1,84 +1,73 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
-from profiles.models import PersonProfile
-from health_measurements.models import HealthMeasurement
 from django.shortcuts import get_object_or_404
-import numpy as np
+from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from ai_services.models import Conversation, Message
+from ai_services.services.assistant import build_health_context, generate_reply
+from ai_services.services.risk_engine import RiskRuleEngine
+from core.permissions import PermissionService
+from profiles.models import PersonProfile
+
+
+def authorized_profile(request, profile_id):
+    if not PermissionService.has_profile_access(request.user, profile_id, required_permission="view"):
+        raise PermissionDenied("You do not have permission to view this profile.")
+    profile = get_object_or_404(PersonProfile, id=profile_id, is_archived=False)
+    # Consent belongs to the account that owns the health profile (the data subject
+    # or its recorded guardian), not merely the household member making the request.
+    consent_account = profile.account
+    if consent_account is None or not consent_account.ai_consent:
+        raise PermissionDenied("AI consent from the profile owner is required.")
+    return profile
+
 
 class HealthRiskAssessmentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, profile_id):
-        # 1. Xác thực profile tồn tại
-        profile = get_object_or_404(PersonProfile, id=profile_id)
-        
-        # 2. Truy vấn tối đa 50 bản ghi đo lường gần nhất theo thời gian
-        measurements = HealthMeasurement.objects.filter(profile=profile).order_by('-measured_at')[:50]
-        
-        if not measurements.exists():
-            return Response(
-                {
-                    "profile_id": str(profile.id),
-                    "risk_level": "UNKNOWN",
-                    "analyzed_count": 0,
-                    "warnings": ["Không có dữ liệu đo lường để phân tích."],
-                    "recommendation": "Vui lòng cập nhật các chỉ số sức khỏe thường xuyên hơn."
-                },
-                status=status.HTTP_200_OK
+        profile = authorized_profile(request, profile_id)
+        result = RiskRuleEngine().assess(profile)
+        code = status.HTTP_422_UNPROCESSABLE_ENTITY if result["risk_level"] == "UNKNOWN" else status.HTTP_200_OK
+        return Response({"profile_id": str(profile.id), **result}, status=code)
+
+
+class AiChatSessionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, profile_id):
+        profile = authorized_profile(request, profile_id)
+        message_text = request.data.get("message", "")
+        if not isinstance(message_text, str) or not message_text.strip():
+            return Response({"error": "Message content is required."}, status=status.HTTP_400_BAD_REQUEST)
+        message_text = message_text.strip()
+
+        conversation_id = request.data.get("conversation_id")
+        if conversation_id:
+            conversation = get_object_or_404(
+                Conversation, id=conversation_id, account=request.user, profile=profile
+            )
+        else:
+            title = message_text[:30] + ("..." if len(message_text) > 30 else "")
+            conversation = Conversation.objects.create(
+                account=request.user, profile=profile, title=title
             )
 
-        # 3. Phân tích chuỗi thời gian & đánh giá ngưỡng sinh trắc học
-        heart_rates = []
-        systolic_bps = []
-        diastolic_bps = []
-        
-        for m in measurements:
-            val = float(m.value)
-            if m.measurement_type == "HEART_RATE":
-                heart_rates.append(val)
-            elif m.measurement_type == "BLOOD_PRESSURE_SYSTOLIC":
-                systolic_bps.append(val)
-            elif m.measurement_type == "BLOOD_PRESSURE_DIASTOLIC":
-                diastolic_bps.append(val)
-
-        risk_level = "LOW"
-        warnings = []
-        
-        # Kiểm tra ngưỡng nhịp tim (ví dụ: nhịp tim nghỉ ngơi cao > 100 hoặc thấp < 60)
-        if heart_rates:
-            avg_hr = np.mean(heart_rates)
-            if avg_hr > 100:
-                risk_level = "MEDIUM"
-                warnings.append(f"Trung bình nhịp tim cao ({avg_hr:.1f} bpm).")
-            elif avg_hr < 60:
-                warnings.append(f"Trung bình nhịp tim thấp ({avg_hr:.1f} bpm).")
-
-        # Kiểm tra ngưỡng huyết áp tâm thu / tâm trương
-        if systolic_bps and diastolic_bps:
-            avg_sys = np.mean(systolic_bps)
-            avg_dia = np.mean(diastolic_bps)
-            if avg_sys >= 140 or avg_dia >= 90:
-                risk_level = "HIGH"
-                warnings.append(f"Cảnh báo huyết áp cao (Trung bình: {avg_sys:.1f}/{avg_dia:.1f} mmHg).")
-            elif avg_sys >= 130 or avg_dia >= 80:
-                if risk_level != "HIGH":
-                    risk_level = "MEDIUM"
-                warnings.append(f"Huyết áp ở ngưỡng tiền cao huyết áp ({avg_sys:.1f}/{avg_dia:.1f} mmHg).")
-
-        # Đề xuất hướng dẫn dựa trên mức độ rủi ro
-        if risk_level == "HIGH":
-            recommendation = "Nguy cơ cao. Khuyến nghị đặt lịch hẹn khám bác sĩ chuyên khoa sớm."
-        elif risk_level == "MEDIUM":
-            recommendation = "Cần theo dõi sát sao, duy trì lối sống lành mạnh và đo lại sau vài ngày."
-        else:
-            recommendation = "Các chỉ số ổn định. Hãy tiếp tục duy trì chế độ sinh hoạt hiện tại."
-
+        Message.objects.create(conversation=conversation, role="USER", content=message_text)
+        context = build_health_context(profile)
+        reply, provider = generate_reply(message=message_text, context=context)
+        assistant_message = Message.objects.create(
+            conversation=conversation,
+            role="ASSISTANT",
+            content=reply,
+            provider=provider.name,
+            model_version=provider.model_version,
+        )
         return Response({
-            "profile_id": str(profile.id),
-            "risk_level": risk_level,
-            "analyzed_count": measurements.count(),
-            "warnings": warnings,
-            "recommendation": recommendation
+            "conversation_id": str(conversation.id),
+            "title": conversation.title,
+            "reply": assistant_message.content,
+            "created_at": assistant_message.created_at,
         }, status=status.HTTP_200_OK)

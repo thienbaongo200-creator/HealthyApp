@@ -62,6 +62,8 @@ class Message(models.Model):
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     content = models.TextField()
+    provider = models.CharField(max_length=50, default="local")
+    model_version = models.CharField(max_length=100, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
