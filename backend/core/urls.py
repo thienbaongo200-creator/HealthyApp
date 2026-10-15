@@ -26,5 +26,8 @@ urlpatterns = [
     #path('api/health/', include('health_measurements.urls')),
     path('api/households/', include('households.urls')),
     path('api/medical/', include('medical_records.urls')),
+    # Canonical routes from Chapter 2, retaining /api/medical/ aliases for old clients.
+    path('api/medical-records/', include('medical_records.urls')),
+    path('api/health-measurements/', include('health_measurements.urls')),
     path('api/ai/', include('ai_services.urls')),
 ]

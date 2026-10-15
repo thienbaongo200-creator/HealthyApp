@@ -21,6 +21,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load file .env 
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
+# Optional chat generation provider. Rule based risk screening is always local.
+GEMINI_ENABLED = os.getenv('GEMINI_ENABLED', 'False').strip().lower() in {'true', '1', 'yes'}
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_TIMEOUT_MS = int(os.getenv('GEMINI_TIMEOUT_MS', '10000'))
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -197,6 +203,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_ROOT = BASE_DIR / 'private_uploads'
 
 # Cấu hình CUSTOM USER MODEL
 AUTH_USER_MODEL = 'accounts.Account'

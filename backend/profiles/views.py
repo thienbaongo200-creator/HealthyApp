@@ -80,7 +80,7 @@ class ProfileListCreateView(generics.ListCreateAPIView):
         # Khi tạo mới từ phía user, mặc định đây là hồ sơ DEPENDENT (hồ sơ SELF đã được tự động tạo khi Register)
         serializer.save(account=self.request.user, profile_type="DEPENDENT")
 
-class ProfileDetailView(generics.RetrieveUpdateAPIView):
+class ProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PersonProfileSerializer
     permission_classes = [IsAuthenticated]
 
@@ -98,8 +98,5 @@ class ProfileDetailView(generics.RetrieveUpdateAPIView):
             )
         
         profile.is_archived = True
-        profile.save()
-        return Response(
-            {"message": "Đã ẩn/archive hồ sơ thành công."},
-            status=status.HTTP_200_OK
-        )
+        profile.save(update_fields=["is_archived", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

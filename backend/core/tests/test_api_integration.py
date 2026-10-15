@@ -121,6 +121,8 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
                 "unit": "steps",
                 "source": "WEAR_OS",
                 "measured_at": "2026-10-14T03:15:00Z",
+                "start_time": "2026-10-14T03:00:00Z",
+                "end_time": "2026-10-14T03:15:00Z",
             },
             format="json",
         )

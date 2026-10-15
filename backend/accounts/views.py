@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.db import IntegrityError
 from django.utils.dateparse import parse_date
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.exceptions import PermissionDenied
@@ -85,6 +86,38 @@ class ProfileView(APIView):
         profile.save()
         return Response(
             {"message": "Cập nhật hồ sơ thành công."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AiConsentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(
+            {
+                "ai_consent": request.user.ai_consent,
+                "ai_consent_at": request.user.ai_consent_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def patch(self, request):
+        consent = request.data.get("ai_consent")
+        if not isinstance(consent, bool):
+            return Response(
+                {"ai_consent": ["Must be a boolean."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.ai_consent = consent
+        request.user.ai_consent_at = timezone.now() if consent else None
+        request.user.save(update_fields=["ai_consent", "ai_consent_at"])
+        return Response(
+            {
+                "ai_consent": request.user.ai_consent,
+                "ai_consent_at": request.user.ai_consent_at,
+            },
             status=status.HTTP_200_OK,
         )
 
