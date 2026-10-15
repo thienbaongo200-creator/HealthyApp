@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
+import '../core/network/token_storage.dart';
 import 'api_config.dart';
 
 class ApiException implements Exception {
@@ -22,6 +23,14 @@ class ApiService {
 
   static String? _token;
   static final ApiService instance = ApiService();
+
+  static Future<Map<String, String>> _authHeaders() async {
+    final token = _token ?? await TokenStorage.getAccessToken();
+    return {
+      'Accept': 'application/json',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
 
   static Future<Map<String, dynamic>> register({
     required String username,
@@ -231,12 +240,12 @@ class ApiService {
   }
 
   static Future<List<Map<String, dynamic>>> fetchHealthMeasurements() async {
+    final headers = await _authHeaders();
     final response = await _send(
       http.get(
         Uri.parse('$baseUrl/medical/measurements/'),
         headers: {
-          'Accept': 'application/json',
-          if (_token != null) 'Authorization': 'Bearer $_token',
+          ...headers,
         },
       ),
     );
@@ -254,5 +263,23 @@ class ApiService {
       throw const FormatException('Measurement response must contain a list.');
     }
     return records.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  /// Persist a manually entered measurement using the same API as device data.
+  static Future<void> createManualMeasurements(
+    List<Map<String, dynamic>> measurements,
+  ) async {
+    final headers = await _authHeaders();
+    final response = await _send(http.post(
+      Uri.parse('$baseUrl/medical/measurements/batch/'),
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: jsonEncode({'measurements': measurements}),
+    ));
+    if (response.statusCode != 201) {
+      throw ApiException(response.statusCode, 'Khong the luu chi so suc khoe.');
+    }
   }
 }
