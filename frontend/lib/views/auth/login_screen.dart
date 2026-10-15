@@ -45,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final token = await _apiService.login(inputAccount, password);
-      _apiService.setToken(token);
+      await _apiService.setToken(token);
       _showSnackBar('Đăng nhập thành công!', const Color(0xFF43A047));
       if (mounted) {
         Navigator.pushReplacement(
@@ -151,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       final String? token = await _apiService.loginWithGoogle(accessToken);
       if (token != null) {
-        _apiService.setToken(token);
+        await _apiService.setToken(token);
         _showSnackBar('Đăng nhập Google thành công!', const Color(0xFF43A047));
         if (mounted) {
           Navigator.pushReplacement(

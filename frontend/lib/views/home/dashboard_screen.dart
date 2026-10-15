@@ -15,6 +15,8 @@ import 'ai_assistant_screen.dart';
 import 'quick_add_screen.dart';
 import 'health_trends_screen.dart';
 import 'main_navigation_wrapper.dart';
+import 'medical_records_screen.dart';
+import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -31,9 +33,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _heartRate = 0;
   int _steps = 0;
   double _calories = 0;
+  String _bloodPressure = '—';
+  double? _glucose;
+  double? _weight;
+  double? _height;
+  double? _sleepHours;
+  bool _isRefreshing = false;
   bool _wearConnected = false;
   int _selectedTab = 0;
   String _member = 'Tôi';
+  String? _profileId;
+  List<Map<String, dynamic>> _profiles = [];
   final List<int> _heartRateHistory = [];
   final List<Map<String, dynamic>> _pendingMeasurements = [];
   late final StreamSubscription<Map<String, dynamic>> _wearSubscription;
@@ -75,6 +85,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ) ??
             DateTime.now().toUtc();
         final measuredAtIso = measuredAt.toUtc().toIso8601String();
+        final intervalSeconds =
+            (data['interval_seconds'] as num?)?.toInt() ??
+            (data['activity_state'] == 'active' ? 5 : 60);
+        final endTime = measuredAt.toUtc();
+        final startTime = endTime.subtract(
+          Duration(seconds: intervalSeconds.clamp(1, 3600).toInt()),
+        );
+        final startTimeIso = startTime.toIso8601String();
         final sampleKey =
             data['idempotency_key']?.toString() ?? createIdempotencyKey();
         _pendingMeasurements.addAll([
@@ -90,6 +108,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'measurement_type': 'STEPS',
             'value': steps,
             'unit': 'steps',
+            'start_time': startTimeIso,
+            'end_time': measuredAtIso,
             'source': 'WEAR_OS',
             'measured_at': measuredAtIso,
             'idempotency_key': '${sampleKey}_steps',
@@ -98,6 +118,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'measurement_type': 'CALORIES',
             'value': calories,
             'unit': 'kcal',
+            'start_time': startTimeIso,
+            'end_time': measuredAtIso,
             'source': 'WEAR_OS',
             'measured_at': measuredAtIso,
             'idempotency_key': '${sampleKey}_calories',
@@ -110,7 +132,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initWatchListener());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initWatchListener();
+      _loadProfilesAndRefresh();
+    });
+  }
+
+  Future<void> _loadProfilesAndRefresh() async {
+    try {
+      final profiles = await ApiService.fetchProfiles();
+      final selfProfile = profiles
+          .where((profile) => profile['profile_type'] == 'SELF')
+          .firstOrNull;
+      if (mounted) {
+        setState(() {
+          _profiles = profiles;
+          _profileId = selfProfile?['id']?.toString();
+        });
+      }
+    } catch (error) {
+      if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
+    }
+    await _refreshData();
   }
 
   Future<void> _initWatchListener() async {
@@ -130,8 +173,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       while (_pendingMeasurements.isNotEmpty) {
         final batch = _pendingMeasurements.take(100).toList(growable: false);
-        if (!await ApiService.sendHealthMeasurements(batch)) return;
-        _pendingMeasurements.removeRange(0, batch.length);
+        final result = await ApiService.sendHealthMeasurements(
+          batch,
+          profileId: _profileId,
+        );
+        if (result == null) return;
+
+        final terminalKeys = {
+          ...result.acknowledgedKeys,
+          ...result.rejectedKeys,
+        };
+        if (terminalKeys.isNotEmpty) {
+          _pendingMeasurements.removeWhere(
+            (measurement) => terminalKeys.contains(
+              measurement['idempotency_key']?.toString(),
+            ),
+          );
+        }
+
+        // Retryable records stay queued until the next connectivity/timer event.
+        if (result.retryKeys.isNotEmpty || terminalKeys.isEmpty) return;
       }
     } finally {
       _isFlushingBatch = false;
@@ -152,42 +213,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
     try {
-      final records = await ApiService.fetchHealthMeasurements();
+      final records = await ApiService.fetchHealthMeasurements(
+        profileId: _profileId,
+      );
       if (!mounted) return;
-      int? latestInt(String type) {
-        final record = records.where((r) => r['measurement_type'] == type).firstOrNull;
-        final value = record?['value'];
-        return (value is num ? value : num.tryParse(value?.toString() ?? ''))?.toInt();
+      Map<String, dynamic>? latest(String type) {
+        final record = records
+            .where((r) => r['measurement_type'] == type)
+            .firstOrNull;
+        return record;
       }
-      final heartRate = latestInt('HEART_RATE');
-      final steps = latestInt('STEPS');
-      final calorieRecord = records.where((r) => r['measurement_type'] == 'CALORIES').firstOrNull;
+
+      num? numeric(dynamic value) =>
+          value is num ? value : num.tryParse(value?.toString() ?? '');
+      final heartRate = numeric(latest('HEART_RATE')?['value'])?.toInt();
+      final bloodPressure = latest('BLOOD_PRESSURE');
+      final glucose = numeric(latest('BLOOD_GLUCOSE')?['value'])?.toDouble();
+      final weight = numeric(latest('WEIGHT')?['value'])?.toDouble();
+      final height = numeric(latest('HEIGHT')?['value'])?.toDouble();
+      final sleep = latest('SLEEP');
+      final steps = numeric(latest('STEPS')?['value'])?.toInt();
+      final calories = numeric(latest('CALORIES')?['value'])?.toDouble();
       setState(() {
         if (heartRate != null) _heartRate = heartRate;
         if (steps != null) _steps = steps;
-        final calorieValue = calorieRecord?['value'];
-        final parsedCalories = calorieValue is num ? calorieValue : num.tryParse(calorieValue?.toString() ?? '');
-        if (parsedCalories != null) _calories = parsedCalories.toDouble();
-        if (heartRate != null && (_heartRateHistory.isEmpty || _heartRateHistory.last != heartRate)) {
+        if (calories != null) _calories = calories;
+        if (bloodPressure != null) {
+          final systolic = numeric(bloodPressure['value']);
+          final diastolic = numeric(bloodPressure['value_secondary']);
+          if (systolic != null && diastolic != null) {
+            _bloodPressure =
+                '${systolic.toStringAsFixed(0)}/${diastolic.toStringAsFixed(0)}';
+          }
+        }
+        if (glucose != null) _glucose = glucose;
+        if (weight != null) _weight = weight;
+        if (height != null) _height = height;
+        if (sleep != null) _sleepHours = numeric(sleep['value'])?.toDouble();
+        if (heartRate != null &&
+            (_heartRateHistory.isEmpty ||
+                _heartRateHistory.last != heartRate)) {
           _heartRateHistory.add(heartRate);
           if (_heartRateHistory.length > 12) _heartRateHistory.removeAt(0);
         }
       });
     } catch (error) {
-      if (mounted) _showMessage(error is ApiException ? error.message : 'Không thể tải dữ liệu sức khỏe.');
+      if (mounted) {
+        _showMessage(
+          error is ApiException
+              ? error.message
+              : 'Không thể tải dữ liệu sức khỏe.',
+        );
+      }
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
+  Future<void> _openQuickAdd() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => QuickAddScreen(member: _member, profileId: _profileId),
+      ),
+    );
+    if (saved == true && mounted) {
+      await _refreshData();
+      if (mounted) _showMessage('Đã lưu và cập nhật chỉ số sức khỏe.');
     }
   }
 
   Future<void> _openTrends() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => HealthTrendsScreen(member: _member),
+        builder: (_) =>
+            HealthTrendsScreen(member: _member, profileId: _profileId),
       ),
     );
   }
 
   Future<void> _selectMember() async {
+    if (_profiles.isEmpty) {
+      try {
+        _profiles = await ApiService.fetchProfiles();
+      } catch (error) {
+        if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
+        return;
+      }
+    }
+    if (!mounted) return;
     final member = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -206,20 +322,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTap: () => Navigator.pop(context, '__manage_members__'),
             ),
             const Divider(height: 1),
-            for (final name in ['Tôi', 'Bố', 'Mẹ'])
+            for (final profile in _profiles)
               ListTile(
                 leading: CircleAvatar(
                   backgroundColor: const Color(0xFFE6F4F1),
                   child: Icon(
-                    name == 'Tôi' ? Icons.person : Icons.family_restroom,
+                    profile['profile_type'] == 'SELF'
+                        ? Icons.person
+                        : Icons.family_restroom,
                     color: _teal,
                   ),
                 ),
-                title: Text(name),
-                trailing: name == _member
+                title: Text(
+                  profile['profile_type'] == 'SELF'
+                      ? 'Tôi'
+                      : profile['full_name']?.toString() ?? 'Thành viên',
+                ),
+                trailing: profile['id']?.toString() == _profileId
                     ? const Icon(Icons.check, color: _teal)
                     : null,
-                onTap: () => Navigator.pop(context, name),
+                onTap: () => Navigator.pop(context, profile['id']?.toString()),
               ),
             const SizedBox(height: 12),
           ],
@@ -232,7 +354,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       return;
     }
-    if (member != null && mounted) setState(() => _member = member);
+    if (member != null && mounted) {
+      final profile = _profiles
+          .where((item) => item['id']?.toString() == member)
+          .firstOrNull;
+      if (profile == null) return;
+      setState(() {
+        _profileId = member;
+        _member = profile['profile_type'] == 'SELF'
+            ? 'Tôi'
+            : profile['full_name']?.toString() ?? 'Thành viên';
+      });
+      await _refreshData();
+    }
   }
 
   Widget _card({
@@ -289,8 +423,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     IconButton.filledTonal(
-                      onPressed: () =>
-                          _showMessage('Cài đặt sẽ sớm được bổ sung'),
+                      onPressed: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      ),
                       icon: const Icon(Icons.settings_outlined),
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.white,
@@ -371,8 +508,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               icon: Icons.bedtime_rounded,
                               color: const Color(0xFF8B83D7),
                               label: 'Giấc ngủ',
-                              value: '—',
-                              unit: 'chưa có dữ liệu',
+                              value: _sleepHours == null
+                                  ? '—'
+                                  : _sleepHours!.toStringAsFixed(1),
+                              unit: 'giờ',
                             ),
                           ),
                         ],
@@ -385,21 +524,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         children: [
                           Expanded(
                             child: _metric(
-                              icon: Icons.water_drop_rounded,
-                              color: const Color(0xFF52A8D5),
-                              label: 'Oxy máu',
-                              value: '—',
-                              unit: 'chưa có dữ liệu',
+                              icon: Icons.monitor_heart_rounded,
+                              color: const Color(0xFF28A99A),
+                              label: 'Huyết áp',
+                              value: _bloodPressure,
+                              unit: _bloodPressure == '—' ? 'mmHg' : 'mmHg',
                             ),
                           ),
                           _metricDivider(),
                           Expanded(
                             child: _metric(
-                              icon: Icons.monitor_heart_rounded,
-                              color: const Color(0xFF28A99A),
-                              label: 'Huyết áp',
-                              value: '—',
-                              unit: 'chưa có dữ liệu',
+                              icon: Icons.water_drop_rounded,
+                              color: const Color(0xFF52A8D5),
+                              label: 'Đường huyết',
+                              value: _glucose == null
+                                  ? '—'
+                                  : _glucose!.toStringAsFixed(1),
+                              unit: 'mg/dL',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 15),
+                        child: Divider(height: 1, color: Color(0xFFEDF1F0)),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metric(
+                              icon: Icons.monitor_weight_outlined,
+                              color: const Color(0xFF438ED8),
+                              label: 'Cân nặng',
+                              value: _weight == null
+                                  ? '—'
+                                  : _weight!.toStringAsFixed(1),
+                              unit: 'kg',
+                            ),
+                          ),
+                          _metricDivider(),
+                          Expanded(
+                            child: _metric(
+                              icon: Icons.height_rounded,
+                              color: const Color(0xFF7D9B68),
+                              label: 'Chiều cao',
+                              value: _height == null
+                                  ? '—'
+                                  : _height!.toStringAsFixed(1),
+                              unit: 'cm',
                             ),
                           ),
                         ],
@@ -408,7 +580,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 23),
-                _sectionTitle('Hoạt động hôm nay', 'Mục tiêu hằng ngày'),
+                _sectionTitle('Hoạt động hôm nay', 'Từ các bản ghi gần nhất'),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -426,22 +598,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: _activityCard(
                         Icons.local_fire_department_rounded,
                         'Calo',
-                        _wearConnected ? _calories.toStringAsFixed(0) : '—',
+                        _calories > 0 ? _calories.toStringAsFixed(0) : '—',
                         'kcal',
                         const Color(0xFFE39A47),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _activityCard(
-                        Icons.directions_run_rounded,
-                        'Vận động',
-                        '—',
-                        'phút',
-                        const Color(0xFF7D9B68),
-                      ),
-                    ),
                   ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MedicalRecordsScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: const Text('Hồ sơ y tế & đơn thuốc'),
                 ),
                 const SizedBox(height: 23),
                 _sectionTitle('Xu hướng sức khỏe', 'Trong ngày'),
@@ -554,28 +726,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final saved = await Navigator.of(context).push<bool>(
-            MaterialPageRoute<bool>(
-              builder: (_) => QuickAddScreen(member: _member),
-            ),
-          );
-          if (saved == true && mounted) {
-            await _refreshData();
-            if (mounted) _showMessage('Đã lưu và cập nhật chỉ số sức khỏe.');
-          }
-        },
-        backgroundColor: _teal,
-        foregroundColor: Colors.white,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: const Icon(Icons.add_rounded, size: 30),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       bottomNavigationBar: MainNavigationWrapper(
         selectedIndex: _selectedTab,
         onSelected: _selectNavigationTab,
+        onQuickAdd: _openQuickAdd,
       ),
     );
   }
@@ -761,8 +915,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => switch (index) {
-          1 => HealthJournalScreen(initialMember: _member),
-          2 => AiAssistantScreen(initialMember: _member),
+          1 => HealthJournalScreen(
+            initialMember: _member,
+            initialProfileId: _profileId,
+          ),
+          2 => AiAssistantScreen(
+            initialMember: _member,
+            initialProfileId: _profileId,
+          ),
           _ => DevicesScreen(
             isWatchConnected: _wearConnected,
             pendingMeasurements: _pendingMeasurements.length,

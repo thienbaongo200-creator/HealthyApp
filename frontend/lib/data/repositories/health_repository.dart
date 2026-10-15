@@ -1,4 +1,5 @@
-import 'package:dio/dio.dart';
+import 'dart:developer' as developer;
+
 import '../../core/network/api_client.dart';
 
 class HealthRepository {
@@ -13,7 +14,7 @@ class HealthRepository {
       );
       return response.statusCode == 201;
     } catch (e) {
-      print("Lỗi gửi batch đo lường: $e");
+      developer.log('Lỗi gửi batch đo lường: $e', name: 'HealthRepository');
       return false;
     }
   }
@@ -26,7 +27,7 @@ class HealthRepository {
         return response.data;
       }
     } catch (e) {
-      print("Lỗi lấy dữ liệu đánh giá rủi ro AI: $e");
+      developer.log('Lỗi lấy dữ liệu đánh giá rủi ro AI: $e', name: 'HealthRepository');
     }
     return null;
   }

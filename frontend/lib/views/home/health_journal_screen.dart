@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/widgets/widgets.dart';
 import 'main_navigation_wrapper.dart';
+import 'quick_add_screen.dart';
 
 class HealthJournalScreen extends StatefulWidget {
-  const HealthJournalScreen({super.key, this.initialMember = 'Tôi'});
+  const HealthJournalScreen({
+    super.key,
+    this.initialMember = 'Tôi',
+    this.initialProfileId,
+  });
 
   final String initialMember;
+  final String? initialProfileId;
 
   @override
   State<HealthJournalScreen> createState() => _HealthJournalScreenState();
@@ -18,6 +24,9 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
 
   late DateTime _selectedDate;
   late String _selectedMember;
+  String? _profileId;
+  List<Map<String, dynamic>> _profiles = [];
+  String _selectedType = 'ALL';
   bool _isLoading = true;
   String? _error;
   int _loadRequestId = 0;
@@ -29,12 +38,13 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
     _selectedMember = widget.initialMember;
+    _profileId = widget.initialProfileId;
     _loadMeasurements();
   }
 
   Future<void> _loadMeasurements() async {
     final requestId = ++_loadRequestId;
-    if (_selectedMember != 'Tôi') {
+    if (_selectedMember != 'Tôi' && _profileId == null) {
       setState(() {
         _measurements = [];
         _error = null;
@@ -47,7 +57,9 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
       _error = null;
     });
     try {
-      final measurements = await ApiService.fetchHealthMeasurements();
+      final measurements = await ApiService.fetchHealthMeasurements(
+        profileId: _profileId,
+      );
       if (!mounted || requestId != _loadRequestId) return;
       setState(() {
         _measurements = measurements;
@@ -77,20 +89,30 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
         continue;
       }
       final type = record['measurement_type']?.toString();
+      if (_selectedType != 'ALL' && type != _selectedType) continue;
       num? number(dynamic raw) => raw is num ? raw : num.tryParse(raw?.toString() ?? '');
       final value = number(record['value']);
       final heartRate = number(record['heart_rate'] ?? (type == 'HEART_RATE' ? value : null))?.toInt();
       final steps = number(record['steps'] ?? (type == 'STEPS' ? value : null))?.toInt();
       final calories = number(record['calories'] ?? (type == 'CALORIES' ? value : null))?.toDouble();
       final detail = switch (type) {
+        'HEART_RATE' => 'Nhịp tim ${value?.toStringAsFixed(0) ?? '—'} bpm',
         'BLOOD_PRESSURE' => 'Huyết áp ${value?.toStringAsFixed(0) ?? '—'}/${number(record['value_secondary'])?.toStringAsFixed(0) ?? '—'} mmHg',
         'BLOOD_GLUCOSE' => 'Đường huyết ${value ?? '—'} ${record['unit'] ?? ''}',
         'WEIGHT' => 'Cân nặng ${value ?? '—'} ${record['unit'] ?? ''}',
         'HEIGHT' => 'Chiều cao ${value ?? '—'} ${record['unit'] ?? ''}',
         'TEMPERATURE' => 'Thân nhiệt ${value ?? '—'} ${record['unit'] ?? ''}',
+        'SLEEP' => 'Giấc ngủ ${value?.toStringAsFixed(1) ?? '—'} giờ',
+        'STEPS' => 'Hoạt động ${value?.toStringAsFixed(0) ?? '—'} bước',
+        'CALORIES' => 'Năng lượng ${value?.toStringAsFixed(0) ?? '—'} kcal',
         _ => null,
       };
-      if (heartRate == null && steps == null && calories == null && detail == null) continue;
+      if (heartRate == null &&
+          steps == null &&
+          calories == null &&
+          detail == null) {
+        continue;
+      }
       entries.add(_JournalEntry(
         measuredAt: measuredAt,
         heartRate: heartRate,
@@ -120,7 +142,20 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   }
 
   Future<void> _chooseMember() async {
-    final member = await showModalBottomSheet<String>(
+    if (_profiles.isEmpty) {
+      try {
+        _profiles = await ApiService.fetchProfiles();
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Không thể tải hồ sơ: $error')),
+          );
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
+    final profileId = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
@@ -128,22 +163,38 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const ListTile(title: Text('Chọn thành viên')),
-            for (final name in ['Tôi', 'Bố', 'Mẹ'])
+            for (final profile in _profiles)
               ListTile(
                 leading: const Icon(Icons.person_outline),
-                title: Text(name),
-                trailing: name == _selectedMember
+                title: Text(
+                  profile['profile_type'] == 'SELF'
+                      ? 'Tôi'
+                      : profile['full_name']?.toString() ?? 'Thành viên',
+                ),
+                trailing: profile['id']?.toString() == _profileId
                     ? const Icon(Icons.check, color: _teal)
                     : null,
-                onTap: () => Navigator.pop(sheetContext, name),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  profile['id']?.toString(),
+                ),
               ),
             const SizedBox(height: 10),
           ],
         ),
       ),
     );
-    if (member != null && mounted && member != _selectedMember) {
-      setState(() => _selectedMember = member);
+    if (profileId != null && mounted && profileId != _profileId) {
+      final profile = _profiles
+          .where((item) => item['id']?.toString() == profileId)
+          .firstOrNull;
+      if (profile == null) return;
+      setState(() {
+        _profileId = profileId;
+        _selectedMember = profile['profile_type'] == 'SELF'
+            ? 'Tôi'
+            : profile['full_name']?.toString() ?? 'Thành viên';
+      });
       await _loadMeasurements();
     }
   }
@@ -153,6 +204,18 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
 
   String _timeLabel(DateTime date) =>
       '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _openQuickAdd() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => QuickAddScreen(
+          member: _selectedMember,
+          profileId: _profileId,
+        ),
+      ),
+    );
+    if (saved == true && mounted) await _loadMeasurements();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -199,6 +262,33 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedType,
+                  decoration: InputDecoration(
+                    labelText: 'Lọc theo loại chỉ số',
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: .82),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text('Tất cả chỉ số')),
+                    DropdownMenuItem(value: 'HEART_RATE', child: Text('Nhịp tim')),
+                    DropdownMenuItem(value: 'BLOOD_PRESSURE', child: Text('Huyết áp')),
+                    DropdownMenuItem(value: 'BLOOD_GLUCOSE', child: Text('Đường huyết')),
+                    DropdownMenuItem(value: 'SLEEP', child: Text('Giấc ngủ')),
+                    DropdownMenuItem(value: 'WEIGHT', child: Text('Cân nặng')),
+                    DropdownMenuItem(value: 'HEIGHT', child: Text('Chiều cao')),
+                    DropdownMenuItem(value: 'TEMPERATURE', child: Text('Thân nhiệt')),
+                    DropdownMenuItem(value: 'STEPS', child: Text('Bước đi')),
+                    DropdownMenuItem(value: 'CALORIES', child: Text('Năng lượng')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => _selectedType = value);
+                  },
                 ),
                 const SizedBox(height: 14),
                 GlassCard(
@@ -279,15 +369,13 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: MainNavigationWrapper(selectedIndex: 1, onSelected: (index) { if (index == 0) Navigator.pop(context); }),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showMessage('Ghi nhận chỉ số sẽ sớm được bổ sung.'),
-        backgroundColor: _teal,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: const Icon(Icons.add_rounded, size: 30),
+      bottomNavigationBar: MainNavigationWrapper(
+        selectedIndex: 1,
+        onSelected: (index) {
+          if (index == 0) Navigator.pop(context);
+        },
+        onQuickAdd: _openQuickAdd,
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -487,11 +575,6 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
         ),
       );
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
 }
 
 class _JournalEntry {

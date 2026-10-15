@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'main_navigation_wrapper.dart';
+import 'quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 class DevicesScreen extends StatefulWidget {
@@ -324,15 +325,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
           if (index == 0) Navigator.pop(context);
           if (index == 1 || index == 2) _showMessage(index == 1 ? 'Nhật ký' : 'Tư vấn');
         },
+        onQuickAdd: _openQuickAdd,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showMessage('Ghi nhận chỉ số sẽ sớm được bổ sung.'),
-        backgroundColor: _teal,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: const Icon(Icons.add_rounded, size: 30),
+    );
+  }
+
+  Future<void> _openQuickAdd() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => const QuickAddScreen(),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 

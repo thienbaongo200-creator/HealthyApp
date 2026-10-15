@@ -3,12 +3,25 @@ import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/widgets/widgets.dart';
 
-enum _MetricType { bloodPressure, heartRate, weight, glucose, temperature, height }
+enum _MetricType {
+  bloodPressure,
+  heartRate,
+  glucose,
+  sleep,
+  weight,
+  height,
+  temperature,
+}
 
 class QuickAddScreen extends StatefulWidget {
-  const QuickAddScreen({super.key, this.member = 'Tôi'});
+  const QuickAddScreen({
+    super.key,
+    this.member = 'Tôi',
+    this.profileId,
+  });
 
   final String member;
+  final String? profileId;
 
   @override
   State<QuickAddScreen> createState() => _QuickAddScreenState();
@@ -27,6 +40,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
   final _glucoseController = TextEditingController();
   final _temperatureController = TextEditingController();
   final _heightController = TextEditingController();
+  final _sleepController = TextEditingController();
   final _noteController = TextEditingController();
 
   _MetricType _selectedType = _MetricType.bloodPressure;
@@ -42,6 +56,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     _glucoseController.dispose();
     _temperatureController.dispose();
     _heightController.dispose();
+    _sleepController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -51,6 +66,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
         _MetricType.heartRate => 'Nhịp tim',
         _MetricType.weight => 'Cân nặng',
         _MetricType.glucose => 'Đường huyết',
+        _MetricType.sleep => 'Giấc ngủ',
         _MetricType.temperature => 'Thân nhiệt',
         _MetricType.height => 'Chiều cao',
       };
@@ -60,6 +76,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
         _MetricType.heartRate => Icons.favorite_border_rounded,
         _MetricType.weight => Icons.monitor_weight_outlined,
         _MetricType.glucose => Icons.water_drop_outlined,
+        _MetricType.sleep => Icons.bedtime_outlined,
         _MetricType.temperature => Icons.thermostat_rounded,
         _MetricType.height => Icons.height_rounded,
       };
@@ -195,6 +212,16 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
               hint: 'Ví dụ: 95',
             ),
           ],
+          _MetricType.sleep => [
+              _numberField(
+                controller: _sleepController,
+                label: 'Thời lượng ngủ',
+                unit: 'giờ',
+                min: 0,
+                max: 24,
+                hint: 'Ví dụ: 7.5',
+              ),
+            ],
         _MetricType.temperature => [
             _numberField(
               controller: _temperatureController,
@@ -233,6 +260,9 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       _MetricType.glucose => {
           'glucose_mg_dl': double.parse(normalized(_glucoseController)),
         },
+      _MetricType.sleep => {
+          'sleep_hours': double.parse(normalized(_sleepController)),
+        },
       _MetricType.temperature => {
           'temperature_c': double.parse(normalized(_temperatureController)),
         },
@@ -261,7 +291,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
         records.add({
           'measurement_type': type,
           'value': value,
-          if (secondary != null) 'value_secondary': secondary,
+          'value_secondary': ?secondary,
           'unit': unit,
           'measured_at': measuredAt,
           'source': 'MANUAL',
@@ -282,6 +312,9 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
         case _MetricType.glucose:
           add('BLOOD_GLUCOSE', values['glucose_mg_dl'] as num, 'mg/dL');
           break;
+        case _MetricType.sleep:
+          add('SLEEP', values['sleep_hours'] as num, 'h');
+          break;
         case _MetricType.temperature:
           add('TEMPERATURE', values['temperature_c'] as num, '°C');
           break;
@@ -289,7 +322,10 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
           add('HEIGHT', values['height_cm'] as num, 'cm');
           break;
       }
-      await ApiService.createManualMeasurements(records);
+      await ApiService.createManualMeasurements(
+        records,
+        profileId: widget.profileId,
+      );
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {

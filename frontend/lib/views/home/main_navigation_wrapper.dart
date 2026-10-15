@@ -6,11 +6,13 @@ class MainNavigationWrapper extends StatelessWidget {
   const MainNavigationWrapper({
     required this.selectedIndex,
     required this.onSelected,
+    required this.onQuickAdd,
     super.key,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final VoidCallback onQuickAdd;
 
   static const _items = <(IconData, String)>[
     (Icons.home_rounded, 'Trang chủ'),
@@ -30,7 +32,7 @@ class MainNavigationWrapper extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 9, sigmaY: 9),
           child: Container(
-            height: 66,
+            height: 72,
             decoration: BoxDecoration(
               color: colors.surface.withValues(alpha: .72),
               borderRadius: BorderRadius.circular(24),
@@ -38,7 +40,17 @@ class MainNavigationWrapper extends StatelessWidget {
             ),
             child: Row(
               children: [
-                for (var i = 0; i < _items.length; i++)
+                for (var i = 0; i < 2; i++)
+                  Expanded(
+                    child: _NavigationItem(
+                      icon: _items[i].$1,
+                      label: _items[i].$2,
+                      selected: i == selectedIndex,
+                      onTap: () => onSelected(i),
+                    ),
+                  ),
+                Expanded(child: _QuickAddNavigationItem(onTap: onQuickAdd)),
+                for (var i = 2; i < _items.length; i++)
                   Expanded(
                     child: _NavigationItem(
                       icon: _items[i].$1,
@@ -54,6 +66,26 @@ class MainNavigationWrapper extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuickAddNavigationItem extends StatelessWidget {
+    const _QuickAddNavigationItem({required this.onTap});
+
+    final VoidCallback onTap;
+
+    @override
+    Widget build(BuildContext context) => Center(
+      child: IconButton.filled(
+        onPressed: onTap,
+        tooltip: 'Thêm chỉ số',
+        icon: const Icon(Icons.add_rounded),
+        style: IconButton.styleFrom(
+          backgroundColor: const Color(0xFF168B83),
+          foregroundColor: Colors.white,
+          minimumSize: const Size(44, 44),
+        ),
+      ),
+    );
 }
 
 class _NavigationItem extends StatelessWidget {

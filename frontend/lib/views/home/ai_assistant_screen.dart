@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'main_navigation_wrapper.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/ai_service.dart';
 import 'package:frontend/views/home/quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 class AiAssistantScreen extends StatefulWidget {
-  const AiAssistantScreen({super.key, this.initialMember = 'Tôi'});
+  const AiAssistantScreen({
+    super.key,
+    this.initialMember = 'Tôi',
+    this.initialProfileId,
+  });
 
   final String initialMember;
+  final String? initialProfileId;
 
   @override
   State<AiAssistantScreen> createState() => _AiAssistantScreenState();
@@ -29,6 +35,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   late String _selectedMember;
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final AiApiService _aiApiService = AiApiService();
   final List<_ChatMessage> _messages = [
     _ChatMessage(
       text:
@@ -39,11 +46,22 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   ];
 
   bool _isAnalyzing = false;
+  bool _isSendingChat = false;
+  bool _isLoadingChatProfile = true;
+  String? _chatProfileId;
+  String? _chatProfileError;
+  String? _conversationId;
+  bool _profileSelectionChanged = false;
+  int _profileLoadRequest = 0;
   bool _analysisLoaded = false;
   String? _analysisError;
   int? _measurementsInPeriod;
   int? _peakHeartRate;
   DateTime? _peakHeartRateAt;
+  String? _riskLevel;
+  List<String> _riskWarnings = [];
+  String? _riskRecommendation;
+  int? _riskAnalyzedCount;
 
   @override
   void initState() {
@@ -53,6 +71,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         : widget.initialMember;
     _tabController = TabController(length: 2, vsync: this)
       ..addListener(_onTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadChatProfile());
   }
 
   void _onTabChanged() {
@@ -70,8 +89,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   }
 
   Future<void> _analyzeNow() async {
-    if (_selectedMember != _self) {
-      _showMessage('API hiện chỉ tải dữ liệu của tài khoản đang đăng nhập.');
+    if (_chatProfileId == null) {
+      _showMessage('Hồ sơ đang xem chưa sẵn sàng.');
       return;
     }
     setState(() {
@@ -79,14 +98,22 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       _analysisError = null;
     });
     try {
-      final allMeasurements = await ApiService.fetchHealthMeasurements();
+      final risk = await _aiApiService.assessRisk(profileId: _chatProfileId!);
+      final allMeasurements = await ApiService.fetchHealthMeasurements(
+        profileId: _chatProfileId,
+      );
       final cutoff = DateTime.now().subtract(const Duration(days: 7));
       final recent = <({DateTime measuredAt, int heartRate})>[];
       for (final item in allMeasurements) {
         final measuredAt = DateTime.tryParse(
           item['measured_at']?.toString() ?? '',
         )?.toLocal();
-        final heartRate = (item['heart_rate'] as num?)?.toInt();
+        final rawHeartRate = item['measurement_type'] == 'HEART_RATE'
+            ? item['value']
+            : item['heart_rate'];
+        final heartRate = rawHeartRate is num
+            ? rawHeartRate.toInt()
+            : int.tryParse(rawHeartRate?.toString() ?? '');
         if (measuredAt == null ||
             measuredAt.isBefore(cutoff) ||
             heartRate == null) {
@@ -101,62 +128,180 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         _measurementsInPeriod = recent.length;
         _peakHeartRate = recent.isEmpty ? null : recent.first.heartRate;
         _peakHeartRateAt = recent.isEmpty ? null : recent.first.measuredAt;
+        _riskLevel = risk['risk_level']?.toString();
+        _riskAnalyzedCount = (risk['analyzed_count'] as num?)?.toInt();
+        _riskWarnings = (risk['warnings'] as List<dynamic>? ?? const [])
+            .map((warning) => warning.toString())
+            .toList(growable: false);
+        _riskRecommendation = risk['recommendation']?.toString();
         _isAnalyzing = false;
       });
       _showMessage(
-        'Đã tải ${recent.length} bản ghi nhịp tim trong 7 ngày gần nhất.',
+        'Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất.',
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _analysisError =
-            'Không thể tải dữ liệu. Hãy kiểm tra kết nối và thử lại.';
+        _analysisError = error.toString().contains('403')
+            ? 'Hãy bật đồng ý phân tích AI trong Cài đặt để tiếp tục.'
+            : 'Không thể tải đánh giá nguy cơ. Hãy kiểm tra kết nối và thử lại.';
         _isAnalyzing = false;
       });
     }
   }
 
   Future<void> _selectMember(String member) async {
-    setState(() => _selectedMember = member);
-    if (member != _self) {
-      setState(() {
-        _analysisLoaded = false;
-        _measurementsInPeriod = null;
-        _peakHeartRate = null;
-        _peakHeartRateAt = null;
-      });
+    _profileSelectionChanged = true;
+    setState(() {
+      _selectedMember = member;
+      _chatProfileId = null;
+      _conversationId = null;
+      _messages.removeWhere((message) => message.isUser);
+      _messages.removeRange(1, _messages.length);
+    });
+    await _loadChatProfile();
+    setState(() {
+      _analysisLoaded = false;
+      _measurementsInPeriod = null;
+      _peakHeartRate = null;
+      _peakHeartRateAt = null;
+      _riskLevel = null;
+      _riskWarnings = [];
+      _riskRecommendation = null;
+      _riskAnalyzedCount = null;
+    });
+  }
+
+  Future<void> _loadChatProfile() async {
+    final requestId = ++_profileLoadRequest;
+    setState(() {
+      _isLoadingChatProfile = true;
+      _chatProfileError = null;
+    });
+    try {
+      final profiles = await _aiApiService.fetchProfiles();
+      if (!mounted || requestId != _profileLoadRequest) return;
+      final initialProfileId =
+          !_profileSelectionChanged && widget.initialProfileId != null
+          ? widget.initialProfileId
+          : null;
+      final profile = initialProfileId != null
+          ? profiles
+                .where((item) => item['id']?.toString() == initialProfileId)
+                .firstOrNull
+          : _selectedMember == _self
+          ? profiles.where((item) => item['profile_type'] == 'SELF').firstOrNull
+          : profiles
+                .where(
+                  (item) =>
+                      item['full_name']?.toString().trim().toLowerCase() ==
+                      _selectedMember.trim().toLowerCase(),
+                )
+                .firstOrNull;
+      if (profile == null || profile['id'] == null) {
+        throw Exception(
+          'Không tìm thấy hồ sơ "$_selectedMember". Vui lòng chọn thành viên có hồ sơ đã tạo.',
+        );
+      }
+      if (!mounted || requestId != _profileLoadRequest) return;
+      setState(() => _chatProfileId = profile['id'].toString());
+    } catch (error) {
+      if (!mounted || requestId != _profileLoadRequest) return;
+      setState(
+        () => _chatProfileError = error.toString().replaceFirst(
+          'Exception: ',
+          '',
+        ),
+      );
+    } finally {
+      if (mounted && requestId == _profileLoadRequest) {
+        setState(() => _isLoadingChatProfile = false);
+      }
     }
   }
 
   String _timeLabel(DateTime date) =>
       '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
-  void _sendMessage([String? suggestedQuestion]) {
+  String get _riskLabel => switch (_riskLevel) {
+    'HIGH' => 'Cao',
+    'MEDIUM' => 'Trung bình',
+    'LOW' => 'Thấp',
+    _ => 'Chưa đủ dữ liệu',
+  };
+
+  Color get _riskColor => switch (_riskLevel) {
+    'HIGH' => const Color(0xFFB64B4B),
+    'MEDIUM' => const Color(0xFF966A22),
+    'LOW' => const Color(0xFF348250),
+    _ => const Color(0xFF687875),
+  };
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _sendMessage([String? suggestedQuestion]) async {
     final text = (suggestedQuestion ?? _messageController.text).trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isSendingChat) return;
+    if (_isLoadingChatProfile || _chatProfileId == null) {
+      _showMessage(
+        _chatProfileError ??
+            'Đang tải hồ sơ hoặc hồ sơ được chọn chưa sẵn sàng.',
+      );
+      return;
+    }
     HapticFeedback.selectionClick();
     setState(() {
-      _messages
-        ..add(_ChatMessage(text: text, isUser: true, sentAt: DateTime.now()))
-        ..add(
+      _messages.add(
+        _ChatMessage(text: text, isUser: true, sentAt: DateTime.now()),
+      );
+      _isSendingChat = true;
+    });
+    _messageController.clear();
+    _scrollToBottom();
+    try {
+      final response = await _aiApiService.sendMessage(
+        profileId: _chatProfileId!,
+        message: text,
+        conversationId: _conversationId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _conversationId = response['conversation_id']?.toString();
+        _messages.add(
           _ChatMessage(
             text:
-                'Trợ lý AI chưa được kết nối với mô hình xử lý. Đây là bản xem trước giao diện nên mình chưa thể phân tích câu hỏi hoặc đưa ra tư vấn cá nhân. Hãy trao đổi với nhân viên y tế khi cần hướng dẫn phù hợp.',
+                response['reply']?.toString() ?? 'Trợ lý chưa trả về nội dung.',
             isUser: false,
             sentAt: DateTime.now(),
           ),
         );
-    });
-    _messageController.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _messages.add(
+          _ChatMessage(
+            text: 'Không gửi được tin nhắn. $error',
+            isUser: false,
+            sentAt: DateTime.now(),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingChat = false);
+        _scrollToBottom();
       }
-    });
+    }
   }
 
   void _showMessage(String message) {
@@ -295,28 +440,23 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                   _showMessage(index == 1 ? 'Nhật ký' : 'Thiết bị');
                 }
               },
+              onQuickAdd: _openQuickAdd,
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final saved = await Navigator.of(context).push<bool>(
-            MaterialPageRoute<bool>(
-              builder: (_) => QuickAddScreen(member: _selectedMember),
-            ),
-          );
-          if (saved == true && mounted) {
-            _showMessage('Bản ghi đã được lưu trên thiết bị.');
-          }
-        },
-        backgroundColor: _teal,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: const Icon(Icons.add_rounded, size: 30),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
+  }
+
+  Future<void> _openQuickAdd() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => QuickAddScreen(member: _selectedMember),
+      ),
+    );
+    if (saved == true && mounted) {
+      await _analyzeNow();
+    }
   }
 
   Widget _riskTab() => RefreshIndicator(
@@ -364,29 +504,49 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 ),
               ),
             ),
-            _sampleBadge(),
+            TextButton.icon(
+              onPressed: _isAnalyzing ? null : _analyzeNow,
+              icon: _isAnalyzing
+                  ? const SizedBox.square(
+                      dimension: 15,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded, size: 17),
+              label: const Text('Phân tích'),
+            ),
           ],
         ),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F5EB),
+            color: switch (_riskLevel) {
+              'HIGH' => const Color(0xFFFCE8E8),
+              'MEDIUM' => const Color(0xFFFFF4DF),
+              'LOW' => const Color(0xFFE8F5EB),
+              _ => const Color(0xFFF0F3F2),
+            },
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(
-                Icons.check_circle_rounded,
-                color: Color(0xFF348250),
+                _riskLevel == 'HIGH'
+                    ? Icons.error_outline_rounded
+                    : _riskLevel == 'UNKNOWN'
+                    ? Icons.help_outline_rounded
+                    : Icons.check_circle_rounded,
+                color: _riskColor,
                 size: 19,
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'NGUY CƠ TIM MẠCH: THẤP',
+                  _analysisLoaded
+                      ? 'MỨC SÀNG LỌC: ${_riskLabel.toUpperCase()}'
+                      : 'CHƯA CÓ ĐÁNH GIÁ',
                   style: TextStyle(
-                    color: Color(0xFF348250),
+                    color: _riskColor,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -398,14 +558,40 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         const SizedBox(height: 12),
         Text(
           _analysisLoaded
-              ? 'Đã tải ${_measurementsInPeriod ?? 0} bản ghi nhịp tim trong 7 ngày. API chưa có mô hình đánh giá nguy cơ.'
-              : 'Dựa trên 14 chỉ số trong 7 ngày qua. Trạng thái ổn định.',
+              ? 'Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất; ${_measurementsInPeriod ?? 0} lần đo nhịp tim trong 7 ngày.'
+              : 'Chạy phân tích để tải đánh giá từ dữ liệu của hồ sơ đang chọn.',
           style: const TextStyle(
             color: Color(0xFF687875),
             fontSize: 12,
             height: 1.45,
           ),
         ),
+        if (_riskWarnings.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          for (final warning in _riskWarnings)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '• $warning',
+                style: const TextStyle(
+                  color: Color(0xFF687875),
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+        ],
+        if (_riskRecommendation != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            _riskRecommendation!,
+            style: const TextStyle(
+              color: Color(0xFF687875),
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+        ],
         if (_analysisError != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -415,7 +601,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         ],
         const SizedBox(height: 10),
         const Text(
-          'Mức “Thấp” và mô tả ban đầu là nội dung mẫu theo wireframe, chưa phải kết quả y tế cá nhân.',
+          'Đây là sàng lọc theo ngưỡng quy tắc đơn giản, không phải chẩn đoán y khoa.',
           style: TextStyle(color: Color(0xFF8A9693), fontSize: 10, height: 1.4),
         ),
       ],
@@ -423,21 +609,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   );
 
   Widget _systemWarningCard() {
-    final hasHighHeartRate =
-        _analysisLoaded && _peakHeartRate != null && _peakHeartRate! > 120;
-    final hasMeasurements = _analysisLoaded && _measurementsInPeriod != 0;
-    final title = hasHighHeartRate
-        ? 'Nhịp tim cao nhất: $_peakHeartRate bpm'
-        : _analysisLoaded && hasMeasurements
-        ? 'Chưa thấy nhịp tim vượt ngưỡng minh họa'
-        : 'Nhịp tim vượt ngưỡng';
-    final detail = hasHighHeartRate
-        ? 'Ghi nhận lúc ${_timeLabel(_peakHeartRateAt!)} trong dữ liệu đã tải.'
-        : _analysisLoaded
-        ? (_measurementsInPeriod == 0
-              ? 'Chưa có bản ghi nhịp tim trong 7 ngày gần nhất.'
-              : 'Không ghi nhận nhịp tim trên 120 bpm trong 7 ngày gần nhất.')
-        : 'Ví dụ wireframe: phát hiện 135 bpm lúc 14:20.';
+    final warning = _riskWarnings.firstOrNull;
+    final title = !_analysisLoaded
+        ? 'Chưa chạy đánh giá nguy cơ'
+        : warning ?? 'Không có cảnh báo theo các ngưỡng đã kiểm tra';
+    final detail = _analysisLoaded
+        ? [
+            if (_peakHeartRate != null)
+              'Nhịp tim cao nhất trong 7 ngày: $_peakHeartRate bpm lúc ${_timeLabel(_peakHeartRateAt!)}.',
+            _riskRecommendation ?? 'Chưa có đề xuất bổ sung từ hệ thống.',
+          ].join(' ')
+        : 'Chọn “Phân tích” để yêu cầu backend đánh giá hồ sơ này.';
 
     return GlassCard(
       padding: const EdgeInsets.all(18),
@@ -457,10 +639,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                hasHighHeartRate || !_analysisLoaded
+                _riskLevel == 'HIGH'
                     ? Icons.warning_rounded
-                    : Icons.check_circle_outline_rounded,
-                color: hasHighHeartRate || !_analysisLoaded
+                    : _analysisLoaded
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.info_outline_rounded,
+                color: _riskLevel == 'HIGH'
                     ? const Color(0xFFD75858)
                     : const Color(0xFF46916A),
                 size: 21,
@@ -470,21 +654,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              color: _ink,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        _sampleBadge(compact: true),
-                      ],
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -494,20 +670,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                         fontSize: 12,
                         height: 1.4,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Gợi ý: nghỉ ngơi và tránh vận động gắng sức đột ngột. Nếu có triệu chứng đáng lo ngại, hãy liên hệ nhân viên y tế.',
-                      style: TextStyle(
-                        color: Color(0xFF687875),
-                        fontSize: 11,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Ngưỡng 120 bpm ở đây chỉ dùng minh họa cho quy tắc giao diện, không phải ngưỡng chẩn đoán.',
-                      style: TextStyle(color: Color(0xFF8A9693), fontSize: 10),
                     ),
                   ],
                 ),
@@ -524,20 +686,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'NHẬN ĐỊNH CHUYÊN SÂU TỪ TRỢ LÝ AI',
-                style: TextStyle(
-                  color: _ink,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            _sampleBadge(),
-          ],
+        const Text(
+          'NHẬN ĐỊNH TỪ HỆ THỐNG',
+          style: TextStyle(
+            color: _ink,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 13),
         Container(
@@ -548,13 +703,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             borderRadius: BorderRadius.circular(14),
             border: const Border(left: BorderSide(color: _teal, width: 3)),
           ),
-          child: const Text(
-            '“Chào Bảo, hệ thống ghi nhận nhịp sinh học tuần qua khá tốt, ngoại trừ chiều thứ Ba có hiện tượng nhịp tim tăng vọt do vận động...”',
-            style: TextStyle(
+          child: Text(
+            _analysisLoaded
+                ? (_riskWarnings.isEmpty
+                      ? _riskRecommendation ??
+                            'Chưa có nhận định bổ sung từ hệ thống.'
+                      : _riskWarnings.join(' '))
+                : 'Chưa có dữ liệu phân tích. Hãy tải đánh giá nguy cơ cho hồ sơ đang chọn.',
+            style: const TextStyle(
               color: _ink,
               fontSize: 12,
               height: 1.55,
-              fontStyle: FontStyle.italic,
             ),
           ),
         ),
@@ -566,7 +725,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Nội dung AI mẫu theo wireframe, chưa được sinh từ dữ liệu của bạn.',
+                'Đây là hệ thống quy tắc sàng lọc nội bộ, chưa kết nối mô hình AI tạo sinh. Thông tin chỉ tham khảo, không thay thế chẩn đoán y tế.',
                 style: TextStyle(
                   color: Color(0xFF8A9693),
                   fontSize: 10,
@@ -576,31 +735,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        const Text(
-          '⚠️ Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán y tế.',
-          style: TextStyle(color: Color(0xFF8A9693), fontSize: 10, height: 1.4),
-        ),
       ],
-    ),
-  );
-
-  Widget _sampleBadge({bool compact = false}) => Container(
-    padding: EdgeInsets.symmetric(
-      horizontal: compact ? 6 : 8,
-      vertical: compact ? 4 : 5,
-    ),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFFF4DF),
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      compact ? 'MẪU' : 'MINH HỌA',
-      style: const TextStyle(
-        color: Color(0xFF966A22),
-        fontSize: 8,
-        fontWeight: FontWeight.w800,
-      ),
     ),
   );
 
@@ -613,14 +748,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           children: [
             GlassCard(
               padding: const EdgeInsets.all(13),
-              child: const Row(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.info_outline, color: _teal, size: 18),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Khung chat đang ở chế độ xem trước. Mô hình AI chưa được kết nối.',
+                      _chatProfileError ??
+                          (_isLoadingChatProfile
+                              ? 'Đang tải hồ sơ để kết nối trợ lý AI...'
+                              : 'Tin nhắn sẽ được phân tích theo dữ liệu sức khỏe của hồ sơ đang chọn.'),
                       style: TextStyle(
                         color: Color(0xFF687875),
                         fontSize: 11,
@@ -633,6 +771,21 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             ),
             const SizedBox(height: 14),
             for (final message in _messages) _messageBubble(message),
+            if (_isSendingChat)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _teal,
+                    ),
+                  ),
+                ),
+              ),
             if (_messages.length == 1) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(2, 8, 2, 8),
@@ -755,7 +908,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             minLines: 1,
             maxLines: 4,
             textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _sendMessage(),
+            onSubmitted: _isSendingChat ? null : (_) => _sendMessage(),
             decoration: InputDecoration(
               hintText: 'Nhập câu hỏi sức khỏe...',
               filled: true,
@@ -781,7 +934,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         ),
         const SizedBox(width: 9),
         IconButton.filled(
-          onPressed: _sendMessage,
+          onPressed: _isSendingChat ? null : _sendMessage,
           icon: const Icon(Icons.send_rounded, size: 19),
           style: IconButton.styleFrom(
             backgroundColor: _teal,
@@ -793,8 +946,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       ],
     ),
   );
-
-
 }
 
 class _ChatMessage {
