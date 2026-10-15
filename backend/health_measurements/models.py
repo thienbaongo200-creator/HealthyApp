@@ -11,6 +11,9 @@ class HealthMeasurement(models.Model):
         ('BMI', 'BMI'),
         ('STEPS', 'Steps'),
         ('CALORIES', 'Calories'),
+        ('WEIGHT', 'Weight'),
+        ('HEIGHT', 'Height'),
+        ('TEMPERATURE', 'Temperature'),
     )
     SOURCE_CHOICES = (
         ('MANUAL', 'Manual'),
