@@ -28,6 +28,7 @@ db.sqlite3
 *.log
 local_settings.py
 media/
+backend/private_uploads/
 staticfiles/
 
 # Python packaging

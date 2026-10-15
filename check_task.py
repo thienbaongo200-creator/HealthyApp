@@ -45,9 +45,9 @@ def scan_project_source():
           file_path = os.path.join(root, file)
           content = read_file_safe(file_path)
           if content:
-            # Giới hạn ký tự mỗi file để tập trung vào logic cốt lõi và tiết kiệm token
+            # Lấy nội dung sâu hơn để AI có đủ ngữ cảnh kiểm tra logic
             source_summary += (
-                f"\n--- FILE: {file_path} ---\n{content[:1500]}\n"
+                f"\n--- FILE: {file_path} ---\n{content[:2500]}\n"
             )
 
   return source_summary
@@ -57,7 +57,10 @@ def read_checklist():
   """Đọc file CHECKLIST.md hiện tại trong dự án"""
   if os.path.exists("CHECKLIST.md"):
     return read_file_safe("CHECKLIST.md")
-  return "# CHECKLIST ĐỒ ÁN HEALTHYAPP\n- [ ] Chưa khởi tạo checklist"
+  return (
+      "# CHECKLIST ĐỒ ÁN HEALTHYAPP\n- [ ] Chưa khởi tạo checklist\n- [~] Đã có"
+      " một phần, cần sửa/bổ sung/kiểm thử\n- [x] Đạt DoD và có test/bằng chứng"
+  )
 
 
 def update_checklist_file(new_checklist_content):
@@ -78,42 +81,48 @@ def main():
   # 2. Đọc checklist hiện tại
   current_checklist = read_checklist()
 
-  print("🤖 Đang gọi Gemini AI để phân tích code và cập nhật CHECKLIST.md...")
+  print(
+      "🤖 Đang gọi Gemini AI để phân tích thực tế và cập nhật CHECKLIST.md theo"
+      " thang đo 3 mức..."
+  )
 
-  # 3. Khởi tạo client Gemini (Tự động nhận API key từ biến môi trường GEMINI_API_KEY)
+  # 3. Khởi tạo client Gemini
   client = genai.Client()
 
-  # 4. Xây dựng Prompt phân tích và cập nhật checklist
+  # 4. Xây dựng Prompt siết chặt quy tắc đánh giá dựa trên thang đo của bạn
   prompt = f"""
-    Bạn là trợ lý kỹ thuật AI chuyên quản lý đồ án CNTT cho dự án HealthyApp.
+    Bạn là trợ lý kỹ thuật AI kiểm tra đồ án khắt khe cho dự án HealthyApp.
     
     === TÓM TẮT ĐẶC TẢ KỸ THUẬT (CHƯƠNG 2) ===
-    - 8 Module Backend: Authentication, Profile, Household, Medical Record, Health Measurement, Wear Sync, AI Insight, AI Chat.
-    - Các quy tắc cốt lõi bắt buộc: 
-      + BR01: Xác thực JWT (Access/Refresh token, Redis Blacklist).
-      + BR05: Phân quyền RBAC (OWNER, MEMBER, CAREGIVER) và chống IDOR qua Permission class.
-      + BR07 & BR08: Chống ghi trùng bằng `idempotency_key` (Redis + UNIQUE constraint PostgreSQL).
-      + BR10 & BR12: AI Consent hợp lệ và cơ chế Fallback về Rule-based Engine khi AI lỗi.
+    - 8 Module: Authentication, Profile, Household, Medical Record, Health Measurement, Wear Sync, AI Insight, AI Chat.
+    - Các quy tắc cốt lõi bắt buộc kiểm chứng:
+      + BR01: Cấu hình JWT (Access/Refresh token, Redis Blacklist).
+      + BR05: Custom Permission class check RBAC và chống IDOR.
+      + BR07 & BR08: Xử lý `idempotency_key` (Redis + UNIQUE constraint PostgreSQL).
+      + BR10 & BR12: Kiểm tra `ai_consent` và cơ chế Fallback về Rule-based Engine.
 
-    === TOÀN BỘ MÃ NGUỒN HIỆN TẠI TRONG DỰ ÁN ===
+    === THANG ĐO TRẠNG THÁI CHECKLIST BẮT BUỘC SỬ DỤNG ===
+    - `[ ]`: Chưa thực hiện (Không tìm thấy code triển khai).
+    - `[~]`: Đã có một phần, cần sửa/bổ sung/kiểm thử (Mã nguồn mới viết khung, thiếu logic bảo mật hoặc chưa hoàn thiện theo Chương 2).
+    - `[x]`: Đạt DoD và có test/bằng chứng (Đã triển khai hoàn chỉnh logic, đúng chuẩn thiết kế kỹ thuật).
+
+    === TOÀN BỘ MÃ NGUỒN THỰC TẾ TRONG DỰ ÁN ===
     {code_context}
 
     === FILE CHECKLIST.md HIỆN TẠI ===
     {current_checklist}
 
-    === NHIỆM VỤ ===
-    1. So sánh mã nguồn thực tế với các yêu cầu kỹ thuật tại Chương 2.
-    2. Cập nhật file `CHECKLIST.md`: Chuyển đổi trạng thái từ `[ ]` sang `[x]` đối với các task/chức năng mà mã nguồn thực tế **đã triển khai hoàn chỉnh**. Giữ nguyên `[ ]` hoặc thêm ghi chú ngắn nếu chưa làm.
-    3. ĐẦU RA YÊU CẦU: Chỉ trả về **đúng toàn bộ nội dung Markdown hoàn chỉnh của file CHECKLIST.md mới**. Tuyệt đối không bao quanh bằng các thẻ giải thích ngoài văn bản markdown để script có thể ghi file trực tiếp.
+    === NHIỆM VỤ ĐÁNH GIÁ ===
+    1. So sánh mã nguồn thực tế với yêu cầu kỹ thuật Chương 2 một cách khách quan.
+    2. Cập nhật trạng thái các mục trong file `CHECKLIST.md` sử dụng đúng 3 ký hiệu `[ ]`, `[~]`, `[x]` dựa trên mức độ hoàn thiện thực tế của code.
+    3. ĐẦU RA YÊU CẦU: Chỉ trả về **đúng toàn bộ nội dung Markdown hoàn chỉnh của file CHECKLIST.md mới**. Tuyệt đối không bao quanh bằng các thẻ giải thích ngoài văn bản markdown để script tự động ghi file trực tiếp.
     """
 
-  # Cơ chế Retry tự động nếu gặp lỗi 503 (quá tải tạm thời)
+  # Cơ chế Retry tự động nếu gặp lỗi 503
   max_retries = 3
-  success = False
 
   for attempt in range(1, max_retries + 1):
     try:
-      # Thử gọi model chuẩn, nếu 503 script sẽ tự thử lại
       response = client.models.generate_content(
           model="gemini-3.8-flash",
           contents=prompt,
@@ -121,7 +130,7 @@ def main():
 
       updated_checklist = response.text.strip()
 
-      # Làm sạch định dạng nếu AI lỡ bọc block markdown
+      # Làm sạch định dạng Markdown nếu bị bọc block
       if updated_checklist.startswith("```markdown"):
         updated_checklist = updated_checklist[11:]
       if updated_checklist.startswith("```"):
@@ -130,16 +139,15 @@ def main():
         updated_checklist = updated_checklist[:-3]
       updated_checklist = updated_checklist.strip()
 
-      # 5. Ghi kết quả vào file CHECKLIST.md
+      # Ghi kết quả vào file CHECKLIST.md
       update_checklist_file(updated_checklist)
 
       print("\n================ THÀNH CÔNG! ================")
       print(
-          "✅ Đã quét toàn bộ dự án và tự động cập nhật tiến độ vào file"
-          " `CHECKLIST.md`."
+          "✅ Đã cập nhật tiến độ vào file `CHECKLIST.md` theo thang đo"
+          " [ ] / [~] / [x]."
       )
       print("=============================================")
-      success = True
       break
 
     except ServerError as e:

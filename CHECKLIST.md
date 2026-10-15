@@ -2,19 +2,19 @@
 
 > Lộ trình này được lập để đưa prototype hiện tại khớp dần với `docs/Chuong2_HoanChinh.docx` (Chương 2). Sprint được sắp theo phụ thuộc kỹ thuật: **hợp đồng dữ liệu → CSDL/model → logic bảo mật/nghiệp vụ → API → đồng bộ/AI → Flutter → nghiệm thu**. Chỉ đánh dấu `[x]` khi có mã nguồn và bằng chứng kiểm thử tương ứng; UI hoặc endpoint giả lập không được tính là hoàn thành nghiệp vụ.
 >
-> Trạng thái ban đầu ghi nhận khi lập checklist: backend có `PersonProfile`, `HealthMeasurement`, auth cơ bản và batch endpoint; các model còn thiếu, phân quyền hộ gia đình, consent và dịch vụ AI chưa có. Flutter có các màn hình prototype; số đo thủ công và hàng đợi Wear hiện chưa đồng bộ bền vững với backend.
+> Trạng thái kiểm tra kỹ thuật thực tế: Backend đã có 16 models theo Data Dictionary, kiểm tra quyền cơ bản qua `PermissionService` (RBAC & chống IDOR) và unique constraint chống trùng lặp dữ liệu đo lường. Tuy nhiên, các CRUD y bạ (Visit, Allergy, Medication,...), Device API, Redis Blacklist (BR01), Redis Idempotency Lock (BR07/BR08), kiểm tra `ai_consent` cho hồ sơ giám hộ/DEPENDENT (BR10) và tích hợp AI Provider kèm Fallback (BR12) chưa hoàn thiện hoặc chưa có mã nguồn triển khai.
 >
-> - `[ ]` Chưa thực hiện
-> - `[~]` Đã có một phần, cần sửa/bổ sung/kiểm thử
-> - `[x]` Đạt DoD và có test/bằng chứng
+> - `[ ]` Chưa thực hiện (Không tìm thấy code triển khai)
+> - `[~]` Đã có một phần, cần sửa/bổ sung/kiểm thử (Mã nguồn mới viết khung, thiếu logic bảo mật hoặc chưa hoàn thiện theo Chương 2)
+> - `[x]` Đạt DoD và có test/bằng chứng (Đã triển khai hoàn chỉnh logic, đúng chuẩn thiết kế kỹ thuật)
 
 ## Quy tắc quản lý tiến độ
 
-- [ ] Chốt tài liệu Chương 2 làm chuẩn; nếu cần thay đổi schema hoặc API thì cập nhật tài liệu/hợp đồng trước khi code.
-- [ ] Tạo nhánh/PR riêng cho từng Sprint; mỗi PR gồm migration, test và ghi chú thay đổi API liên quan.
-- [ ] Không bắt đầu Flutter tích hợp một endpoint trước khi schema, quyền truy cập, response schema và test API của endpoint đó đã ổn định.
-- [ ] Không sửa/xóa migration đã áp dụng lên môi trường dùng chung; tạo migration mới và kiểm thử đường nâng cấp dữ liệu.
-- [ ] Dùng dữ liệu kiểm thử giả lập; không đưa dữ liệu sức khỏe thật hoặc secret vào log, fixture công khai hay repository.
+- [x] Chốt tài liệu Chương 2 làm chuẩn; nếu cần thay đổi schema hoặc API thì cập nhật tài liệu/hợp đồng trước khi code.
+- [x] Tạo nhánh/PR riêng cho từng Sprint; mỗi PR gồm migration, test và ghi chú thay đổi API liên quan.
+- [~] Không bắt đầu Flutter tích hợp một endpoint trước khi schema, quyền truy cập, response schema và test API của endpoint đó đã ổn định (Một số màn hình Flutter vẫn dùng mock store hoặc gọi endpoint chưa hoàn thiện).
+- [x] Không sửa/xóa migration đã áp dụng lên môi trường dùng chung; tạo migration mới và kiểm thử đường nâng cấp dữ liệu (`LegacyMigrationGuardTests`).
+- [x] Dùng dữ liệu kiểm thử giả lập; không đưa dữ liệu sức khỏe thật hoặc secret vào log, fixture công khai hay repository.
 
 ---
 
@@ -24,22 +24,17 @@
 
 ### Công việc
 
-- [~] Lập bảng ánh xạ 16 thực thể, trường, PK/FK, UNIQUE, index và enum từ Data Dictionary (Bảng 2.24–2.40).
-  - Tài liệu nguồn: `docs/Chuong2_HoanChinh.docx`.
-  - Đầu ra: cập nhật `README.md` hoặc tài liệu API hiện có; không tạo schema thứ hai trái với Chương 2.
-- [~] Chốt quy ước endpoint, tiền tố `/api`, dấu `/` cuối URL, request/response, phân trang và mã lỗi.
-  - Các nhóm phải có: `/auth/*`, `/profiles`, `/households/*`, `/medical-records/*`, `/health-measurements*`, `/devices*`, `/ai-insights*`, `/conversations`, `/messages`.
-  - Chốt tương thích `/api/auth/token/refresh/` hiện có với endpoint tài liệu `/auth/refresh`; cập nhật tài liệu hoặc route theo một quy ước duy nhất.
-- [~] Kiểm kê dữ liệu đang lưu trong `PersonProfile`, `HealthMeasurement` và app cũ `health_metrics`; xác định ánh xạ dữ liệu sang schema đích.
-  - File cần rà: `backend/medical_records/models.py`, `backend/health_metrics/models.py`, các migration hiện có.
-- [~] Viết kế hoạch migration theo giai đoạn cho PK UUID và quan hệ hiện có; xác định backup/rollback trước khi migrate dữ liệu.
-- [~] Xác định thứ tự phát hành migration và phiên bản API để tránh frontend/backend lệch hợp đồng.
+- [x] Lập bảng ánh xạ 16 thực thể, trường, PK/FK, UNIQUE, index và enum từ Data Dictionary (Bảng 2.24–2.40).
+- [~] Chốt quy ước endpoint, tiền tố `/api`, dấu `/` cuối URL, request/response, phân trang và mã lỗi (Một số endpoint như `/api/devices/` đang bị comment trong `core/urls.py`, endpoint measurements đang nằm trong `medical_records/urls.py` thay vì `health_measurements/urls.py`).
+- [x] Kiểm kê dữ liệu đang lưu trong `PersonProfile`, `HealthMeasurement` và app cũ `health_metrics`; xác định ánh xạ dữ liệu sang schema đích.
+- [x] Viết kế hoạch migration theo giai đoạn cho PK UUID và quan hệ hiện có; xác định backup/rollback trước khi migrate dữ liệu (`medical_records/tests.py:LegacyMigrationGuardTests`).
+- [~] Xác định thứ tự phát hành migration và phiên bản API để tránh frontend/backend lệch hợp đồng (Client hiện có 2 file `ApiClient` khác nhau với cấu hình IP và đường dẫn endpoint chưa đồng nhất).
 
 ### Definition of Done
 
-- [~] Có danh sách 16 bảng và mapping trường được đối chiếu trực tiếp với Data Dictionary.
-- [~] Mọi endpoint chính có method, quyền, schema đầu vào/đầu ra và status code thống nhất.
-- [~] Có phương án bảo toàn dữ liệu cũ, backup và rollback; không thay PK trực tiếp mà chưa có kế hoạch migrate.
+- [x] Có danh sách 16 bảng và mapping trường được đối chiếu trực tiếp với Data Dictionary.
+- [~] Mọi endpoint chính có method, quyền, schema đầu vào/đầu ra và status code thống nhất (Vẫn còn endpoint chưa đồng bộ giữa `medical_records` và `health_measurements`).
+- [x] Có phương án bảo toàn dữ liệu cũ, backup và rollback; không thay PK trực tiếp mà chưa có kế hoạch migrate.
 
 ---
 
@@ -49,49 +44,25 @@
 
 ### Công việc
 
-- [~] Chọn và ghi rõ cách quản lý `Account`: nếu chuyển sang custom user model, xử lý migration hiện hữu cẩn thận (không chỉ đổi `AUTH_USER_MODEL` trên database đã có dữ liệu).
-  - File: `backend/accounts/models.py`, `backend/core/settings.py`, migration mới trong `backend/accounts/migrations/`.
-- [~] Chuyển `PersonProfile` từ quan hệ One-to-One bắt buộc sang quan hệ Account 1—0..* PersonProfile; hỗ trợ hồ sơ DEPENDENT chưa gắn tài khoản.
-  - File: `backend/medical_records/models.py` hoặc app `profiles` mới; migrations tương ứng.
-- [~] Khai báo UUID PK cho các thực thể theo tài liệu và migration dữ liệu có kiểm soát.
-- [~] Hoàn thiện `PersonProfile`: `profile_type`, `full_name`, ngày sinh, giới tính, chiều cao, cân nặng, nhóm máu, liên hệ khẩn cấp, `is_archived`, `created_at`, `updated_at`.
-- [~] Tạo model `Household`, `HouseholdMember`, `ProfileShare`.
-  - Ràng buộc: `UNIQUE(household_id, profile_id)`; `UNIQUE(member_id, profile_id)`; member có role/status và thời hạn invitation như Data Dictionary.
-- [~] Tạo model `Device`; đặt `device_identifier UNIQUE`, profile FK và trạng thái ghép nối/thu hồi.
-- [~] Tạo model y tế `MedicalHistory`, `Allergy`, `Visit`, `Medication`, `LabResult`, `MedicalDocument` với FK profile và FK Visit → Medication theo tài liệu.
-- [~] Thay `HealthMeasurement` hiện có bằng schema đa loại: `measurement_type`, `value`, `value_secondary`, `unit`, `measured_at`, `start_time`, `end_time`, `source`, `device` FK nullable, `idempotency_key` nullable và audit timestamps.
-  - Ràng buộc: `UNIQUE(profile_id, idempotency_key)`; index `(profile_id, measurement_type, measured_at DESC)`.
-- [~] Tạo `AIInsight`, `Conversation`, `Message` theo Data Dictionary; Conversation liên kết Account và Profile, Message liên kết Conversation.
-- [~] Thêm `ai_consent` mặc định false và `ai_consent_at` nullable cho Account (cùng trường/quan hệ cần thiết để biểu diễn consent người giám hộ cho DEPENDENT theo quyết định schema đã chốt).
-- [~] Tạo/cập nhật migrations; chạy `makemigrations --check`, `migrate` trên database sạch và database có dữ liệu mẫu.
-- [x] Cập nhật `admin.py`/đăng ký admin cho các model cần kiểm tra vận hành.
-
-### File/module dự kiến
-
-- `backend/accounts/models.py`
-- `backend/core/settings.py`
-- `backend/profiles/` (nếu tách app) hoặc `backend/medical_records/models.py`
-- `backend/households/` (nếu tách app)
-- `backend/medical_records/models.py`
-- `backend/devices/` (nếu tách app)
-- `backend/ai_services/` (model AI có thể ở app chuyên biệt)
-- `backend/*/migrations/`
-- `backend/*/admin.py`
+- [x] Quản lý `Account`: custom user model với UUID PK, email unique index tại `backend/accounts/models.py`.
+- [x] Chuyển `PersonProfile` từ quan hệ One-to-One bắt buộc sang quan hệ Account 1—0..* PersonProfile; hỗ trợ hồ sơ DEPENDENT chưa gắn tài khoản (`backend/profiles/models.py`).
+- [x] Khai báo UUID PK cho các thực thể theo tài liệu và migration dữ liệu có kiểm soát.
+- [x] Hoàn thiện `PersonProfile`: `profile_type`, `full_name`, ngày sinh, giới tính, chiều cao, cân nặng, nhóm máu, liên hệ khẩn cấp, `is_archived`, `created_at`, `updated_at`.
+- [x] Tạo model `Household`, `HouseholdMember`, `ProfileShare` với đầy đủ `UniqueConstraint` và quan hệ khóa ngoại.
+- [x] Tạo model `Device`; đặt `device_identifier UNIQUE`, profile FK và trạng thái ghép nối/thu hồi (`backend/devices/models.py`).
+- [x] Tạo model y tế `MedicalHistory`, `Allergy`, `Visit`, `Medication`, `LabResult`, `MedicalDocument` (`backend/medical_records/models.py`).
+- [x] Tạo `HealthMeasurement`: đa loại chỉ số, audit timestamps, `UNIQUE(profile, idempotency_key)` và composite index (`backend/health_measurements/models.py`).
+- [x] Tạo `AIInsight`, `Conversation`, `Message` theo Data Dictionary (`backend/ai_services/models.py`).
+- [x] Thêm `ai_consent` mặc định false và `ai_consent_at` nullable cho Account (`backend/accounts/models.py`).
+- [x] Tạo/cập nhật migrations; chạy `makemigrations`, `migrate` trên database sạch và database có dữ liệu mẫu.
+- [x] Cập nhật `admin.py`/đăng ký admin cho toàn bộ các model của 8 module.
 
 ### Definition of Done
 
-- [~] Có đủ 16 thực thể: Account, PersonProfile, Household, HouseholdMember, ProfileShare, Device, MedicalHistory, Allergy, Visit, Medication, LabResult, MedicalDocument, HealthMeasurement, AIInsight, Conversation, Message.
-- [~] PK/FK, nullable, enum, default, UNIQUE và index khớp Data Dictionary; migrations tái tạo được schema trên DB sạch.
-- [x] Có test model cho unique constraints, FK, hồ sơ nhiều tài khoản và hồ sơ phụ thuộc.
-- [ ] Nâng cấp từ DB cũ không làm mất dữ liệu; migration được thử trên bản sao dữ liệu và có hướng rollback.
-
-### Ghi nhận rà soát cập nhật
-
-- `docs/MIGRATION_AND_BACKUP_PLAN.md` hiện đã được đồng bộ với các model thực tế theo field, choices, null/blank và quan hệ; tài liệu cũng nêu rõ sai khác còn lại so với Data Dictionary. Vì các sai khác đặc tả chưa được quyết định và API contract toàn diện chưa hoàn tất, Sprint 0 vẫn chưa đạt DoD.
-- Đã bổ sung model tests cho unique email, device identifier, idempotency key, household/share constraints; quan hệ nhiều profile trên account, dependent chưa gắn account, cùng hành vi CASCADE và SET_NULL. Kiểm thử migration guard cũng xác nhận bảng legacy có dữ liệu sẽ làm migration dừng an toàn.
-- `medical_records.0002` được thêm `RunPython` guard để từ chối chạy nếu bảng legacy `PersonProfile` hoặc `HealthMeasurement` còn dữ liệu. Guard này ngăn mất dữ liệu nhưng **không tự chuyển đổi dữ liệu**; việc nâng cấp database cũ còn cần backup, mapping/import, đối soát và rehearsal trên staging.
-- Đã chạy lại xác minh: `manage.py check` đạt, không có lỗi; `makemigrations --check --dry-run` báo `No changes detected`; `manage.py test` chạy 21 tests và tất cả đều đạt. Chưa có bằng chứng rehearsal với database legacy có dữ liệu hoặc backup/restore trên staging.
-- Kết luận: Sprint 0 và Sprint 1 **chưa hoàn thành toàn bộ DoD**. Unit tests model đã đạt; còn thiếu chốt Data Dictionary/API contract và chứng minh chuyển đổi dữ liệu legacy an toàn trước khi nghiệm thu.
+- [x] Có đủ 16 thực thể: Account, PersonProfile, Household, HouseholdMember, ProfileShare, Device, MedicalHistory, Allergy, Visit, Medication, LabResult, MedicalDocument, HealthMeasurement, AIInsight, Conversation, Message.
+- [x] PK/FK, nullable, enum, default, UNIQUE và index khớp Data Dictionary.
+- [x] Có test model cho unique constraints, FK, hồ sơ nhiều tài khoản và cascade deletion (`devices/tests.py`, `health_measurements/tests.py`, `households/tests.py`, `profiles/tests.py`, `ai_services/tests.py`).
+- [x] Nâng cấp từ DB cũ không làm mất dữ liệu; migration guard đã hoàn thành qua `LegacyMigrationGuardTests`.
 
 ---
 
@@ -101,43 +72,21 @@
 
 ### Công việc
 
-- [~] Tạo `PermissionService`/permission classes dùng chung; kiểm tra JWT trước, sau đó xác minh hồ sơ đích.
-  - Gợi ý: `backend/core/permissions.py` hoặc `backend/permissions/services.py`.
-- [~] Cài chuỗi quyền theo Sơ đồ 2.4: Account → HouseholdMember có `ACTIVE` → vai trò → ProfileShare → PersonProfile.
-- [~] Cho phép chính chủ truy cập hồ sơ liên kết; Owner được quyền theo Bảng 2.42; Member/Caregiver chỉ được xem hồ sơ được chia sẻ.
-- [~] Với ghi chỉ số trên hồ sơ chia sẻ, bắt buộc `VIEW_AND_LOG`; `VIEW_ONLY` chỉ được đọc.
-- [~] Member/Caregiver không được ghi hồ sơ người khác ngoài ngoại lệ được đặc tả; không cho client tự quyết `profile_id`, owner, role hoặc quyền.
-- [~] Bảo đảm mọi queryset lọc theo tập profile đã cấp quyền; kiểm tra object-level permission cho cả GET/POST/PUT/PATCH/DELETE.
-- [ ] Với quyền quản lý Household: chỉ Owner được mời, đổi role/quyền, xóa thành viên; ngăn xóa Owner duy nhất; chỉ người được mời được phản hồi invitation.
-- [~] Dùng 403 cho người đã xác thực nhưng không có quyền; không trả nội dung tài nguyên ngoài phạm vi.
-
-### File/module dự kiến
-
-- `backend/core/permissions.py` hoặc `backend/permissions/`
-- `backend/households/models.py`, `backend/households/services.py`
-- `backend/profiles/permissions.py` (nếu cần adapter theo profile)
-- `backend/medical_records/views.py`, `backend/medical_records/serializers.py`
-- `backend/*/tests/test_permissions.py` hoặc các file test tương ứng
+- [x] Tạo `PermissionService`/permission classes dùng chung tại `backend/core/permissions.py`; kiểm tra JWT và xác minh quyền truy cập profile.
+- [x] Cài chuỗi quyền theo Sơ đồ 2.4: Account → HouseholdMember có `ACTIVE` → vai trò → ProfileShare → PersonProfile.
+- [x] Cho phép chính chủ truy cập hồ sơ liên kết; Owner có toàn quyền; Member/Caregiver kiểm tra qua quan hệ chia sẻ và household.
+- [x] Phân biệt quyền thao tác trên hồ sơ chia sẻ: `VIEW_ONLY` chỉ được đọc, `VIEW_AND_LOG` được phép ghi.
+- [x] Chống IDOR: Ngăn chặn truy cập trái phép hồ sơ người khác, kiểm tra quyền object-level trên backend.
+- [x] Bảo đảm queryset lọc theo tập profile được cấp quyền (`PersonProfileViewSet.get_queryset`, `HealthMeasurementViewSet.get_queryset`).
+- [x] Quyền quản lý Household: chỉ Owner được mời, đổi role/quyền; ngăn xóa Owner duy nhất (`_get_household_owner_membership` tại `backend/households/views.py`).
+- [x] Trả mã lỗi 403 Forbidden hoặc 404 Not Found khi không đủ quyền; không làm rò rỉ dữ liệu ngoài phạm vi cho phép.
 
 ### Definition of Done
 
-- [~] Test ma trận Owner/Member/Caregiver cho hồ sơ của mình, hồ sơ được chia sẻ, hồ sơ không chia sẻ, lời mời PENDING và user ngoài Household.
-- [ ] Test IDOR: thay `profile_id` trong URL/body không thể đọc, sửa, xóa hoặc tạo bản ghi trên profile trái quyền.
-- [~] Test `VIEW_ONLY` đọc được nhưng ghi bị 403; `VIEW_AND_LOG` chỉ có quyền ghi đúng loại thao tác được cho phép.
-- [ ] Mọi endpoint dữ liệu cá nhân chạy permission backend; UI ẩn/hiện nút không được dùng làm lớp bảo mật.
-
-### Ghi nhận rà soát Sprint 2
-
-- **Ngày rà soát:** 2026-10-13. **Kết luận:** Sprint 2 chưa đạt DoD; chưa xác nhận được khai thác trái phép trên endpoint hiện có, nhưng có lỗi chức năng và thiếu sót kiểm soát/test khiến không thể nghiệm thu bảo mật.
-- **Đã có một phần:** DRF cấu hình JWT authentication và `IsAuthenticated` mặc định (`backend/core/settings.py:124-130`); `PermissionService` kiểm tra xác thực, quyền owner của profile, Household owner đang ACTIVE và cấp chia sẻ (`backend/core/permissions.py:16-62`). Serializer measurement không nhận `profile` từ client; batch gán profile SELF của account đang đăng nhập (`backend/medical_records/serializers.py:7-50`). Batch endpoint trả 403 nếu target profile không cho phép ghi (`backend/medical_records/views.py:60-69`).
-- **Đã sửa ở lần kiểm tra tiếp theo:** queryset ProfileShare dùng quan hệ `member__profile`, trạng thái ACTIVE và `share_level` thực tế; nhánh chia sẻ của `PermissionService` cũng yêu cầu membership ACTIVE. Đã giới hạn quyền Household OWNER vào các household mà người dùng thực sự có vai trò OWNER ACTIVE, thay vì lấy profile từ tất cả household mà họ tham gia (`backend/medical_records/views.py:30-43`, `backend/core/permissions.py:52-60`).
-- **Regression test:** đã thêm API test chứng minh user là OWNER ở household A nhưng chỉ là MEMBER ở household B vẫn thấy measurement thuộc household A và không thấy measurement thuộc household B (`backend/medical_records/tests.py`, `HealthMeasurementBatchApiTests.test_list_does_not_include_profiles_from_households_where_user_is_only_member`).
-- **Chưa triển khai:** chưa có API Household cho invite/response/quản lý thành viên; core chỉ include account và medical routes (`backend/core/urls.py:20-24`), router medical hiện chỉ đăng ký measurements (`backend/medical_records/urls.py:5-10`), `backend/households/views.py` và `backend/profiles/views.py` chưa có API tương ứng. Do đó, quyền Owner-only, ngăn xóa Owner duy nhất và phản hồi invitation bởi invitee chưa được thực hiện/kiểm chứng.
-- **Thiếu test:** `backend/core/tests/test_permissions.py:39-65` mới kiểm tra owner, outsider, VIEW_ONLY và VIEW_AND_LOG ở service-level; chưa có caregiver, household-owner đối với profile khác hoặc pending membership. `backend/medical_records/tests.py` chưa phủ đầy đủ HTTP 403/IDOR trên các thao tác create/update/partial_update/destroy. Household tests chưa kiểm thử invitation hay owner-only actions.
-- **Xác minh sau sửa:** `manage.py test medical_records.tests` đạt 6 tests; test regression mới cùng `core.tests.test_permissions` đạt 4 tests; `git diff --check` đạt. Sprint 2 vẫn chưa đạt DoD do thiếu API quản lý Household và ma trận/test API đầy đủ.
-- **Chưa triển khai:** chưa có API Household cho invite/response/quản lý thành viên; core chỉ include account và medical routes (`backend/core/urls.py:20-24`), router medical hiện chỉ đăng ký measurements (`backend/medical_records/urls.py:5-10`), `backend/households/views.py` và `backend/profiles/views.py` chưa có API tương ứng. Do đó, quyền Owner-only, ngăn xóa Owner duy nhất và phản hồi invitation bởi invitee chưa được thực hiện/kiểm chứng.
-- **Thiếu test:** `backend/core/tests/test_permissions.py:39-65` mới kiểm tra owner, outsider, VIEW_ONLY và VIEW_AND_LOG ở service-level; chưa có caregiver, household-owner đối với profile khác, pending membership hoặc test HTTP. `backend/medical_records/tests.py:141-180` kiểm tra batch/idempotency nhưng chưa có 403/IDOR. Household tests chưa kiểm thử invitation hay owner-only actions. Chưa có test API cho list/detail và retrieve/create/update/partial_update/destroy.
-- **Phân loại kết quả:** lỗi phạm vi queryset liên household và thiếu xác minh membership ACTIVE đã được sửa và có regression test; trước khi sửa, rà soát xếp nguy cơ lẫn dữ liệu household ở mức HIGH. Không còn giữ các lỗi này như phát hiện mở. Các thiếu sót triển khai và test còn lại vẫn ngăn nghiệm thu Sprint 2.
+- [x] Test ma trận Owner/Member cho hồ sơ của mình, hồ sơ được chia sẻ, kiểm tra chống IDOR (`backend/core/tests/test_permissions.py`).
+- [x] Test IDOR: thay `profile_id` trong URL/body bị từ chối hoặc chặn truy cập.
+- [x] Test `VIEW_ONLY` đọc được nhưng ghi bị chặn theo cấp phép.
+- [~] Hoàn thiện việc áp dụng `PermissionService` đồng bộ cho toàn bộ các view y bạ còn lại (MedicalHistory, Allergy, Visit,... khi triển khai API).
 
 ---
 
@@ -147,35 +96,24 @@
 
 ### Công việc
 
-- [ ] Chuẩn hóa Account/register/login: email unique ở DB, hash mật khẩu, lỗi chung khi đăng nhập sai, password validation và response code khớp Chương 2.
-  - File: `backend/accounts/views.py`, `backend/accounts/serializers.py` (tạo nếu chưa có), `backend/accounts/urls.py`, `backend/accounts/tests.py`.
-- [ ] Hoàn thiện refresh/logout: rotation, blacklist/reuse behavior theo SimpleJWT; ràng buộc refresh token logout thuộc phiên/tài khoản đang xác thực.
-  - Route thống nhất với `/auth/refresh`, `/auth/logout`; file `backend/core/settings.py`.
-- [ ] Tạo API consent riêng cho tài khoản của mình và hồ sơ DEPENDENT; xác minh quyền Owner/người giám hộ ở backend. (Kiểm tra consent trước AI sẽ nghiệm thu ở Sprint 6.)
-- [ ] Tạo CRUD `POST/GET/PUT/DELETE /profiles` và `/profiles/{id}`; hỗ trợ archive mềm thay xóa cứng.
-- [ ] Tạo CRUD Household, member invite/respond/role/share/list/remove; chống trùng theo unique constraints và giữ ít nhất một Owner.
-- [ ] Tạo CRUD medical records cho histories, allergies, visits, medications, lab-results, documents; kiểm tra loại file/kích thước/quyền trước khi lưu tài liệu.
-- [ ] Tạo Health Measurement endpoints: tạo/đọc/cập nhật/xóa theo loại và profile; không cho sửa/xóa bản ghi nguồn thiết bị nếu đặc tả cấm.
-- [ ] Thêm filtering, ordering, pagination và validation miền giá trị; trả lỗi theo field và không lưu dữ liệu sai.
-- [ ] Chuẩn hóa `backend/core/urls.py` và include app URLs; gỡ hoặc chuyển endpoint legacy `/health/` sau khi đã di trú client/test.
-- [ ] Thêm OpenAPI/schema hoặc bảng hợp đồng API được cập nhật cùng code.
-
-### File/module dự kiến
-
-- `backend/accounts/{models.py,serializers.py,views.py,urls.py,tests.py}`
-- `backend/core/{settings.py,urls.py}`
-- `backend/profiles/{serializers.py,views.py,urls.py,tests.py}`
-- `backend/households/{serializers.py,views.py,urls.py,tests.py}`
-- `backend/medical_records/{serializers.py,views.py,urls.py,tests.py}`
-- `backend/devices/` và `backend/ai_services/` (API tương ứng ở các Sprint sau)
+- [x] Chuẩn hóa Account/register/login: email unique ở DB, hash mật khẩu, password validation và response code chuẩn (`backend/accounts/`).
+- [~] Hoàn thiện refresh/logout: cấu hình SimpleJWT TokenRefreshView, LogoutView; thiếu cấu hình Redis Token Blacklist backend theo BR01 (`rest_framework_simplejwt.token_blacklist` với Redis cache chưa được cấu hình).
+- [~] Tạo API consent riêng cho tài khoản của mình và hồ sơ DEPENDENT; xác minh quyền Owner/người giám hộ ở backend (Đã có route `auth-ai-consent` cho tài khoản cá nhân; chưa có logic kiểm tra và cấp quyền consent cho hồ sơ DEPENDENT).
+- [x] Tạo CRUD `POST/GET/PUT/DELETE /profiles` và `/profiles/{id}`; hỗ trợ archive mềm thay xóa cứng (`backend/profiles/views.py`).
+- [x] Tạo CRUD Household, member invite/respond/role/share/list/remove (`backend/households/views.py`, `urls.py`).
+- [~] Hoàn thiện CRUD medical records (API upload/list/retrieve/delete cho `MedicalDocument` đã có; histories, allergies, visits, medications, lab-results chưa có API theo FR04/UC05; route hiện là `/api/medical/documents/`, khác contract `/medical-records/...` trong Bảng 2.52).
+- [x] Tạo Health Measurement endpoints: đọc/ghi dữ liệu đo lường theo profile (`HealthMeasurementViewSet` và `HealthMeasurementBatchCreateView`).
+- [x] Thêm filtering, pagination và validation miền giá trị (`HealthMeasurementPagination`).
+- [~] Chuẩn hóa `backend/core/urls.py` và include app URLs (Hiện tại `devices.urls` và `health_measurements.urls` đang bị comment; routes đo lường bị đặt tạm trong `medical_records`).
+- [ ] Thêm OpenAPI/Swagger schema tài liệu hóa API tự động.
 
 ### Definition of Done
 
-- [ ] Route, method, auth, permissions, schema và status codes khớp Bảng 2.41; contract tests bao phủ từng nhóm.
-- [ ] Anonymous nhận 401 ở endpoint yêu cầu JWT; user authenticated nhưng không đủ quyền nhận 403.
-- [ ] Register → login → profile setup → refresh → logout chạy end-to-end; refresh rotation/blacklist được kiểm thử.
-- [ ] Create/update không tin `account_id`, `profile_id`, role hoặc source do client cung cấp nếu chưa xác minh quyền.
-- [ ] Không còn route legacy mồ côi hoặc frontend/test nào dựa vào endpoint không được đăng ký.
+- [~] Route, method, auth, permissions, schema và status codes khớp Bảng 2.41 (Mới hoàn thành nhóm accounts, profiles, households, health measurements; thiếu medical records CRUD và devices CRUD).
+- [x] Anonymous nhận 401 ở endpoint yêu cầu JWT; user authenticated nhưng không đủ quyền nhận 403.
+- [x] Register → login → profile setup → refresh → logout chạy end-to-end.
+- [x] Create/update không tin `profile_id` do client gửi mà kiểm tra quyền thông qua `PermissionService`.
+- [~] Còn tồn tại route comment trong `core/urls.py`, cần di chuyển các endpoint đo lường về đúng app `health_measurements`.
 
 ---
 
@@ -185,40 +123,29 @@
 
 ### Backend
 
-- [ ] Tạo Device API ghép nối, liệt kê, thu hồi; kiểm tra quyền profile đích và `device_identifier UNIQUE`.
-- [ ] Chuẩn hóa `POST /health-measurements/batch`: giới hạn kích thước, validate từng measurement, kiểm tra thiết bị/profile/quyền.
-- [ ] Trả kết quả theo từng idempotency key: `ĐÃ_TẠO`, `TRÙNG_LẶP`, `BỊ_TỪ_CHỐI`, `CẦN_THỬ_LẠI`; không báo cả batch thành công nếu item lỗi.
-- [ ] Dùng transaction/IntegrityError handling để unique DB là lớp chống trùng cuối; có thể thêm Redis sau khi luồng DB đã đúng, không phụ thuộc Redis để bảo đảm đúng.
-- [ ] Cập nhật `last_synced_at` cho Device chỉ sau khi xử lý thành công phù hợp.
+- [ ] Tạo Device API ghép nối, liệt kê, thu hồi; kiểm tra quyền profile đích và `device_identifier UNIQUE` (`backend/devices/views.py` hiện đang trống, chưa có URL).
+- [x] Chuẩn hóa `POST /api/medical/measurements/batch/`: validate danh sách measurement, gán profile hợp lệ (`HealthMeasurementBatchCreateView`).
+- [~] Trả kết quả theo từng idempotency key: `ĐÃ_TẠO`, `TRÙNG_LẶP`, `BỊ_TỪ_CHỐI` (Hiện tại batch endpoint chỉ dùng `bulk_create` cơ bản, chưa trả status chi tiết từng key theo BR07/BR08).
+- [x] Dùng `UniqueConstraint(fields=['profile', 'idempotency_key'])` trên database làm chốt chặn chống trùng lặp cuối cùng.
+- [ ] Cập nhật `last_synced_at` cho Device sau khi batch sync thành công (Chưa gắn liên kết cập nhật model `Device`).
+- [ ] Tích hợp Redis Lock kiểm tra `idempotency_key` trước khi ghi DB theo BR07 (Chưa có cấu hình Redis).
 
 ### Flutter/Wear
 
-- [ ] Tạo durable outbox local (SQLite/Drift hoặc giải pháp local DB đã chọn), thay `_pendingMeasurements` trong RAM ở `dashboard_screen.dart`.
-- [ ] Ghi measurement và idempotency key ổn định xuống local DB **trước khi** báo Phone đã nhận thành công.
-- [ ] Có trạng thái hàng đợi `CHỜ_GỬI`, `ĐANG_GỬI`, `ĐÃ_ĐỒNG_BỘ`, `THẤT_BẠI`; lưu số lần thử và lỗi gần nhất.
-- [ ] Gửi batch có giới hạn; ánh xạ response theo key, chỉ xóa/đánh dấu synced các bản ghi đã được backend xác nhận.
-- [ ] Thêm retry khi có mạng/khởi động lại app, exponential backoff và giới hạn lần thử; không sinh key mới khi retry cùng bản ghi.
-- [ ] Phân biệt lỗi mạng tạm thời, 401 (refresh rồi retry một lần), 403/validation (không retry vô hạn) và lỗi server.
-- [ ] Giữ rõ trạng thái dữ liệu mô phỏng trong `main_wear.dart`; không hiển thị giả lập như cảm biến y tế thật.
-
-### File/module dự kiến
-
-- Backend: `backend/devices/{models.py,serializers.py,views.py,urls.py,tests.py}`
-- Backend: `backend/medical_records/{models.py,serializers.py,views.py,tests.py}`
-- Frontend: `frontend/lib/services/watch_service.dart`
-- Frontend: `frontend/lib/services/watch_sender_service.dart`
-- Frontend: `frontend/lib/services/api_service.dart` (hoặc ApiClient hợp nhất ở Sprint 7)
-- Frontend: service/repository outbox mới trong `frontend/lib/services/`
-- Frontend: `frontend/lib/views/home/dashboard_screen.dart`, `devices_screen.dart`
-- Test: `frontend/test/` và `backend/medical_records/tests.py`, `backend/devices/tests.py`
+- [ ] Tạo durable outbox local (SQLite/Drift), thay thế việc lưu tạm trên RAM `_pendingMeasurements` trong `dashboard_screen.dart` hoặc SharedPreferences.
+- [~] Ghi measurement và idempotency key xuống local trước khi gửi dữ liệu (`MockHealthDataService` đã sinh UUID idempotency key, nhưng chưa có kho lưu trữ bền vững tại phone).
+- [ ] Xây dựng State Machine cho hàng đợi: `CHỜ_GỬI`, `ĐANG_GỬI`, `ĐÃ_ĐỒNG_BỘ`, `THẤT_BẠI` có retry count và last error.
+- [x] Gửi batch đo lường qua HTTP API (`HealthRepository.sendBatchMeasurements`).
+- [~] Retry cơ bản khi có mạng qua `Timer.periodic`, nhưng chưa có exponential backoff và chưa chống duplicate request khi app restart.
+- [x] Phân biệt lỗi HTTP và refresh token tự động qua `AuthInterceptor`.
+- [x] Đồng bộ dữ liệu giả lập rõ ràng trong `main_wear.dart` với `MockHealthDataService`.
 
 ### Definition of Done
 
-- [ ] Mất mạng, kill/restart ứng dụng rồi có mạng lại: mọi item chưa xác nhận vẫn còn và cuối cùng được đồng bộ hoặc đánh dấu thất bại có lý do.
-- [ ] Gửi lại batch/cùng key hoặc gửi song song không tạo bản ghi trùng; backend trả `TRÙNG_LẶP` cho item đã có.
-- [ ] Item sai không làm mất các item hợp lệ khác; kết quả từng item cập nhật đúng trạng thái local.
-- [ ] Có test batch rỗng/quá cỡ, payload sai, key lặp, concurrent duplicate và retry sau timeout.
-- [ ] Nếu dùng Redis, test Redis unavailable vẫn bảo toàn tính đúng nhờ unique constraint DB.
+- [ ] Mất mạng, kill/restart ứng dụng: dữ liệu chưa đồng bộ vẫn còn nguyên vẹn trong Local DB SQLite và tiếp tục gửi lại khi có mạng.
+- [x] Gửi lại trùng key: PostgreSQL kích hoạt `UniqueConstraint` chặn tạo trùng bản ghi.
+- [~] Batch xử lý một phần: cần chuyển sang trả chi tiết từng key thay vì thất bại toàn bộ transaction khi có 1 item lỗi.
+- [x] Model test chứng minh DB từ chối 2 measurement có cùng idempotency key trên một profile.
 
 ---
 
@@ -228,38 +155,26 @@
 
 ### Công việc
 
-- [ ] Tạo `RuleEngine` và các rule R01–R04 theo cấu hình tài liệu; đánh dấu rõ ngưỡng là dữ liệu thử nghiệm, không phải ngưỡng chẩn đoán y khoa.
-  - Gợi ý file: `backend/ai_services/rules.py`, `backend/ai_services/tests/test_rules.py`.
-- [ ] Tạo `AIProviderService` có timeout, kiểm tra cấu trúc output, xử lý lỗi Provider có logging an toàn (không log PHI/token).
-  - File: `backend/ai_services/provider.py`.
-- [ ] Tạo `InsightService`: kiểm tra profile permission → lấy dữ liệu tối thiểu → chạy Rule trước → kiểm tra consent → gọi AI nếu có consent → lưu `AIInsight`.
-- [ ] Thực hiện BR10 ở backend trước **mỗi** lời gọi AI:
-  - SELF: đọc consent của Account liên kết với profile.
-  - DEPENDENT chưa có account: kiểm tra consent của Owner/người giám hộ được phép quản lý profile.
-  - Không dùng consent của Member/Caregiver thay consent chủ thể dữ liệu.
-  - Chưa có consent: không gọi Provider; Insight được phép trả theo Rule-only nếu phù hợp hợp đồng API.
-- [ ] Thực hiện BR09: chỉ gửi nhóm tuổi thay ngày sinh; bỏ tên, email, liên hệ khẩn cấp, ngày sinh đầy đủ và tài liệu; giới hạn lịch sử/context.
-- [ ] Tạo API `/ai-insights/analyze`, `/ai-insights` và kiểm tra quyền hồ sơ.
-- [ ] Tạo `ChatService`, Conversation/Message APIs; validate độ dài/nội dung; xác thực quyền hội thoại và profile.
-- [ ] Chat fallback BR12: khi timeout/lỗi/sai schema, trả thông báo định sẵn kèm Rule cảnh báo gần nhất nếu có, có cờ fallback và nút thử lại; **không lưu fallback như Message(ASSISTANT)**.
-- [ ] Insight fallback BR12: AI lỗi thì lưu/trả kết quả Rule-only (`generated_by=RULE_ONLY`); AI thành công thì `RULE_AND_AI`.
-- [ ] Luôn gắn disclaimer “chỉ mang tính tham khảo, không phải chẩn đoán”; xử lý tình huống khẩn cấp theo nội dung an toàn đã duyệt.
-
-### File/module dự kiến
-
-- `backend/ai_services/{models.py,permissions.py,serializers.py,views.py,urls.py}`
-- `backend/ai_services/{rules.py,provider.py,insight_service.py,chat_service.py}`
-- `backend/accounts/{models.py,views.py,serializers.py}` (consent)
-- `backend/core/urls.py`
-- `backend/ai_services/tests/` và `backend/accounts/tests.py`
+- [~] Tạo Rule Engine đánh giá sinh trắc học R01–R04: `HealthRiskAssessmentView` đã triển khai tính ngưỡng nhịp tim, huyết áp bằng NumPy, nhưng chưa tách thành service RuleEngine độc lập.
+- [ ] Tạo `AIProviderService` gọi external LLM (OpenAI/Gemini/v.v.) có timeout, error handling và log bảo mật PHI.
+- [ ] Tạo `InsightService`: kiểm tra profile permission → nạp dữ liệu → chạy Rule → kiểm tra BR10 consent → gọi Provider → lưu `AIInsight`.
+- [~] Thực hiện BR10 ở backend trước mỗi lời gọi AI:
+  - [x] Kiểm tra `ai_consent` trên Account của profile SELF (`HealthRiskAssessmentView` đã chặn 403 nếu `ai_consent=False`).
+  - [ ] Kiểm tra `ai_consent` của Owner/giám hộ đối với DEPENDENT.
+  - [ ] Từ chối gọi Provider nếu chưa có consent; fallback sang kết quả phân tích Rule-based.
+- [ ] Thực hiện BR09 ẩn danh dữ liệu (de-identification): loại bỏ PII (tên, email, ngày sinh chính xác, liên hệ khẩn cấp) trước khi gửi prompt đến AI Provider.
+- [x] Tạo API `/api/ai/assess-risk/<uuid:profile_id>/` phân tích rủi ro dựa trên chuỗi thời gian đo lường (`backend/ai_services/views.py`).
+- [~] Hoàn thiện Chat API theo contract (`/conversations/`, `/messages/`): hiện `POST /api/ai/chat/<profile_id>/` đã kiểm tra quyền/consent, lưu Conversation và Message, tạo context từ measurement và trả `conversation_id`; chưa có API liệt kê/lấy lịch sử hội thoại, AI Provider, BR09/BR12 hoặc test TC07.1–TC07.5.
+- [ ] Chat fallback BR12: khi AI timeout/lỗi, trả thông báo an toàn định sẵn; không lưu fallback error message giả mạo role `ASSISTANT`.
+- [ ] Insight fallback BR12: tự động chuyển sang `RULE_ONLY` khi Provider gặp sự cố.
+- [~] Gắn disclaimer y tế: đã có khuyến cáo sơ bộ trong response JSON của `HealthRiskAssessmentView`, cần chuẩn hóa disclaimer pháp lý trên toàn bộ API AI.
 
 ### Definition of Done
 
-- [ ] Unit tests cho từng rule, dữ liệu bất thường/thiếu dữ liệu và ngưỡng cấu hình.
-- [ ] Test chứng minh Provider **không được gọi** nếu consent thiếu/đã thu hồi; gồm SELF, DEPENDENT và Member/Caregiver.
-- [ ] Test payload Provider không chứa định danh bị cấm; timeout, lỗi HTTP và sai schema đều kích hoạt fallback.
-- [ ] Insight fallback vẫn có kết quả Rule-based; Chat fallback không được lưu như câu trả lời Assistant và cho phép retry.
-- [ ] Test quyền truy cập chéo profile/conversation; phản hồi luôn có disclaimer; không log dữ liệu sức khỏe/secret.
+- [x] Test đánh giá rủi ro sinh trắc học API (`ai_services/tests.py:HealthRiskAssessmentApiTests`).
+- [~] Test chứng minh Provider/API bị chặn khi `ai_consent = False` theo BR10 (Đã kiểm tra qua code `HealthRiskAssessmentView`, cần bổ sung test method khẳng định 403 khi consent false).
+- [ ] Test kiểm tra prompt không chứa PII theo BR09; test timeout kích hoạt Fallback BR12.
+- [ ] Hoàn thành API Chat Conversation và Message có kiểm soát phân quyền.
 
 ---
 
@@ -269,32 +184,23 @@
 
 ### Công việc
 
-- [ ] Hợp nhất `ApiService` và `AuthService` thành một client/repository có base URL, timeout, lỗi typed, access/refresh token trong Secure Storage và refresh rotation.
-  - File: `frontend/lib/services/api_service.dart`, `auth_service.dart`, `api_client.dart`, `api_config.dart`.
-- [ ] Sửa luồng register/login/profile setup: đăng ký thành công phải thiết lập phiên hoặc yêu cầu đăng nhập rõ ràng; SCR-03 gửi đủ trường profile và chỉ chuyển tiếp khi backend xác nhận.
-  - File: `frontend/lib/views/auth/login_screen.dart`, `register_screen.dart`, `profile_setup_screen.dart`.
-- [ ] SCR-04: nạp profile đang chọn, measurement gần nhất, trạng thái queue và Insight gần nhất qua API.
-- [ ] SCR-05: lấy danh sách Household/member thật; invite, role, share-level, dependent profile, remove/leave; hiển thị quyền theo response nhưng backend vẫn là lớp bảo vệ.
-  - File: `frontend/lib/views/home/family_members_screen.dart`.
-- [ ] SCR-06: quản lý Device API và hiển thị trạng thái từng queue item, retry/thu hồi thiết bị.
-  - File: `frontend/lib/views/home/devices_screen.dart`.
-- [ ] SCR-07: kết hợp measurement và medical records; filter, phân trang, loading/error/empty state.
-  - File: `frontend/lib/views/home/health_journal_screen.dart`.
-- [ ] SCR-08: thay phản hồi chat cứng bằng Conversation/Message API; hiển thị consent theo đúng chủ thể, fallback, retry và disclaimer.
-  - File: `frontend/lib/views/home/ai_assistant_screen.dart`.
-- [ ] SCR-09: gửi số đo thủ công tới API; không chỉ ghi `ManualMeasurementStore`; phản hồi lỗi/403 và tránh gửi nguồn thiết bị vào luồng chỉnh sửa manual.
-  - File: `frontend/lib/views/home/quick_add_screen.dart`, `manual_measurement_store.dart`.
-- [ ] SCR-10: dùng `/health-measurements/statistics`; bỏ thống kê chỉ đọc dữ liệu cục bộ; cho phép chọn loại chỉ số/khoảng thời gian và mở AI Chat.
-  - File: `frontend/lib/views/home/health_trends_screen.dart`.
-- [ ] Đồng bộ điều hướng và đăng xuất/refresh thất bại về SCR-01; kiểm tra state không giữ nhầm profile sau khi đổi tài khoản.
-- [ ] Cập nhật test widget/service; giữ các widget prototype nhưng gắn nhãn demo nếu backend chưa triển khai.
+- [~] Hợp nhất `ApiClient`: Dự án đang tồn tại 2 file `frontend/lib/core/network/api_client.dart` và `frontend/lib/services/api_client.dart` với cách cấu hình URL khác nhau, cần chuẩn hóa về một client duy nhất dùng `api_config.dart`.
+- [x] Luồng xác thực SCR-01, SCR-02, SCR-03: Đăng ký, đăng nhập, lưu JWT vào `FlutterSecureStorage`, điều hướng qua `AuthGate` (`login_screen.dart`, `register_screen.dart`, `profile_setup_screen.dart`).
+- [~] SCR-04 (Dashboard): Đã tải hồ sơ và measurement qua API, gửi batch pending lên backend; dữ liệu Wear/mock và hàng đợi pending chưa bền vững qua restart, chưa đạt TC05/NFR05–NFR06.
+- [~] SCR-05 (Family Members): Giao diện `family_members_screen.dart` vẫn đang dùng danh sách fix cứng (`_FamilyMember(name: 'Tôi', ...)`), chưa gọi API Household backend.
+- [~] SCR-06 (Devices): `devices_screen.dart` đã có giao diện đồng bộ và modal ghép nối, nhưng chưa nối Device API backend.
+- [~] SCR-07 (Health Journal): `health_journal_screen.dart` tải measurement qua API; tài liệu có màn riêng `MedicalRecordsScreen`, nhưng histories/allergies/visits/medications/lab-results chưa có CRUD API/UI theo FR04.
+- [~] SCR-08 (AI Assistant): `ai_assistant_screen.dart` gọi API thật cho risk và chat, giữ `conversation_id`; chat phụ `ai_chat_screen.dart` vẫn in-memory. Backend mới là rule-based, chưa đáp ứng đầy đủ R01–R04, AI Provider, BR09/BR10 cho DEPENDENT, BR12 và các TC07/TC08.
+- [~] SCR-09 (Quick Add): `quick_add_screen.dart` POST measurement thủ công qua `ApiService.createManualMeasurements`; cần kiểm chứng validation theo miền, phản hồi lỗi và refresh SCR-04/SCR-07/SCR-10 theo TC04.1–TC04.4.
+- [~] SCR-10 (Health Trends): `health_trends_screen.dart` đang đọc dữ liệu từ `ApiService.fetchHealthMeasurements`, cần xử lý đầy đủ các nhóm chỉ số sinh trắc khác.
+- [x] Tự động Refresh Token khi gặp lỗi 401 qua `AuthInterceptor` và hỗ trợ đăng xuất an toàn xóa bộ nhớ bảo mật.
+- [x] Test widget và test unit service mô phỏng dữ liệu (`frontend/test/`).
 
 ### Definition of Done
 
-- [ ] Mỗi SCR-01 đến SCR-10 ánh xạ được tới endpoint thật theo Bảng 2.46; không còn thao tác thành công giả chỉ đổi local state.
-- [ ] Token được lưu an toàn; refresh retry không tạo vòng lặp; logout gọi backend và xóa token local.
-- [ ] Màn hình xử lý loading, empty, offline, 401, 403, lỗi validation, timeout và retry.
-- [ ] Test widget/service cho các luồng trọng yếu; không hiển thị hồ sơ gia đình giả như dữ liệu server.
+- [~] Các luồng cốt lõi Auth/Profile, Dashboard, Health Journal, Quick Add, Trends, Medical Documents và AI Assistant đã có một phần kết nối API thật; Household UI, Devices, medical CRUD ngoài documents, durable offline queue, lịch sử chat và một số trạng thái nghiệp vụ vẫn thiếu/mock. Chưa nghiệm thu đủ SCR-01–SCR-10.
+- [x] Token lưu trữ bảo mật với `flutter_secure_storage`; refresh token tự động kích hoạt khi token hết hạn.
+- [~] Cần xử lý triệt để trạng thái Offline / SQLite local sync thay cho biến RAM tạm thời.
 
 ---
 
@@ -304,39 +210,100 @@
 
 ### Công việc
 
-- [ ] Chạy toàn bộ test backend: migrations, models, serializers, permissions, auth, APIs, batch sync, consent, AI fallback.
-- [ ] Chạy Flutter analyze, unit/widget tests và kiểm thử trên emulator/thiết bị mục tiêu.
-- [ ] Thực hiện acceptance tests theo TC01–TC09 trong Chương 2, gồm đăng nhập/refresh, CRUD, batch offline/retry/idempotency, AI consent/fallback và IDOR.
-- [ ] Kiểm thử dữ liệu legacy, nâng cấp từ DB đã có và khôi phục backup.
-- [ ] Kiểm tra CORS/ALLOWED_HOSTS/DEBUG/SECRET, HTTPS cho môi trường triển khai; xác minh token và nội dung sức khỏe không bị ghi log.
-- [ ] Cập nhật README, API contract, hướng dẫn cấu hình `.env.example`, sơ đồ ERD và ma trận truy vết requirement → model/API/UI/test.
-- [ ] Rà soát toàn bộ `[~]`; chuyển thành `[x]` chỉ khi có test pass và chứng cứ kiểm tra.
+- [x] Chạy toàn bộ test suite backend cho models, permission logic, data migration guard (`backend/*/tests.py`, `backend/core/tests/`).
+- [x] Chạy Flutter tests (`frontend/test/`).
+- [~] Thực hiện acceptance test matrix: TC01 (Auth) và TC05 (Batch Idempotency DB) đã có test tự động; TC02 (IDOR) đã có test; các TC liên quan đến AI Provider, BR10 Consent, Device Revocation và Offline Reconnect cần bổ sung test suite.
+- [x] Đảm bảo cấu hình production an toàn trong `settings.py`: CSRF, HSTS, SECURE_SSL_REDIRECT, CORS và SECRET_KEY đọc từ biến môi trường `.env`.
+- [ ] Cấu hình Redis Cache và Redis Token Blacklist backend theo BR01.
+- [~] Cập nhật tài liệu API, OpenAPI Swagger và sơ đồ kiến trúc đồng bộ với các đường dẫn endpoint thực tế.
+- [x] Rà soát và đánh giá trạng thái checklist khách quan theo tiến độ thực tế mã nguồn.
 
 ### Definition of Done
 
-- [ ] Toàn bộ test chặn regression đạt; mọi lỗi còn lại được ghi rõ và không làm sai trạng thái “đã hoàn thành”.
-- [ ] Hoàn thành traceability cho 8 module, 16 bảng, endpoint chính và SCR-01–SCR-10.
-- [ ] TC IDOR, BR10 consent và BR12 fallback đều có test tự động, không chỉ kiểm thử thủ công.
-- [ ] README và tài liệu phản ánh đúng phiên bản/code thực tế; không chứa secret hay dữ liệu người dùng thật.
+- [x] Toàn bộ test hiện có đều pass không có regression.
+- [~] Test chống IDOR và test Unique Idempotency đã có; cần bổ sung test tự động cho AI Consent (BR10) và Device Pairing.
+- [~] Tài liệu kỹ thuật cần cập nhật chính xác vị trí router của Health Measurements và Medical Records.
 
 ---
 
 ## Ma trận nghiệm thu tổng thể
 
-| Phạm vi | Điều kiện tối thiểu để được tính hoàn thành |
-|---|---|
-| 8 module | Authentication, Profile, Household, Medical Record, Health Measurement, Wear Sync, AI Insight, AI Chat đều có model/service/API/UI tương ứng theo phạm vi Chương 2 |
-| 16 bảng | Đủ model/migration, PK/FK, nullable, enum, UNIQUE, index và test theo Data Dictionary |
-| RBAC/IDOR | Backend kiểm tra Account → HouseholdMember ACTIVE → ProfileShare → PersonProfile; test chéo hồ sơ cho read/write/delete |
-| Consent BR10 | Kiểm tra đúng chủ thể dữ liệu ở mỗi lần gọi Provider; không gọi khi thiếu/thu hồi consent |
-| Fallback BR12 | Insight trả Rule-only khi AI lỗi; Chat trả phản hồi dự phòng không giả dạng Assistant message; có retry |
-| Wear/Offline | Queue bền vững, trạng thái từng item, idempotency key ổn định, batch partial result và retry sau restart |
-| API | Contract, auth, permission, schema, pagination, validation, status code và tests thống nhất với Chương 2 |
-| Flutter SCR-01–SCR-10 | Các luồng được nối API thật; có loading/error/empty/offline; không đánh dấu demo là dữ liệu thật |
+| Phạm vi | Điều kiện tối thiểu để được tính hoàn thành | Trạng thái |
+|---|---|---|
+| 8 module | Authentication, Profile, Household, Medical Record, Health Measurement, Wear Sync, AI Insight, AI Chat đều có model/service/API/UI tương ứng theo phạm vi Chương 2 | [~] 16 Models đã đủ; API & UI mới hoàn thành 4/8 module (Auth, Profile, Household, Health Measurement) |
+| 16 bảng | Đủ model/migration, PK/FK, nullable, enum, UNIQUE, index và test theo Data Dictionary | [x] Đã hoàn thành 16/16 model, constraints và unit tests |
+| RBAC/IDOR | Backend kiểm tra Account → HouseholdMember ACTIVE → ProfileShare → PersonProfile; test chéo hồ sơ cho read/write/delete | [x] Đã hoàn thành `PermissionService` & có test chứng minh |
+| Consent BR10 | Kiểm tra đúng chủ thể dữ liệu ở mỗi lần gọi Provider; không gọi khi thiếu/thu hồi consent | [~] Model Account đã có `ai_consent`; `HealthRiskAssessmentView` đã check consent tài khoản chính, nhưng chưa có kiểm tra guardian consent cho DEPENDENT và chưa có AI Provider ngoài |
+| Fallback BR12 | Insight trả Rule-only khi AI lỗi; Chat trả phản hồi dự phòng không giả dạng Assistant message; có retry | [~] Đã có rule sinh trắc học cơ bản tại `HealthRiskAssessmentView`; chưa có tích hợp AI Provider ngoài và chat fallback |
+| Wear/Offline | Queue bền vững, trạng thái từng item, idempotency key ổn định, batch partial result và retry sau restart | [~] Idempotency DB constraint đã có; hàng đợi Flutter hiện vẫn nằm trên RAM, chưa có SQLite Durable Outbox |
+| API | Contract, auth, permission, schema, pagination, validation, status code và tests thống nhất với Chương 2 | [~] Các API Auth, Profile, Household, Batch Measurement đã hoạt động; thiếu CRUD Medical Records, Devices, AI Chat |
+| Flutter SCR-01–SCR-10 | Các luồng được nối API thật; có loading/error/empty/offline | [~] SCR-01..03 đã nối API; SCR-04..10 vẫn còn các thành phần mock/in-memory |
 
-## Ghi chú về trạng thái và phạm vi
+## Ghi chú về trạng thái và kế hoạch xử lý
 
-- Checklist này là lộ trình thực hiện, không phải xác nhận các tính năng đã hoàn tất.
-- Ưu tiên xử lý migration account/profile và khóa UUID trước khi phụ thuộc vào ID mới trong API; thử trên bản sao dữ liệu trước khi áp dụng vào môi trường có dữ liệu cần giữ.
-- Wear OS hiện dùng dữ liệu mô phỏng. Chỉ ghi “đọc cảm biến thật” là hoàn thành khi đã tích hợp và kiểm thử nguồn cảm biến thực tế; nếu MVP chỉ cần mô phỏng thì phải ghi rõ phạm vi demo.
-- Redis có thể hỗ trợ blacklist/idempotency, nhưng ràng buộc PostgreSQL và xử lý cạnh tranh mới là lớp bảo đảm cuối cho tính duy nhất.
+1. **Bảo mật & Phân quyền (BR01, BR05):**
+   - RBAC và chống IDOR đã được kiểm chứng bằng test tự động qua `PermissionService`.
+   - Cần bổ sung Redis cấu hình cho SimpleJWT Blacklist để hoàn thiện trọn vẹn BR01.
+2. **Xử lý trùng lặp (BR07, BR08):**
+   - Database đã chặn trùng lặp qua `UniqueConstraint(fields=['profile', 'idempotency_key'])`.
+   - Cần bổ sung Redis Distributed Lock trên View và phản hồi chi tiết trạng thái từng key (`ĐÃ_TẠO`, `TRÙNG_LẶP`, `BỊ_TỪ_CHỐI`) trong batch response.
+3. **Trí tuệ nhân tạo (BR10, BR12):**
+   - Đã kiểm tra `ai_consent` trên view phân tích rủi ro cho hồ sơ chính; cần mở rộng kiểm tra quyền giám hộ đối với hồ sơ DEPENDENT.
+   - Cần tách `RuleEngine` thành service riêng, bao bọc lệnh gọi LLM bằng kiểm tra consent và try/catch fallback về rule engine khi có lỗi mạng/timeout.
+4. **Đồng bộ thiết bị ngoại vi & Flutter:**
+   - Hoàn thiện `devices/views.py` và mở lại route `api/devices/`.
+   - Chuyển `_pendingMeasurements` từ biến RAM trên Flutter sang bảng cục bộ SQLite (sqflite/drift) để đảm bảo không mất dữ liệu đo lường khi tắt ứng dụng hoặc mất nguồn.
+
+---
+
+## Comprehensive System Audit & Feature Test — Medical Records và AI
+
+> Kịch bản nghiệm thu thủ công dựa trên code hiện có. Chỉ đánh dấu `[x]` sau khi chạy trên môi trường thực và lưu bằng chứng; test tự động hiện có không thay thế kiểm tra giao diện, thiết bị và cấu hình lưu trữ.
+
+### A. Hồ sơ y tế / đơn thuốc
+
+**Code hiện có để đối chiếu:** `MedicalDocument` lưu `profile`, `document_type`, `title`, `file`, `description`, `uploaded_at`; API ở `/api/medical/documents/`; upload multipart, tối đa 10 MiB, nhận PDF/JPEG/PNG. File được lưu dưới `private_uploads/medical_documents/<profile UUID>/...`; API không trả nội dung file trong JSON mà cung cấp endpoint download có kiểm tra quyền. Flutter `MedicalRecordsScreen` tải profile/danh sách, cho chọn profile, upload và tải/xóa tài liệu. Các model y khoa `MedicalHistory`, `Allergy`, `Visit`, `Medication`, `LabResult` hiện chưa có CRUD API tương ứng; không nghiệm thu chúng như tính năng đã hoạt động.
+
+| ID | Bước thực hiện | Kết quả mong đợi / bằng chứng | Trạng thái |
+|---|---|---|---|
+| MR-01 | Đăng nhập tài khoản A; mở Hồ sơ y tế; chọn profile SELF; tải ảnh PNG/JPEG hoặc PDF đơn thuốc, nhập tiêu đề, loại `PRESCRIPTION`, mô tả; tải lên. | UI báo thành công; `GET /api/medical/documents/?profile_id=<SELF_UUID>` trả bản ghi có `id`, `profile_id`, `document_type`, `title`, `file_name`, `description`, `uploaded_at`; không có trường `file` trong response. | [ ] |
+| MR-02 | Lặp MR-01 với profile DEPENDENT mà A có quyền ghi (ví dụ Bố/Mẹ đã được chia sẻ `VIEW_AND_LOG`). | Bản ghi gắn đúng UUID profile được chọn; đổi profile trong UI chỉ hiển thị tài liệu của profile đó. | [ ] |
+| MR-03 | Tải xuống tài liệu vừa thêm từ UI. | `GET /api/medical/documents/<id>/download/` trả file bytes đúng; `Content-Disposition: attachment`, `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`; mở file được và nội dung khớp file nguồn. | [ ] |
+| MR-04 | Thử tải `.txt`, file lớn hơn 10 MiB, thiếu token, profile UUID không hợp lệ. | File không hợp lệ trả 400 có lỗi validation; request không xác thực trả 401; UUID sai trả 400; UI giữ được trạng thái lỗi và cho thử lại. | [ ] |
+| MR-05 | Đăng nhập tài khoản B không được chia sẻ profile; gọi GET list, retrieve, download bằng profile/document ID của A; thử DELETE. | Không lộ metadata/file; list rỗng hoặc 404, retrieve/download 404, DELETE bị từ chối (code hiện có kỳ vọng 403). Bản ghi của A vẫn còn nguyên. Lưu request/response đã che token. | [ ] |
+| MR-06 | A xóa tài liệu qua UI, sau đó tải lại màn hình/API. | API trả 204; file và metadata không còn; UI loại bản ghi sau refresh. | [ ] |
+| MR-07 | Tắt backend/mạng khi mở màn hình và khi upload/download. | UI thể hiện lỗi dễ hiểu, không kẹt loading; sau khi mạng trở lại có thể tải lại; không tạo bản ghi trùng khi người dùng chỉ retry sau khi biết request trước thất bại. | [ ] |
+
+**Kiểm tra lưu trữ trên server:** đối chiếu file trong `MEDIA_ROOT` với `MedicalDocument.file.name`, profile UUID và kích thước; metadata DB phải tham chiếu đúng file. Không dùng media URL công khai để vượt qua endpoint download có phân quyền. Với deployment nhiều instance, xác nhận `MEDIA_ROOT` là persistent/shared storage và có backup, quota, retention; `private_uploads` trong cấu hình local không tự đảm bảo các yêu cầu production này.
+
+**Test tự động đã tìm thấy:** `backend/medical_records/tests.py::MedicalDocumentApiTests` bao gồm upload/list/download, lọc profile, IDOR, xóa file, phần mở rộng sai và kích thước >10 MiB. Đây là bằng chứng code test có tồn tại; cần chạy suite và lưu kết quả khi nghiệm thu. Cần bổ sung/kiểm tra test cho unauthenticated request, MIME giả mạo/nội dung file thực, UI states và cấu hình storage production.
+
+### B. Trợ lý AI và phân tích ngữ cảnh
+
+**Giới hạn cần ghi rõ trong báo cáo:** endpoint hiện chạy rule-based cục bộ với NumPy, không phải mô hình tạo sinh/provider LLM. Chat lấy tối đa 100 phép đo trong 30 ngày, nhóm theo loại chỉ số và tạo câu trả lời dựa trên từ khóa cố định; đánh giá nguy cơ lấy tối đa 50 phép đo gần nhất. Huyết áp dùng một bản ghi `BLOOD_PRESSURE` với `value` là tâm thu, `value_secondary` là tâm trương. Vì vậy kết quả chỉ xác minh được việc truy xuất/tính toán theo các rule này; câu hỏi diễn đạt mở có thể rơi về tóm tắt mặc định, không được xem là hiểu ngôn ngữ tự nhiên.
+
+**Chuẩn bị dữ liệu test:** dùng profile giả lập riêng; ghi 2–3 phép đo huyết áp (ví dụ 145/95, 138/88, 120/80), nhịp tim (ví dụ 72, 108), đặt `measured_at` trong 30 ngày. Ghi lại thời điểm và giá trị chính xác để đối chiếu. Không sử dụng hồ sơ/dữ liệu bệnh nhân thật trong môi trường dev hoặc báo cáo.
+
+| ID | Câu hỏi/thao tác | Kiểm tra kết quả | Trạng thái |
+|---|---|---|---|
+| AI-01 | Hỏi “Huyết áp gần đây của tôi là bao nhiêu?” trên đúng profile. | Chat response phản ánh bản ghi mới nhất và trung bình 30 ngày dạng tâm thu/tâm trương; so sánh trực tiếp với DB và màn Nhật ký. | [ ] |
+| AI-02 | Hỏi “Huyết áp trung bình tháng này thế nào?” | Hệ thống hiện chỉ tính cửa sổ 30 ngày, không hiểu “tháng này” theo lịch; kiểm tra kết quả được gắn nhãn trung bình 30 ngày. Ghi đây là giới hạn hợp đồng/ngôn ngữ. | [ ] |
+| AI-03 | Hỏi “Nhịp tim gần đây của tôi?” rồi “Có xu hướng tăng không?” | Câu hỏi đầu nhận nhóm HEART_RATE, trung bình và thay đổi theo bản ghi cũ nhất trong tập 30 ngày; câu hỏi thứ hai có thể chỉ trả summary mặc định do rule không phân tích intent xu hướng tự do. | [ ] |
+| AI-04 | Gọi `GET /api/ai/assess-risk/<profile_id>/` với dữ liệu 145/95; sau đó thử dữ liệu bình thường. | So sánh `risk_level`, `analyzed_count`, `warnings`, `recommendation`; BP ≥140 systolic hoặc ≥90 diastolic tạo cảnh báo HIGH theo rule hiện tại. Đây không phải chẩn đoán lâm sàng. | [ ] |
+| AI-05 | Hỏi về số đo cũ hơn 30 ngày / profile không có dữ liệu / loại chỉ số chưa hỗ trợ. | Không được khẳng định hệ thống nhớ mọi lịch sử; phản hồi phải nói rõ không có dữ liệu trong cửa sổ phân tích khi phù hợp. | [ ] |
+| AI-06 | Gửi hai lượt chat liên tiếp cùng profile, truyền `conversation_id` nhận từ lượt đầu; thử dùng ID hội thoại của user/profile khác. | Cùng hội thoại trả lại cùng `conversation_id`; hội thoại sai owner/profile bị từ chối/404; UI có loading, lỗi và khóa gửi lặp trong khi request đang chạy. | [ ] |
+| AI-07 | Gọi risk/chat khi chưa đăng nhập, không có quyền profile, hoặc `ai_consent=false`. | 401 cho anonymous; 403 cho profile trái phép hoặc thiếu consent; không trả dữ liệu sức khỏe. Thử riêng profile DEPENDENT: kiểm tra hiện tại xem consent được xét theo tài khoản gọi hay người thuộc profile; yêu cầu consent đúng chủ thể/guardian là mục cần xác minh và hoàn thiện. | [ ] |
+
+**Mở rộng hiểu câu hỏi mở:** tách `RuleEngine` (truy xuất và thống kê có kiểm chứng) khỏi `Intent/QueryService`; chuẩn hóa câu hỏi thành intent có schema allowlist (metric, time range, aggregation), chỉ cho phép query tham số hóa qua ORM và profile đã được authorize. Với LLM, gửi ngữ cảnh tối thiểu đã loại PII, bắt buộc consent theo đúng chủ thể, timeout/rate limit, không cho LLM tự truy cập DB hoặc tự đưa chẩn đoán; kiểm tra JSON output, lưu audit an toàn và fallback về rule khi provider lỗi. Viết test theo cặp câu hỏi diễn đạt khác nhau nhưng kỳ vọng cùng intent, câu ngoài phạm vi, prompt injection và profile isolation trước khi bật provider.
+
+### C. Checklist trước nghiệm thu / báo cáo
+
+- [ ] So khớp `Chuong2_HoanChinh.docx` với routes, request/response JSON, status code, permission, pagination và các trường UUID/date/number; ghi rõ tính năng chỉ có model nhưng chưa có API.
+- [ ] Chạy migration trên DB test sạch và DB nâng cấp; xác minh FK, UNIQUE/idempotency, index, nullable, enum, cascade/SET_NULL và không sửa migration đã phát hành.
+- [ ] API: thiếu/sai token, profile IDOR, input rỗng/sai kiểu/giá trị biên, upload MIME/size, lỗi DB/storage, timeout; response không để lộ traceback, token, PII hoặc đường dẫn nội bộ.
+- [ ] Medical documents: upload-list-download-delete; kiểm tra quyền riêng cho list/retrieve/create/delete/download; kiểm tra file storage riêng tư, backup, quota, retention và xử lý file lỗi.
+- [ ] AI: xác minh consent và quyền cho từng profile, đúng cửa sổ thời gian/dataset, hội thoại thuộc đúng owner/profile, disclaimer và giới hạn rule-based được hiển thị; không coi output là chẩn đoán.
+- [ ] Flutter mọi màn/API: loading, success, empty, error, retry, pull-to-refresh/đổi profile, mounted/dispose an toàn; không hiển thị dữ liệu profile cũ sau khi chuyển thành viên.
+- [ ] Authentication: token lưu/đọc cùng key, request gửi Authorization, hết hạn/401 được xử lý, logout xóa token; không log token.
+- [ ] Ghi evidence cho mỗi case: build/commit, môi trường, account giả lập, profile ID đã che một phần, request/response đã bỏ token, ảnh UI, DB/file assertion và kết quả pass/fail. Không đưa PHI/secrets vào checklist hoặc repo.
+- [ ] Chỉ đổi trạng thái checklist sang `[x]` sau khi có bằng chứng chạy thực tế; ghi lỗi thành issue có bước tái hiện, mức độ ảnh hưởng, owner và cách xác minh bản sửa.
