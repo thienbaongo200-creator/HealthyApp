@@ -166,7 +166,7 @@ flutter run -t lib/main.dart -d <YOUR_DEVICE_ID> --dart-define=API_BASE_URL=http
 
 Ví dụ thực tế: 
 ```powershell
-flutter run -t lib/main.dart -d adb-R5CX826Q9VB-IjsOKx._adb-tls-connect._tcp --dart-define=API_BASE_URL=[http://192.168.1.5:8000/api](http://192.168.1.5:8000/api)
+flutter run -t lib/main.dart -d adb-R5CX826Q9VB-IjsOKx._adb-tls-connect._tcp --dart-define=API_BASE_URL=http://192.168.1.10:8000/api
 ```
 
 Trong ứng dụng, mở dashboard để Phone khởi tạo HTTP listener tại cổng `8080`. API URL mặc định đã trỏ tới IP trên, nhưng lệnh trên truyền giá trị rõ ràng để có thể dễ thay đổi nếu IP máy tính đổi.
