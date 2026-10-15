@@ -152,8 +152,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData() async {
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (mounted) _showMessage('Đã làm mới dữ liệu sức khỏe');
+    try {
+      final records = await ApiService.fetchHealthMeasurements();
+      if (!mounted) return;
+      int? latestInt(String type) {
+        final record = records.where((r) => r['measurement_type'] == type).firstOrNull;
+        final value = record?['value'];
+        return (value is num ? value : num.tryParse(value?.toString() ?? ''))?.toInt();
+      }
+      final heartRate = latestInt('HEART_RATE');
+      final steps = latestInt('STEPS');
+      final calorieRecord = records.where((r) => r['measurement_type'] == 'CALORIES').firstOrNull;
+      setState(() {
+        if (heartRate != null) _heartRate = heartRate;
+        if (steps != null) _steps = steps;
+        final calorieValue = calorieRecord?['value'];
+        final parsedCalories = calorieValue is num ? calorieValue : num.tryParse(calorieValue?.toString() ?? '');
+        if (parsedCalories != null) _calories = parsedCalories.toDouble();
+        if (heartRate != null && (_heartRateHistory.isEmpty || _heartRateHistory.last != heartRate)) {
+          _heartRateHistory.add(heartRate);
+          if (_heartRateHistory.length > 12) _heartRateHistory.removeAt(0);
+        }
+      });
+    } catch (error) {
+      if (mounted) _showMessage(error is ApiException ? error.message : 'Không thể tải dữ liệu sức khỏe.');
+    }
   }
 
   Future<void> _openTrends() async {
@@ -539,7 +562,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
           if (saved == true && mounted) {
-            _showMessage('Bản ghi đã được lưu trên thiết bị.');
+            await _refreshData();
+            if (mounted) _showMessage('Đã lưu và cập nhật chỉ số sức khỏe.');
           }
         },
         backgroundColor: _teal,

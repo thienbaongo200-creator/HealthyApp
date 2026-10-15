@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:frontend/services/manual_measurement_store.dart';
+import 'package:frontend/services/api_service.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 enum _MetricType { bloodPressure, heartRate, weight, glucose, temperature, height }
@@ -253,21 +253,47 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
 
     setState(() => _isSaving = true);
     try {
-      await ManualMeasurementStore.add({
-        'id': DateTime.now().microsecondsSinceEpoch.toString(),
-        'type': _selectedType.name,
-        'label': _typeLabel(_selectedType),
-        'member': widget.member,
-        'measured_at': _measuredAt.toIso8601String(),
-        'values': _valuesForSelectedType(),
-        'note': _noteController.text.trim(),
-        'source': 'manual',
-      });
+      final values = _valuesForSelectedType();
+      final measuredAt = _measuredAt.toUtc().toIso8601String();
+      final key = 'manual-${DateTime.now().microsecondsSinceEpoch}';
+      final records = <Map<String, dynamic>>[];
+      void add(String type, num value, String unit, {num? secondary}) {
+        records.add({
+          'measurement_type': type,
+          'value': value,
+          if (secondary != null) 'value_secondary': secondary,
+          'unit': unit,
+          'measured_at': measuredAt,
+          'source': 'MANUAL',
+          'idempotency_key': '${key}_$type',
+        });
+      }
+      switch (_selectedType) {
+        case _MetricType.bloodPressure:
+          add('BLOOD_PRESSURE', values['systolic'] as num, 'mmHg', secondary: values['diastolic'] as num);
+          add('HEART_RATE', values['heart_rate'] as num, 'bpm');
+          break;
+        case _MetricType.heartRate:
+          add('HEART_RATE', values['heart_rate'] as num, 'bpm');
+          break;
+        case _MetricType.weight:
+          add('WEIGHT', values['weight_kg'] as num, 'kg');
+          break;
+        case _MetricType.glucose:
+          add('BLOOD_GLUCOSE', values['glucose_mg_dl'] as num, 'mg/dL');
+          break;
+        case _MetricType.temperature:
+          add('TEMPERATURE', values['temperature_c'] as num, '°C');
+          break;
+        case _MetricType.height:
+          add('HEIGHT', values['height_cm'] as num, 'cm');
+          break;
+      }
+      await ApiService.createManualMeasurements(records);
       if (!mounted) return;
-      _showMessage('Đã lưu bản ghi trên thiết bị này.');
       Navigator.pop(context, true);
-    } catch (_) {
-      if (mounted) _showMessage('Không thể lưu bản ghi. Vui lòng thử lại.');
+    } catch (error) {
+      if (mounted) _showMessage(error is ApiException ? error.message : 'Không thể lưu bản ghi. Vui lòng thử lại.');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

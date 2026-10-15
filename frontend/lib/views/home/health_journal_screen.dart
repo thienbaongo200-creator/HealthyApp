@@ -76,10 +76,21 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
           measuredAt.day != _selectedDate.day) {
         continue;
       }
-      final heartRate = (record['heart_rate'] as num?)?.toInt();
-      final steps = (record['steps'] as num?)?.toInt();
-      final calories = (record['calories'] as num?)?.toDouble();
-      if (heartRate == null && steps == null && calories == null) continue;
+      final type = record['measurement_type']?.toString();
+      num? number(dynamic raw) => raw is num ? raw : num.tryParse(raw?.toString() ?? '');
+      final value = number(record['value']);
+      final heartRate = number(record['heart_rate'] ?? (type == 'HEART_RATE' ? value : null))?.toInt();
+      final steps = number(record['steps'] ?? (type == 'STEPS' ? value : null))?.toInt();
+      final calories = number(record['calories'] ?? (type == 'CALORIES' ? value : null))?.toDouble();
+      final detail = switch (type) {
+        'BLOOD_PRESSURE' => 'Huyết áp ${value?.toStringAsFixed(0) ?? '—'}/${number(record['value_secondary'])?.toStringAsFixed(0) ?? '—'} mmHg',
+        'BLOOD_GLUCOSE' => 'Đường huyết ${value ?? '—'} ${record['unit'] ?? ''}',
+        'WEIGHT' => 'Cân nặng ${value ?? '—'} ${record['unit'] ?? ''}',
+        'HEIGHT' => 'Chiều cao ${value ?? '—'} ${record['unit'] ?? ''}',
+        'TEMPERATURE' => 'Thân nhiệt ${value ?? '—'} ${record['unit'] ?? ''}',
+        _ => null,
+      };
+      if (heartRate == null && steps == null && calories == null && detail == null) continue;
       entries.add(_JournalEntry(
         measuredAt: measuredAt,
         heartRate: heartRate,
@@ -87,6 +98,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
         calories: calories,
         device: record['device_id']?.toString() ?? 'Thiết bị sức khỏe',
         activityState: record['activity_state']?.toString(),
+        detail: detail,
       ));
     }
     entries.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
@@ -404,6 +416,10 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                         ),
                       ),
                     ],
+                    if (entry.detail != null) ...[
+                      const SizedBox(height: 9),
+                      Text(entry.detail!, style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
                   ],
                 ),
               ),
@@ -486,6 +502,7 @@ class _JournalEntry {
     required this.calories,
     required this.device,
     required this.activityState,
+    this.detail,
   });
 
   final DateTime measuredAt;
@@ -494,4 +511,5 @@ class _JournalEntry {
   final double? calories;
   final String device;
   final String? activityState;
+  final String? detail;
 }
