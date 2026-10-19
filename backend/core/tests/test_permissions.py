@@ -63,3 +63,29 @@ class PermissionServiceTestCase(TestCase):
         share.share_level = 'VIEW_AND_LOG'
         share.save()
         self.assertTrue(PermissionService.has_profile_access(self.user_other, self.profile_owner.id, 'edit'))
+
+    def test_caregiver_share_is_read_only_even_when_share_level_allows_logging(self):
+        caregiver_membership = self.household_member_other
+        caregiver_membership.account = self.user_other
+        caregiver_membership.role = "CAREGIVER"
+        caregiver_membership.save(update_fields=["account", "role"])
+        ProfileShare.objects.create(
+            profile=self.profile_owner,
+            member=caregiver_membership,
+            share_level="VIEW_AND_LOG",
+        )
+
+        self.assertTrue(
+            PermissionService.has_profile_access(
+                self.user_other,
+                self.profile_owner.id,
+                required_permission="view",
+            )
+        )
+        self.assertFalse(
+            PermissionService.has_profile_access(
+                self.user_other,
+                self.profile_owner.id,
+                required_permission="edit",
+            )
+        )

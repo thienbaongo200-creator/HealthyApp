@@ -2,6 +2,7 @@ import mimetypes
 from uuid import UUID
 
 from django.db import IntegrityError, OperationalError, transaction
+from django.db.models import Q
 from django.http import FileResponse, HttpResponseRedirect
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -38,7 +39,10 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             return HealthMeasurement.objects.none()
 
         # Lấy tất cả profile hợp lệ của user đang đăng nhập
-        user_profiles = PersonProfile.objects.filter(account=user, is_archived=False)
+        user_profiles = PersonProfile.objects.filter(
+            Q(account=user) | Q(created_by=user),
+            is_archived=False,
+        )
         
         # 1. Profile của chính user
         owned_profile_ids = list(user_profiles.values_list('id', flat=True))
@@ -64,18 +68,44 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
         # Gộp tất cả các ID profile được phép xem vào tập duy nhất
         allowed_profile_ids = set(owned_profile_ids + shared_profile_ids + household_profile_ids)
 
-        queryset = HealthMeasurement.objects.filter(
-            profile_id__in=allowed_profile_ids
-        )
-        profile_id = self.request.query_params.get('profile_id')
-        if profile_id:
+        requested_profile_id = self.request.query_params.get('profile_id')
+        if requested_profile_id:
             try:
-                profile_id = UUID(profile_id)
+                requested_profile_id = UUID(requested_profile_id)
             except ValueError as error:
                 raise ValidationError(
                     {"profile_id": "Must be a valid UUID."}
                 ) from error
-            queryset = queryset.filter(profile_id=profile_id)
+
+        blocked_caregiver_profile_ids = set()
+        candidate_profiles = PersonProfile.objects.filter(
+            pk__in=allowed_profile_ids,
+        ).select_related('account', 'created_by')
+        for profile in candidate_profiles:
+            if (
+                PermissionService.is_caregiver_for_profile(user, profile)
+                and not PermissionService.has_profile_ai_consent(profile)
+            ):
+                blocked_caregiver_profile_ids.add(profile.pk)
+
+        if (
+            requested_profile_id in blocked_caregiver_profile_ids
+            and PermissionService.has_profile_access(
+                user,
+                requested_profile_id,
+                required_permission="view",
+            )
+        ):
+            raise PermissionDenied(
+                "Owner AI consent is required for caregivers to view measurements."
+            )
+
+        allowed_profile_ids.difference_update(blocked_caregiver_profile_ids)
+        queryset = HealthMeasurement.objects.filter(
+            profile_id__in=allowed_profile_ids
+        )
+        if requested_profile_id:
+            queryset = queryset.filter(profile_id=requested_profile_id)
         return queryset.order_by('-measured_at')
 
     def perform_create(self, serializer):
@@ -84,7 +114,10 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             profile, _ = PersonProfile.objects.get_or_create(
                 account=self.request.user,
                 profile_type="SELF",
-                defaults={"full_name": self.request.user.email.partition("@")[0]},
+                defaults={
+                    "full_name": self.request.user.email.partition("@")[0],
+                    "created_by": self.request.user,
+                },
             )
         else:
             if not PermissionService.has_profile_access(
@@ -123,7 +156,10 @@ class HealthMeasurementBatchCreateView(APIView):
             profile, _ = PersonProfile.objects.get_or_create(
                 account=request.user,
                 profile_type="SELF",
-                defaults={"full_name": request.user.email.partition("@")[0]},
+                defaults={
+                    "full_name": request.user.email.partition("@")[0],
+                    "created_by": request.user,
+                },
             )
         else:
             if not PermissionService.has_profile_access(

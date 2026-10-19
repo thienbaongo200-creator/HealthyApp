@@ -26,7 +26,10 @@ def _get_or_create_self_profile(account):
     profile, _ = PersonProfile.objects.get_or_create(
         account=account,
         profile_type="SELF",
-        defaults={"full_name": account.email.partition("@")[0]},
+        defaults={
+            "full_name": account.email.partition("@")[0],
+            "created_by": account,
+        },
     )
     return profile
 

@@ -11,7 +11,7 @@ from django.test import SimpleTestCase
 from django.test import TestCase
 from django.test.utils import override_settings
 from health_measurements.models import HealthMeasurement
-from households.models import Household, HouseholdMember
+from households.models import Household, HouseholdMember, ProfileShare
 from profiles.models import PersonProfile
 from rest_framework.test import APIClient
 
@@ -297,6 +297,63 @@ class HealthMeasurementBatchApiTests(TestCase):
         self.assertEqual(len(response.data["results"]), 1)
         self.assertEqual(response.data["results"][0]["value"], "85.00")
 
+    def test_caregiver_can_only_read_measurements_after_owner_ai_consent(self):
+        owner = Account.objects.create_user(
+            email="measurement-owner@example.com",
+            password="test-password-123",
+        )
+        owner_profile = PersonProfile.objects.create(
+            account=owner,
+            profile_type="SELF",
+            full_name="Measurement Owner",
+        )
+        caregiver_profile = PersonProfile.objects.create(
+            account=self.account,
+            profile_type="SELF",
+            full_name="Measurement Caregiver",
+        )
+        household = Household.objects.create(
+            name="Caregiver Measurements",
+            created_by=owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=owner,
+            profile=owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        caregiver_membership = HouseholdMember.objects.create(
+            household=household,
+            account=self.account,
+            profile=caregiver_profile,
+            role="CAREGIVER",
+            status="ACTIVE",
+        )
+        ProfileShare.objects.create(
+            member=caregiver_membership,
+            profile=owner_profile,
+            share_level="VIEW_AND_LOG",
+        )
+        HealthMeasurement.objects.create(
+            profile=owner_profile,
+            measurement_type="HEART_RATE",
+            value=75,
+            unit="bpm",
+            measured_at="2026-10-04T05:00:00Z",
+            source="MANUAL",
+        )
+
+        url = "/api/medical/measurements/"
+        denied = self.client.get(url, {"profile_id": str(owner_profile.pk)})
+        self.assertEqual(denied.status_code, 403)
+
+        owner.ai_consent = True
+        owner.save(update_fields=["ai_consent"])
+        allowed = self.client.get(url, {"profile_id": str(owner_profile.pk)})
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(len(allowed.data["results"]), 1)
+
     def test_list_rejects_invalid_profile_id(self):
         response = self.client.get(
             "/api/medical/measurements/",
@@ -370,6 +427,30 @@ class MedicalDocumentApiTests(TestCase):
         self.assertIn("attachment;", download_response["Content-Disposition"])
         self.assertEqual(download_response["Cache-Control"], "private, no-store")
         self.assertEqual(download_response["X-Content-Type-Options"], "nosniff")
+
+    def test_canonical_medical_records_document_route_supports_upload_and_delete(self):
+        response = self.client.post(
+            "/api/medical-records/documents/",
+            {
+                "profile_id": str(self.owner_profile.pk),
+                "document_type": "IMAGING",
+                "title": "X-ray",
+                "file": SimpleUploadedFile(
+                    "x-ray.png",
+                    b"png image data",
+                    content_type="image/png",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        document_id = response.data["id"]
+        delete_response = self.client.delete(
+            f"/api/medical-records/documents/{document_id}/"
+        )
+        self.assertEqual(delete_response.status_code, 204)
+        self.assertFalse(MedicalDocument.objects.filter(pk=document_id).exists())
 
     def test_document_list_filters_by_profile(self):
         dependent_profile = PersonProfile.objects.create(

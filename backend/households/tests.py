@@ -274,6 +274,45 @@ class HouseholdAPITests(APITestCase):
         share.refresh_from_db()
         self.assertEqual(share.share_level, "VIEW_ONLY")
 
+    def test_owner_can_invite_and_update_caregiver_role(self):
+        household = Household.objects.create(
+            name="Caregiver Household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.owner,
+            profile=self.owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+
+        invite = self.client.post(
+            reverse("household-member-list", kwargs={"household_id": household.pk}),
+            {
+                "email": self.invitee.email,
+                "role": "CAREGIVER",
+                "share_level": "VIEW_AND_LOG",
+            },
+            format="json",
+        )
+
+        self.assertEqual(invite.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(invite.data["role"], "CAREGIVER")
+        membership = HouseholdMember.objects.get(pk=invite.data["id"])
+        self.assertEqual(membership.role, "CAREGIVER")
+
+        update = self.client.patch(
+            reverse(
+                "household-member-detail",
+                kwargs={"household_id": household.pk, "member_id": membership.pk},
+            ),
+            {"role": "MEMBER"},
+            format="json",
+        )
+        self.assertEqual(update.status_code, status.HTTP_200_OK)
+        self.assertEqual(update.data["role"], "MEMBER")
+
     def test_non_owner_cannot_invite_household_member(self):
         household = Household.objects.create(
             name="Restricted Household",

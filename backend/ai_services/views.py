@@ -12,14 +12,15 @@ from core.permissions import PermissionService
 from profiles.models import PersonProfile
 
 
-def authorized_profile(request, profile_id):
-    if not PermissionService.has_profile_access(request.user, profile_id, required_permission="view"):
+def authorized_profile(request, profile_id, *, required_permission="view"):
+    if not PermissionService.has_profile_access(
+        request.user,
+        profile_id,
+        required_permission=required_permission,
+    ):
         raise PermissionDenied("You do not have permission to view this profile.")
     profile = get_object_or_404(PersonProfile, id=profile_id, is_archived=False)
-    # Consent belongs to the account that owns the health profile (the data subject
-    # or its recorded guardian), not merely the household member making the request.
-    consent_account = profile.account
-    if consent_account is None or not consent_account.ai_consent:
+    if not PermissionService.has_profile_ai_consent(profile):
         raise PermissionDenied("AI consent from the profile owner is required.")
     return profile
 
@@ -38,7 +39,7 @@ class AiChatSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, profile_id):
-        profile = authorized_profile(request, profile_id)
+        profile = authorized_profile(request, profile_id, required_permission="edit")
         message_text = request.data.get("message", "")
         if not isinstance(message_text, str) or not message_text.strip():
             return Response({"error": "Message content is required."}, status=status.HTTP_400_BAD_REQUEST)

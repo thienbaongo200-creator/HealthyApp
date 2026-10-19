@@ -30,6 +30,11 @@ class RiskRuleEngine:
                 "risk_level": "UNKNOWN", "analyzed_count": analyzed_count,
                 "warnings": ["Chưa đủ dữ liệu hợp lệ để đánh giá các quy tắc nguy cơ."],
                 "recommendation": "Cần ít nhất 3 bản ghi nhịp tim hoặc dữ liệu huyết áp, bước chân hay calo trong ngày để phân tích.",
+                "recommendations": [
+                    "Bổ sung ít nhất 3 mẫu nhịp tim để đánh giá quy tắc R01/R02.",
+                    "Hoặc ghi nhận huyết áp, số bước hay calo trong ngày để có dữ liệu sàng lọc.",
+                    "Đo lại trong điều kiện phù hợp và chọn đúng hồ sơ trước khi phân tích.",
+                ],
             }
 
         level, warnings = "LOW", []

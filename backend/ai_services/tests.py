@@ -69,6 +69,27 @@ class HealthRiskAssessmentApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_unlinked_dependent_uses_creator_consent(self):
+        dependent = PersonProfile.objects.create(
+            account=None,
+            created_by=self.account,
+            profile_type="DEPENDENT",
+            full_name="Unlinked Dependent",
+        )
+        url = reverse("ai-risk-assessment", kwargs={"profile_id": dependent.id})
+
+        self.account.ai_consent = False
+        self.account.save(update_fields=["ai_consent"])
+        denied = self.client.get(url)
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.account.ai_consent = True
+        self.account.save(update_fields=["ai_consent"])
+        allowed = self.client.get(url)
+        self.assertEqual(allowed.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        self.assertEqual(allowed.data["risk_level"], "UNKNOWN")
+        self.assertGreater(len(allowed.data["recommendations"]), 0)
+
     def test_risk_assessment_no_data(self):
         """Kiểm tra khi profile chưa có bất kỳ chỉ số đo lường nào"""
         response = self.client.get(self.url)
