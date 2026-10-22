@@ -18,12 +18,26 @@ from health_measurements.serializers import (
 from profiles.models import PersonProfile
 from households.models import HouseholdMember, ProfileShare
 from .serializers import (
+    AllergySerializer,
+    LabResultSerializer,
     MedicalDocumentSerializer,
+    MedicalHistorySerializer,
+    MedicationSerializer,
+    VisitSerializer,
 )
-from .models import MedicalDocument
+from .models import (
+    Allergy,
+    LabResult,
+    MedicalDocument,
+    MedicalHistory,
+    Medication,
+    Visit,
+)
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
+
+from profiles.views import accessible_profiles_for
 
 class HealthMeasurementPagination(PageNumberPagination):
     page_size = 100
@@ -123,7 +137,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             if not PermissionService.has_profile_access(
                 self.request.user,
                 profile_id,
-                required_permission="edit",
+                required_permission="measurement_write",
             ):
                 raise PermissionDenied(
                     "You do not have permission to add measurements to this profile."
@@ -133,13 +147,27 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
         if not PermissionService.has_profile_access(
             self.request.user,
             profile.pk,
-            required_permission="edit",
+            required_permission="measurement_write",
         ):
             raise PermissionDenied(
                 "You do not have permission to add measurements to this profile."
             )
 
-        serializer.save(profile=profile)
+        serializer.save(profile=profile, source="MANUAL", device=None)
+
+    def perform_update(self, serializer):
+        if serializer.instance.source == "WEAR_OS":
+            raise PermissionDenied(
+                "Wear OS measurements cannot be changed manually."
+            )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.source == "WEAR_OS":
+            raise PermissionDenied(
+                "Wear OS measurements cannot be deleted manually."
+            )
+        instance.delete()
 
 
 class HealthMeasurementBatchCreateView(APIView):
@@ -165,7 +193,7 @@ class HealthMeasurementBatchCreateView(APIView):
             if not PermissionService.has_profile_access(
                 request.user,
                 profile_id,
-                required_permission="edit",
+                required_permission="measurement_write",
             ):
                 raise PermissionDenied(
                     "Bạn không có quyền ghi dữ liệu lên hồ sơ này."
@@ -214,8 +242,11 @@ class HealthMeasurementBatchCreateView(APIView):
 
             try:
                 with transaction.atomic():
+                    source = validated_item.pop("source", "MANUAL")
                     measurement = HealthMeasurement.objects.create(
                         profile=profile,
+                        source=source,
+                        device=None,
                         **validated_item,
                     )
             except IntegrityError:
@@ -263,11 +294,73 @@ class HealthMeasurementBatchCreateView(APIView):
                 "results": results,
             },
             status=(
-                status.HTTP_201_CREATED
-                if rejected_count == 0 and retry_count == 0
-                else status.HTTP_200_OK
+                status.HTTP_200_OK
             ),
         )
+
+
+class ProfileScopedMedicalRecordViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsProfileOwnerOrShared]
+
+    def get_queryset(self):
+        queryset = self.queryset.filter(
+            profile__in=accessible_profiles_for(self.request.user)
+        )
+        profile_id = self.request.query_params.get("profile_id")
+        if profile_id:
+            try:
+                profile_id = UUID(profile_id)
+            except ValueError as error:
+                raise ValidationError(
+                    {"profile_id": "Must be a valid UUID."}
+                ) from error
+            if not PermissionService.has_profile_access(
+                self.request.user,
+                profile_id,
+                required_permission="view",
+            ):
+                raise PermissionDenied(
+                    "You do not have permission to view this profile."
+                )
+            queryset = queryset.filter(profile_id=profile_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        profile = serializer.validated_data["profile"]
+        if not PermissionService.has_profile_access(
+            self.request.user,
+            profile.pk,
+            required_permission="edit",
+        ):
+            raise PermissionDenied(
+                "You do not have permission to add records to this profile."
+            )
+        serializer.save()
+
+
+class MedicalHistoryViewSet(ProfileScopedMedicalRecordViewSet):
+    queryset = MedicalHistory.objects.select_related("profile").all()
+    serializer_class = MedicalHistorySerializer
+
+
+class AllergyViewSet(ProfileScopedMedicalRecordViewSet):
+    queryset = Allergy.objects.select_related("profile").all()
+    serializer_class = AllergySerializer
+
+
+class VisitViewSet(ProfileScopedMedicalRecordViewSet):
+    queryset = Visit.objects.select_related("profile").all()
+    serializer_class = VisitSerializer
+
+
+class MedicationViewSet(ProfileScopedMedicalRecordViewSet):
+    queryset = Medication.objects.select_related("profile", "visit").all()
+    serializer_class = MedicationSerializer
+
+
+class LabResultViewSet(ProfileScopedMedicalRecordViewSet):
+    queryset = LabResult.objects.select_related("profile", "visit").all()
+    serializer_class = LabResultSerializer
 
 
 class MedicalDocumentViewSet(

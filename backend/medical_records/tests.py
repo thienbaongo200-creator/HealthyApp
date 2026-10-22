@@ -134,6 +134,139 @@ class MedicalRecordModelTests(TestCase):
         self.assertIsNone(document.visit)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
+class MedicalRecordApiTests(TestCase):
+    def setUp(self):
+        self.account = Account.objects.create_user(
+            email=f"medical-api-{uuid.uuid4().hex}@example.com",
+            password="test-password",
+        )
+        self.profile = PersonProfile.objects.create(
+            account=self.account,
+            profile_type="SELF",
+            full_name="Medical API Owner",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.account)
+
+    def test_all_medical_record_endpoints_create_and_list_by_profile(self):
+        visit_response = self.client.post(
+            "/api/medical-records/visits/",
+            {
+                "profile_id": str(self.profile.pk),
+                "visited_at": "2026-10-01T10:00:00Z",
+                "facility_name": "Central Clinic",
+            },
+            format="json",
+        )
+        self.assertEqual(visit_response.status_code, 201, visit_response.data)
+
+        payloads = (
+            (
+                "histories",
+                {
+                    "condition": "Asthma",
+                    "description": "Managed condition",
+                    "diagnosed_at": "2020-01-01",
+                },
+                {"description": "Updated condition notes"},
+            ),
+            (
+                "allergies",
+                {
+                    "allergen": "Peanuts",
+                    "reaction": "Rash",
+                    "severity": "MODERATE",
+                },
+                {"notes": "Updated allergy notes"},
+            ),
+            (
+                "medications",
+                {
+                    "visit": visit_response.data["id"],
+                    "name": "Medication",
+                    "dosage": "10 mg",
+                },
+                {"dosage": "20 mg"},
+            ),
+            (
+                "lab-results",
+                {
+                    "visit": visit_response.data["id"],
+                    "test_name": "Blood count",
+                    "result": "Normal",
+                    "tested_at": "2026-10-01T10:00:00Z",
+                },
+                {"notes": "Reviewed"},
+            ),
+        )
+        for route, values, values_update in payloads:
+            with self.subTest(route=route):
+                create_response = self.client.post(
+                    f"/api/medical-records/{route}/",
+                    {"profile_id": str(self.profile.pk), **values},
+                    format="json",
+                )
+                self.assertEqual(create_response.status_code, 201, create_response.data)
+                self.assertEqual(
+                    str(create_response.data["profile_id"]),
+                    str(self.profile.pk),
+                )
+
+                list_response = self.client.get(
+                    f"/api/medical-records/{route}/",
+                    {"profile_id": str(self.profile.pk)},
+                )
+                self.assertEqual(list_response.status_code, 200)
+                self.assertEqual(len(list_response.data), 1)
+                record_id = create_response.data["id"]
+                retrieve_response = self.client.get(
+                    f"/api/medical-records/{route}/{record_id}/"
+                )
+                self.assertEqual(retrieve_response.status_code, 200)
+                update_response = self.client.patch(
+                    f"/api/medical-records/{route}/{record_id}/",
+                    values_update,
+                    format="json",
+                )
+                self.assertEqual(update_response.status_code, 200)
+                delete_response = self.client.delete(
+                    f"/api/medical-records/{route}/{record_id}/"
+                )
+                self.assertEqual(delete_response.status_code, 204)
+
+        visit_update = self.client.patch(
+            f"/api/medical-records/visits/{visit_response.data['id']}/",
+            {"reason": "Follow-up"},
+            format="json",
+        )
+        self.assertEqual(visit_update.status_code, 200)
+
+    def test_medical_records_cannot_be_created_for_unshared_profile(self):
+        other = Account.objects.create_user(
+            email=f"private-medical-{uuid.uuid4().hex}@example.com",
+            password="test-password",
+        )
+        other_profile = PersonProfile.objects.create(
+            account=other,
+            profile_type="SELF",
+            full_name="Private Profile",
+        )
+
+        response = self.client.post(
+            "/api/medical-records/histories/",
+            {
+                "profile_id": str(other_profile.pk),
+                "condition": "Private condition",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(MedicalHistory.objects.filter(profile=other_profile).exists())
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
 class HealthMeasurementBatchApiTests(TestCase):
     def setUp(self):
         self.account = Account.objects.create_user(
@@ -159,12 +292,15 @@ class HealthMeasurementBatchApiTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["received_count"], 1)
+        self.assertEqual(response.data["created_count"], 1)
+        self.assertEqual(response.data["rejected_count"], 0)
         self.assertEqual(HealthMeasurement.objects.count(), 1)
         created = HealthMeasurement.objects.get()
         self.assertEqual(created.measurement_type, "HEART_RATE")
         self.assertEqual(created.profile.account, self.account)
+        self.assertEqual(created.source, "WEAR_OS")
 
     def test_batch_retry_does_not_duplicate_idempotency_key(self):
         measurement = {
@@ -188,8 +324,12 @@ class HealthMeasurementBatchApiTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(first_response.status_code, 201)
-        self.assertEqual(retry_response.status_code, 201)
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(first_response.data["created_count"], 1)
+        self.assertEqual(first_response.data["rejected_count"], 0)
+        self.assertEqual(retry_response.status_code, 200)
+        self.assertEqual(retry_response.data["created_count"], 0)
+        self.assertEqual(retry_response.data["duplicate_count"], 1)
         self.assertEqual(HealthMeasurement.objects.count(), 1)
 
     def test_list_does_not_include_profiles_from_households_where_user_is_only_member(self):
@@ -363,7 +503,10 @@ class HealthMeasurementBatchApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
-@override_settings(MEDIA_ROOT=settings.BASE_DIR / "test_private_uploads")
+@override_settings(
+    MEDIA_ROOT=settings.BASE_DIR / "test_private_uploads",
+    SECURE_SSL_REDIRECT=False,
+)
 class MedicalDocumentApiTests(TestCase):
     def setUp(self):
         self.owner = Account.objects.create_user(

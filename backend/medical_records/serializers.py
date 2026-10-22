@@ -1,6 +1,130 @@
 from rest_framework import serializers
 
-from .models import MedicalDocument
+from profiles.models import PersonProfile
+
+from .models import (
+    Allergy,
+    LabResult,
+    MedicalDocument,
+    MedicalHistory,
+    Medication,
+    Visit,
+)
+
+
+class ProfileScopedMedicalRecordSerializer(serializers.ModelSerializer):
+    profile_id = serializers.PrimaryKeyRelatedField(
+        source="profile",
+        queryset=PersonProfile.objects.filter(is_archived=False),
+    )
+
+    def validate_profile_id(self, profile):
+        if self.instance and profile.pk != self.instance.profile_id:
+            raise serializers.ValidationError(
+                "A medical record cannot be moved to another profile."
+            )
+        return profile
+
+
+class MedicalHistorySerializer(ProfileScopedMedicalRecordSerializer):
+    class Meta:
+        model = MedicalHistory
+        fields = (
+            "id",
+            "profile_id",
+            "condition",
+            "description",
+            "diagnosed_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class AllergySerializer(ProfileScopedMedicalRecordSerializer):
+    class Meta:
+        model = Allergy
+        fields = (
+            "id",
+            "profile_id",
+            "allergen",
+            "reaction",
+            "severity",
+            "notes",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class VisitSerializer(ProfileScopedMedicalRecordSerializer):
+    class Meta:
+        model = Visit
+        fields = (
+            "id",
+            "profile_id",
+            "provider_name",
+            "facility_name",
+            "visited_at",
+            "reason",
+            "diagnosis",
+            "notes",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class VisitScopedMedicalRecordSerializer(ProfileScopedMedicalRecordSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        profile = attrs.get("profile", self.instance.profile if self.instance else None)
+        visit = attrs.get("visit", self.instance.visit if self.instance else None)
+        if visit and profile and visit.profile_id != profile.pk:
+            raise serializers.ValidationError(
+                {"visit": "The visit must belong to the same profile."}
+            )
+        return attrs
+
+
+class MedicationSerializer(VisitScopedMedicalRecordSerializer):
+    class Meta:
+        model = Medication
+        fields = (
+            "id",
+            "profile_id",
+            "visit",
+            "name",
+            "dosage",
+            "frequency",
+            "start_date",
+            "end_date",
+            "instructions",
+            "status",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class LabResultSerializer(VisitScopedMedicalRecordSerializer):
+    class Meta:
+        model = LabResult
+        fields = (
+            "id",
+            "profile_id",
+            "visit",
+            "test_name",
+            "result",
+            "unit",
+            "reference_range",
+            "tested_at",
+            "notes",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
 
 
 class MedicalDocumentSerializer(serializers.ModelSerializer):
