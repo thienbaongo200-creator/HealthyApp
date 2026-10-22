@@ -6,6 +6,13 @@ from .models import HealthMeasurement
 class HealthMeasurementFieldsSerializer(serializers.ModelSerializer):
     """Input contract and broad sanity bounds for one measurement."""
 
+    source = serializers.ChoiceField(
+        choices=HealthMeasurement.SOURCE_CHOICES,
+        required=False,
+        default="MANUAL",
+    )
+    device = serializers.PrimaryKeyRelatedField(read_only=True)
+
     VALUE_RANGES = {
         # Broad input sanity bounds; these are not diagnostic/clinical thresholds.
         "HEART_RATE": (30, 220),
@@ -45,6 +52,12 @@ class HealthMeasurementFieldsSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        errors = {}
+        if self.initial_data.get("device") not in (None, ""):
+            errors["device"] = "Device association is assigned by the server."
+        if errors:
+            raise serializers.ValidationError(errors)
+
         measurement_type = attrs.get(
             "measurement_type",
             getattr(self.instance, "measurement_type", None),
@@ -123,6 +136,10 @@ class HealthMeasurementSerializer(HealthMeasurementFieldsSerializer):
         if self.instance is not None and "profile_id" in self.initial_data:
             raise serializers.ValidationError(
                 {"profile_id": "A measurement cannot be moved to another profile."}
+            )
+        if self.initial_data.get("source") not in (None, "MANUAL"):
+            raise serializers.ValidationError(
+                {"source": "Measurement source is assigned by the server."}
             )
         return super().validate(attrs)
 
