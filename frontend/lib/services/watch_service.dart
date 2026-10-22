@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 
 class WatchService {
   static final WatchService _instance = WatchService._internal();
@@ -19,7 +18,6 @@ class WatchService {
 
     try {
       _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
-      debugPrint('[Phone Server] 🚀 Server đang chạy tại port $port...');
 
       _server!.listen((HttpRequest request) async {
         try {
@@ -27,7 +25,6 @@ class WatchService {
             final content = await utf8.decoder.bind(request).join();
             if (content.isNotEmpty) {
               final Map<String, dynamic> data = jsonDecode(content);
-              debugPrint('[Phone Server] 📥 Nhận data: $data');
 
               _wearDataController.add(data);
 
@@ -41,15 +38,17 @@ class WatchService {
           } else {
             request.response.statusCode = HttpStatus.notFound;
           }
-        } catch (e) {
-          debugPrint('[Phone Server] ❌ Lỗi xử lý: $e');
+        } on FormatException {
+          request.response.statusCode = HttpStatus.badRequest;
+        } on Exception {
           request.response.statusCode = HttpStatus.internalServerError;
         } finally {
           await request.response.close();
         }
       });
-    } catch (e) {
-      debugPrint('[Phone Server] 💥 Lỗi Bind Server: $e');
+    } on SocketException {
+      _server = null;
+      rethrow;
     }
   }
 

@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../core/network/token_storage.dart';
+import 'authenticated_http.dart';
 import 'api_config.dart';
 
 class ApiException implements Exception {
@@ -36,8 +37,21 @@ class ApiService {
   static const String baseUrl = apiBaseUrl;
   static const Duration _loginTimeout = Duration(seconds: 15);
 
-  static Future<http.Response> _send(Future<http.Response> request) =>
-      request.timeout(_loginTimeout);
+  static final AuthenticatedHttpClient _httpClient = AuthenticatedHttpClient();
+
+  static Future<http.Response> _send(
+    String method,
+    Uri uri, {
+    Map<String, String>? headers,
+    String? body,
+    bool retryUnauthorized = true,
+  }) => _httpClient.request(
+    method,
+    uri,
+    headers: headers,
+    body: body,
+    retryUnauthorized: retryUnauthorized,
+  );
 
   static String? _token;
   static final ApiService instance = ApiService();
@@ -54,17 +68,21 @@ class ApiService {
     required String username,
     required String email,
     required String password,
+    required String passwordConfirm,
   }) async {
     try {
-      final response = await _send(http.post(
+      final response = await _send(
+        'POST',
         Uri.parse('$baseUrl/auth/register/'),
-        headers: {'Content-Type': 'application/json'},
+        headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'username': username,
           'email': email,
           'password': password,
+          'password_confirm': passwordConfirm,
         }),
-      ));
+        retryUnauthorized: false,
+      );
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return {
         'success': response.statusCode == 201,
@@ -85,7 +103,8 @@ class ApiService {
     required double weight,
   }) async {
     try {
-      final response = await _send(http.patch(
+      final response = await _httpClient.request(
+        'PATCH',
         Uri.parse('$baseUrl/auth/profile/'),
         headers: {
           'Content-Type': 'application/json',
@@ -97,7 +116,7 @@ class ApiService {
           'height': height,
           'weight': weight,
         }),
-      ));
+      );
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       return {
         'success': response.statusCode >= 200 && response.statusCode < 300,
@@ -115,12 +134,12 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/auth/login/');
     developer.log('Login request to $uri', name: 'ApiService');
 
-    final response = await _send(
-      http.post(
-          uri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'account': account, 'password': password}),
-        ),
+    final response = await _httpClient.request(
+      'POST',
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'account': account, 'password': password}),
+      retryUnauthorized: false,
     );
 
     dynamic decoded;
@@ -164,11 +183,13 @@ class ApiService {
   }
 
   Future<String?> loginWithGoogle(String accessToken) async {
-    final response = await _send(http.post(
+    final response = await _httpClient.request(
+      'POST',
       Uri.parse('$baseUrl/auth/google/'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'access_token': accessToken}),
-    ));
+      retryUnauthorized: false,
+    );
     if (response.statusCode != 200) return null;
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['access'] as String? ?? data['token'] as String?;
@@ -183,16 +204,18 @@ class ApiService {
     final refreshToken = await TokenStorage.getRefreshToken();
     try {
       if (refreshToken != null && refreshToken.isNotEmpty) {
-        final response = await _send(
-          http.post(
+        final response = await _httpClient.send((accessToken) async {
+          final currentRefreshToken = await TokenStorage.getRefreshToken();
+          final headers = AuthenticatedHttpClient.headersWithToken(const {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          }, accessToken);
+          return http.post(
             Uri.parse('$baseUrl/auth/logout/'),
-            headers: {
-              'Content-Type': 'application/json',
-              ...await _authHeaders(),
-            },
-            body: jsonEncode({'refresh': refreshToken}),
-          ),
-        );
+            headers: headers,
+            body: jsonEncode({'refresh': currentRefreshToken ?? refreshToken}),
+          );
+        });
         if (response.statusCode != 205 &&
             response.statusCode != 200 &&
             response.statusCode != 401) {
@@ -214,7 +237,8 @@ class ApiService {
     required double calories,
   }) async {
     try {
-      final response = await _send(http.post(
+      final response = await _httpClient.request(
+        'POST',
         Uri.parse('$baseUrl/health/'),
         headers: {
           'Content-Type': 'application/json',
@@ -225,7 +249,7 @@ class ApiService {
           'steps': steps,
           'calories': calories,
         }),
-      ));
+      );
 
       if (response.statusCode == 201) {
         developer.log(
@@ -235,19 +259,17 @@ class ApiService {
         return true;
       } else {
         developer.log(
-          '[API] Lỗi server: ${response.body}',
+          '[API] Health request failed with HTTP ${response.statusCode}.',
           name: 'ApiService',
           level: 900,
         );
         return false;
       }
-    } catch (e, st) {
+    } catch (_) {
       developer.log(
-        '[API] Lỗi kết nối API: $e',
+        '[API] Health request could not be completed.',
         name: 'ApiService',
         level: 1000,
-        error: e,
-        stackTrace: st,
       );
       return false;
     }
@@ -255,22 +277,18 @@ class ApiService {
 
   static Future<BatchSyncResult?> sendHealthMeasurements(
     List<Map<String, dynamic>> measurements, {
-    String? profileId,
+    required String profileId,
   }) async {
     try {
       final headers = await _authHeaders();
-      final response = await _send(
-        http.post(
-            Uri.parse('$baseUrl/health-measurements/batch/'),
-            headers: {
-              'Content-Type': 'application/json',
-              ...headers,
-            },
-            body: jsonEncode({
-              'measurements': measurements,
-              if (profileId != null) 'profile_id': profileId,
-            }),
-          ),
+      final response = await _httpClient.request(
+        'POST',
+        Uri.parse('$baseUrl/health-measurements/batch/'),
+        headers: {'Content-Type': 'application/json', ...headers},
+        body: jsonEncode({
+          'measurements': measurements,
+          'profile_id': profileId,
+        }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -295,7 +313,7 @@ class ApiService {
               case 'BỊ_TỪ_CHỐI':
                 rejected.add(key);
                 developer.log(
-                  '[Batch] Measurement bị từ chối: key=$key, errors=${raw['errors']}',
+                  '[Batch] A measurement was rejected by validation.',
                   name: 'ApiService',
                   level: 900,
                 );
@@ -329,18 +347,16 @@ class ApiService {
         );
       }
       developer.log(
-        '[API] Lỗi đồng bộ batch (${response.statusCode}): ${response.body}',
+        '[API] Batch request failed with HTTP ${response.statusCode}.',
         name: 'ApiService',
         level: 900,
       );
       return null;
-    } catch (e, st) {
+    } catch (_) {
       developer.log(
-        '[API] Lỗi kết nối batch API: $e',
+        '[API] Batch request could not be completed.',
         name: 'ApiService',
         level: 1000,
-        error: e,
-        stackTrace: st,
       );
       return null;
     }
@@ -353,36 +369,73 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/medical/measurements/').replace(
       queryParameters: profileId == null ? null : {'profile_id': profileId},
     );
-    final response = await _send(
-      http.get(
-        uri,
-        headers: {
-          ...headers,
-        },
-      ),
-    );
-    if (response.statusCode != 200) {
-      throw ApiException(response.statusCode, 'Không thể tải nhật ký sức khỏe.');
+    final records = <Map<String, dynamic>>[];
+    final visitedPages = <Uri>{};
+    var nextPage = uri;
+
+    while (true) {
+      if (!visitedPages.add(nextPage)) {
+        throw const FormatException(
+          'Measurement API returned a pagination cycle.',
+        );
+      }
+
+      final response = await _httpClient.request(
+        'GET',
+        nextPage,
+        headers: headers,
+      );
+      if (response.statusCode != 200) {
+        throw ApiException(
+          response.statusCode,
+          'Không thể tải nhật ký sức khỏe.',
+        );
+      }
+
+      final payload = jsonDecode(response.body);
+      if (payload is List) {
+        records.addAll(payload.whereType<Map<String, dynamic>>());
+        break;
+      }
+      if (payload is! Map<String, dynamic> || payload['results'] is! List) {
+        throw const FormatException(
+          'Measurement response must contain a list.',
+        );
+      }
+      records.addAll(
+        (payload['results'] as List).whereType<Map<String, dynamic>>(),
+      );
+
+      final next = payload['next'];
+      if (next == null || next == '') break;
+      if (next is! String) {
+        throw const FormatException(
+          'Measurement pagination URL must be a string.',
+        );
+      }
+
+      final resolvedNext = nextPage.resolve(next);
+      final apiUri = Uri.parse(baseUrl);
+      final apiPath = apiUri.path.replaceFirst(RegExp(r'/$'), '');
+      if (resolvedNext.scheme != apiUri.scheme ||
+          resolvedNext.host != apiUri.host ||
+          resolvedNext.port != apiUri.port ||
+          !resolvedNext.path.startsWith('$apiPath/')) {
+        throw const FormatException(
+          'Measurement pagination URL must remain within the configured API.',
+        );
+      }
+      nextPage = resolvedNext;
     }
 
-    final payload = jsonDecode(response.body);
-    final records = payload is List
-        ? payload
-        : payload is Map<String, dynamic>
-        ? payload['results']
-        : null;
-    if (records is! List) {
-      throw const FormatException('Measurement response must contain a list.');
-    }
-    return records.whereType<Map<String, dynamic>>().toList(growable: false);
+    return records.toList(growable: false);
   }
 
   static Future<List<Map<String, dynamic>>> fetchProfiles() async {
-    final response = await _send(
-      http.get(
-        Uri.parse('$baseUrl/profiles/'),
-        headers: await _authHeaders(),
-      ),
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse('$baseUrl/profiles/'),
+      headers: await _authHeaders(),
     );
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, 'Không thể tải hồ sơ gia đình.');
@@ -396,38 +449,135 @@ class ApiService {
     if (profiles is! List) {
       throw const FormatException('Profile response must contain a list.');
     }
-    return profiles
-        .whereType<Map<String, dynamic>>()
-        .toList(growable: false);
+    return profiles.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchHouseholds() async {
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse('$baseUrl/households/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(
+        response.statusCode,
+        'Không thể tải danh sách hộ gia đình.',
+      );
+    }
+    final payload = jsonDecode(response.body);
+    if (payload is! List) {
+      throw const FormatException('Household response must be a list.');
+    }
+    return payload.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  static Future<void> leaveHousehold(String householdId) async {
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/households/$householdId/leave/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: '{}',
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể rời hộ gia đình.'),
+      );
+    }
+  }
+
+  static Future<Map<String, dynamic>> createDependentProfile({
+    required String fullName,
+    required String relationType,
+    String householdRole = 'MEMBER',
+    String? dateOfBirth,
+  }) async {
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/profiles/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({
+        'profile_type': 'DEPENDENT',
+        'full_name': fullName,
+        'relation_type': relationType,
+        'household_role': householdRole,
+        'date_of_birth': ?dateOfBirth,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể thêm hồ sơ thành viên.'),
+      );
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> updateProfileDetails({
+    required String profileId,
+    required String fullName,
+    required String relationType,
+    String? householdRole,
+    String? dateOfBirth,
+  }) async {
+    final response = await _httpClient.request(
+      'PATCH',
+      Uri.parse('$baseUrl/profiles/$profileId/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({
+        'full_name': fullName,
+        'relation_type': relationType,
+        ...?(householdRole == null ? null : {'household_role': householdRole}),
+        'date_of_birth': dateOfBirth,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể cập nhật hồ sơ thành viên.'),
+      );
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  static Future<void> archiveProfile(String profileId) async {
+    final response = await _httpClient.request(
+      'DELETE',
+      Uri.parse('$baseUrl/profiles/$profileId/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể xóa hồ sơ thành viên.'),
+      );
+    }
   }
 
   static Future<bool> fetchAiConsent() async {
-    final response = await _send(
-      http.get(
-        Uri.parse('$baseUrl/auth/ai-consent/'),
-        headers: await _authHeaders(),
-      ),
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse('$baseUrl/auth/ai-consent/'),
+      headers: await _authHeaders(),
     );
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, 'Không thể tải tùy chọn AI.');
     }
     final payload = jsonDecode(response.body);
     if (payload is! Map<String, dynamic> || payload['ai_consent'] is! bool) {
-      throw const FormatException('AI consent response must contain a boolean.');
+      throw const FormatException(
+        'AI consent response must contain a boolean.',
+      );
     }
     return payload['ai_consent'] as bool;
   }
 
   static Future<bool> updateAiConsent(bool consent) async {
-    final response = await _send(
-      http.patch(
-        Uri.parse('$baseUrl/auth/ai-consent/'),
-        headers: {
-          'Content-Type': 'application/json',
-          ...await _authHeaders(),
-        },
-        body: jsonEncode({'ai_consent': consent}),
-      ),
+    final response = await _httpClient.request(
+      'PATCH',
+      Uri.parse('$baseUrl/auth/ai-consent/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({'ai_consent': consent}),
     );
     if (response.statusCode != 200) {
       throw ApiException(
@@ -437,7 +587,9 @@ class ApiService {
     }
     final payload = jsonDecode(response.body);
     if (payload is! Map<String, dynamic> || payload['ai_consent'] is! bool) {
-      throw const FormatException('AI consent response must contain a boolean.');
+      throw const FormatException(
+        'AI consent response must contain a boolean.',
+      );
     }
     return payload['ai_consent'] as bool;
   }
@@ -445,17 +597,16 @@ class ApiService {
   static Future<List<Map<String, dynamic>>> fetchMedicalDocuments({
     String? profileId,
   }) async {
-    final uri = Uri.parse('$baseUrl/medical/documents/').replace(
+    final uri = Uri.parse('$baseUrl/medical-records/documents/').replace(
       queryParameters: profileId == null ? null : {'profile_id': profileId},
     );
-    final response = await _send(
-      http.get(uri, headers: await _authHeaders()),
+    final response = await _httpClient.request(
+      'GET',
+      uri,
+      headers: await _authHeaders(),
     );
     if (response.statusCode != 200) {
-      throw ApiException(
-        response.statusCode,
-        'Không thể tải hồ sơ y tế.',
-      );
+      throw ApiException(response.statusCode, 'Không thể tải hồ sơ y tế.');
     }
 
     final payload = jsonDecode(response.body);
@@ -465,14 +616,14 @@ class ApiService {
         ? payload['results']
         : null;
     if (documents is! List) {
-      throw const FormatException('Medical document response must contain a list.');
+      throw const FormatException(
+        'Medical document response must contain a list.',
+      );
     }
-    return documents
-        .whereType<Map<String, dynamic>>()
-        .toList(growable: false);
+    return documents.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
-  static Future<void> uploadMedicalDocument({
+  static Future<Map<String, dynamic>> uploadMedicalDocument({
     required String profileId,
     required String documentType,
     required String title,
@@ -480,24 +631,21 @@ class ApiService {
     required Uint8List fileBytes,
     String description = '',
   }) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/medical/documents/'),
-    )
-      ..headers.addAll(await _authHeaders())
-      ..fields.addAll({
-        'profile_id': profileId,
-        'document_type': documentType,
-        'title': title,
-        'description': description,
-      })
-      ..files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          fileBytes,
-          filename: fileName,
-        ),
-      );
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$baseUrl/medical-records/documents/'),
+          )
+          ..headers.addAll(await _authHeaders())
+          ..fields.addAll({
+            'profile_id': profileId,
+            'document_type': documentType,
+            'title': title,
+            'description': description,
+          })
+          ..files.add(
+            http.MultipartFile.fromBytes('file', fileBytes, filename: fileName),
+          );
     final streamedResponse = await request.send().timeout(_loginTimeout);
     final response = await http.Response.fromStream(streamedResponse);
     if (response.statusCode != 201) {
@@ -506,14 +654,20 @@ class ApiService {
         _responseMessage(response.body, 'Không thể tải tài liệu lên.'),
       );
     }
+    final payload = jsonDecode(utf8.decode(response.bodyBytes));
+    if (payload is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Medical document response must be an object.',
+      );
+    }
+    return payload;
   }
 
   static Future<Uint8List> downloadMedicalDocument(String documentId) async {
-    final response = await _send(
-      http.get(
-        Uri.parse('$baseUrl/medical/documents/$documentId/download/'),
-        headers: await _authHeaders(),
-      ),
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse('$baseUrl/medical-records/documents/$documentId/download/'),
+      headers: await _authHeaders(),
     );
     if (response.statusCode != 200) {
       throw ApiException(
@@ -525,11 +679,10 @@ class ApiService {
   }
 
   static Future<void> deleteMedicalDocument(String documentId) async {
-    final response = await _send(
-      http.delete(
-        Uri.parse('$baseUrl/medical/documents/$documentId/'),
-        headers: await _authHeaders(),
-      ),
+    final response = await _httpClient.request(
+      'DELETE',
+      Uri.parse('$baseUrl/medical-records/documents/$documentId/'),
+      headers: await _authHeaders(),
     );
     if (response.statusCode != 204) {
       throw ApiException(
@@ -543,7 +696,8 @@ class ApiService {
     try {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
-        final detail = decoded['detail'] ?? decoded['file'] ?? decoded['profile_id'];
+        final detail =
+            decoded['detail'] ?? decoded['file'] ?? decoded['profile_id'];
         if (detail is String) return detail;
         if (detail is List && detail.isNotEmpty) return detail.first.toString();
       }
@@ -557,21 +711,18 @@ class ApiService {
   static Future<void> createManualMeasurements(
     List<Map<String, dynamic>> measurements, {
     String? profileId,
-  }
-  ) async {
+  }) async {
     final headers = await _authHeaders();
-    final response = await _send(http.post(
+    final response = await _httpClient.request(
+      'POST',
       Uri.parse('$baseUrl/medical/measurements/batch/'),
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
+      headers: {'Content-Type': 'application/json', ...headers},
       body: jsonEncode({
         'measurements': measurements,
         'profile_id': ?profileId,
       }),
-    ));
-    if (response.statusCode != 201) {
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw ApiException(response.statusCode, 'Khong the luu chi so suc khoe.');
     }
   }

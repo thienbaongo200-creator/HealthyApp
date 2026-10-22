@@ -11,8 +11,6 @@ class WatchSenderService {
 
   Future<bool> sendDataToPhone(Map<String, dynamic> healthData) async {
     try {
-      debugPrint('[Wear OS] 📤 Gửi dữ liệu: $healthData');
-
       final response = await http
           .post(
             Uri.parse(_syncUrl),
@@ -22,12 +20,11 @@ class WatchSenderService {
           .timeout(const Duration(seconds: 3));
 
       if (response.statusCode == 200) {
-        debugPrint('[Wear OS] ✅ Phone đã nhận thành công!');
         return true;
       }
       return false;
-    } catch (e) {
-      debugPrint('[Wear OS] ❌ Lỗi kết nối: $e');
+    } on Exception {
+      debugPrint('[Wear OS] Data sync failed.');
       return false;
     }
   }

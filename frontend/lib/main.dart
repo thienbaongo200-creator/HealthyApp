@@ -1,61 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:frontend/views/auth/login_screen.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:frontend/app_theme.dart';
+import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/services/api_config.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  validateApiBaseUrl();
   runApp(const HealthApp());
 }
 
-class HealthApp extends StatelessWidget {
+class HealthApp extends StatefulWidget {
   const HealthApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Healthy App',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.light,
-      themeMode: ThemeMode.light,
-      home: const LoginScreen(),
-    );
-  }
+  State<HealthApp> createState() => _HealthAppState();
 }
 
-// Widget trung gian kiểm tra trạng thái đăng nhập
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
+class _HealthAppState extends State<HealthApp> {
+  final ProfileSelectionController _profileSelection =
+      ProfileSelectionController();
 
-  Future<bool> _checkLoginStatus() async {
-    const storage = FlutterSecureStorage();
-    String? token = await storage.read(key: 'access_token');
-    return token != null;
+  @override
+  void dispose() {
+    _profileSelection.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _checkLoginStatus(),
-      builder: (context, snapshot) {
-        // Đang chờ đọc bộ nhớ bảo mật
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator(color: Colors.teal)),
-          );
-        }
-
-        // Nếu đã có token -> Vào thẳng màn hình chính
-        if (snapshot.hasData && snapshot.data == true) {
-          return const Scaffold(
-            body: Center(child: Text("Đã đăng nhập - Chuyển vào HomeScreen")),
-          ); // Thay bằng HomeScreen() của bạn
-        }
-
-        // Nếu chưa có token -> Vào màn hình Login
-        return const LoginScreen();
-      },
+    return ProfileSelectionScope(
+      controller: _profileSelection,
+      child: MaterialApp(
+        title: 'Healthy App',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.light,
+        themeMode: ThemeMode.light,
+        supportedLocales: const [Locale('en', 'US'), Locale('vi', 'VN')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        home: const LoginScreen(),
+      ),
     );
   }
 }

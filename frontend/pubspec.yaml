@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   http: ^1.2.0                    # Gọi API Django
   permission_handler: ^12.0.3    # Quản lý quyền truy cập
   google_sign_in: ^6.2.1         # Đăng nhập bằng Google
