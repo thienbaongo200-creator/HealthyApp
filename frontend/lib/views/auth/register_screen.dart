@@ -46,6 +46,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       username: _usernameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text,
+      passwordConfirm: _confirmPasswordController.text,
     );
 
     if (!mounted) return;
@@ -213,7 +214,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               _confirmPasswordFocusNode.requestFocus(),
                           decoration: InputDecoration(
                             labelText: 'Mật khẩu',
-                            hintText: 'Ít nhất 6 ký tự',
+                            hintText: 'Ít nhất 8 ký tự',
                             prefixIcon: const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               icon: Icon(
@@ -226,8 +227,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               }),
                             ),
                           ),
-                          validator: (v) => v!.length < 6
-                              ? 'Mật khẩu phải từ 6 ký tự trở lên'
+                          validator: (v) => v!.length < 8
+                              ? 'Mật khẩu phải từ 8 ký tự trở lên'
                               : null,
                         ),
                         const SizedBox(height: 14),

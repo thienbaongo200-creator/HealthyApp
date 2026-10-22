@@ -3,6 +3,7 @@ import 'main_navigation_wrapper.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/services/ai_service.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/views/home/quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
 
@@ -44,15 +45,19 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       sentAt: DateTime.now(),
     ),
   ];
+  List<Map<String, dynamic>> _conversations = [];
 
   bool _isAnalyzing = false;
   bool _isSendingChat = false;
   bool _isLoadingChatProfile = true;
+  bool _isLoadingConversations = false;
   String? _chatProfileId;
   String? _chatProfileError;
+  String? _chatHistoryError;
   String? _conversationId;
   bool _profileSelectionChanged = false;
   int _profileLoadRequest = 0;
+  int _conversationLoadRequest = 0;
   bool _analysisLoaded = false;
   String? _analysisError;
   int? _measurementsInPeriod;
@@ -60,7 +65,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   DateTime? _peakHeartRateAt;
   String? _riskLevel;
   List<String> _riskWarnings = [];
+  List<String> _riskRecommendations = [];
   String? _riskRecommendation;
+  String? _riskInterpretation;
+  String? _riskGeneratedBy;
   int? _riskAnalyzedCount;
 
   @override
@@ -128,22 +136,21 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         _measurementsInPeriod = recent.length;
         _peakHeartRate = recent.isEmpty ? null : recent.first.heartRate;
         _peakHeartRateAt = recent.isEmpty ? null : recent.first.measuredAt;
-        _riskLevel = risk['risk_level']?.toString();
-        _riskAnalyzedCount = (risk['analyzed_count'] as num?)?.toInt();
-        _riskWarnings = (risk['warnings'] as List<dynamic>? ?? const [])
-            .map((warning) => warning.toString())
-            .toList(growable: false);
-        _riskRecommendation = risk['recommendation']?.toString();
+        _riskLevel = risk.riskLevel;
+        _riskAnalyzedCount = risk.analyzedCount;
+        _riskWarnings = risk.warnings;
+        _riskRecommendations = risk.recommendations;
+        _riskRecommendation = risk.recommendation;
+        _riskInterpretation = risk.interpretation;
+        _riskGeneratedBy = risk.generatedBy;
         _isAnalyzing = false;
       });
-      _showMessage(
-        'Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất.',
-      );
+      _showMessage('Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất.');
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _analysisError = error.toString().contains('403')
-            ? 'Hãy bật đồng ý phân tích AI trong Cài đặt để tiếp tục.'
+            ? 'Bạn không có quyền xem đánh giá của hồ sơ này.'
             : 'Không thể tải đánh giá nguy cơ. Hãy kiểm tra kết nối và thử lại.';
         _isAnalyzing = false;
       });
@@ -152,12 +159,16 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
 
   Future<void> _selectMember(String member) async {
     _profileSelectionChanged = true;
+    _conversationLoadRequest++;
     setState(() {
       _selectedMember = member;
       _chatProfileId = null;
       _conversationId = null;
-      _messages.removeWhere((message) => message.isUser);
-      _messages.removeRange(1, _messages.length);
+      _conversations = [];
+      _chatHistoryError = null;
+      _messages
+        ..clear()
+        ..add(_welcomeMessage());
     });
     await _loadChatProfile();
     setState(() {
@@ -167,7 +178,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       _peakHeartRateAt = null;
       _riskLevel = null;
       _riskWarnings = [];
+      _riskRecommendations = [];
       _riskRecommendation = null;
+      _riskInterpretation = null;
+      _riskGeneratedBy = null;
       _riskAnalyzedCount = null;
     });
   }
@@ -205,6 +219,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       }
       if (!mounted || requestId != _profileLoadRequest) return;
       setState(() => _chatProfileId = profile['id'].toString());
+      ProfileSelectionScope.of(
+        context,
+      ).selectProfileId(profile['id'].toString());
+      await _loadConversationHistory(profile['id'].toString());
     } catch (error) {
       if (!mounted || requestId != _profileLoadRequest) return;
       setState(
@@ -219,6 +237,126 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       }
     }
   }
+
+  Future<void> _loadConversationHistory(String profileId) async {
+    final requestId = ++_conversationLoadRequest;
+    setState(() {
+      _isLoadingConversations = true;
+      _chatHistoryError = null;
+    });
+    try {
+      final conversations = await _aiApiService.fetchConversations(
+        profileId: profileId,
+      );
+      if (!mounted ||
+          requestId != _conversationLoadRequest ||
+          _chatProfileId != profileId) {
+        return;
+      }
+
+      final latestConversation = conversations.isEmpty
+          ? null
+          : conversations.first;
+      final conversationId = latestConversation?['id']?.toString();
+      final messages = conversationId == null
+          ? <Map<String, dynamic>>[]
+          : await _aiApiService.fetchConversationMessages(
+              conversationId: conversationId,
+            );
+      if (!mounted ||
+          requestId != _conversationLoadRequest ||
+          _chatProfileId != profileId) {
+        return;
+      }
+
+      setState(() {
+        _conversations = conversations;
+        _conversationId = conversationId;
+        _messages
+          ..clear()
+          ..addAll(messages.map(_chatMessageFromJson));
+        if (_messages.isEmpty) _messages.add(_welcomeMessage());
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted ||
+          requestId != _conversationLoadRequest ||
+          _chatProfileId != profileId) {
+        return;
+      }
+      setState(() {
+        _chatHistoryError =
+            'Không thể tải lịch sử hội thoại. Vui lòng thử lại. ($error)';
+      });
+    } finally {
+      if (mounted &&
+          requestId == _conversationLoadRequest &&
+          _chatProfileId == profileId) {
+        setState(() => _isLoadingConversations = false);
+      }
+    }
+  }
+
+  Future<void> _selectConversation(String conversationId) async {
+    if (_isLoadingConversations || conversationId == _conversationId) return;
+    final profileId = _chatProfileId;
+    if (profileId == null) return;
+    final requestId = ++_conversationLoadRequest;
+    setState(() {
+      _isLoadingConversations = true;
+      _chatHistoryError = null;
+    });
+    try {
+      final messages = await _aiApiService.fetchConversationMessages(
+        conversationId: conversationId,
+      );
+      if (!mounted ||
+          requestId != _conversationLoadRequest ||
+          _chatProfileId != profileId) {
+        return;
+      }
+      setState(() {
+        _conversationId = conversationId;
+        _messages
+          ..clear()
+          ..addAll(messages.map(_chatMessageFromJson));
+        if (_messages.isEmpty) _messages.add(_welcomeMessage());
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (mounted &&
+          requestId == _conversationLoadRequest &&
+          _chatProfileId == profileId) {
+        setState(() {
+          _chatHistoryError =
+              'Không thể mở hội thoại đã chọn. Vui lòng thử lại. ($error)';
+        });
+      }
+    } finally {
+      if (mounted &&
+          requestId == _conversationLoadRequest &&
+          _chatProfileId == profileId) {
+        setState(() => _isLoadingConversations = false);
+      }
+    }
+  }
+
+  _ChatMessage _chatMessageFromJson(Map<String, dynamic> json) {
+    final role = json['role']?.toString();
+    final sentAt = DateTime.tryParse(json['created_at']?.toString() ?? '');
+    return _ChatMessage(
+      text: json['content']?.toString() ?? '',
+      isUser: role == 'USER',
+      sentAt: sentAt?.toLocal() ?? DateTime.now(),
+    );
+  }
+
+  _ChatMessage _welcomeMessage() => _ChatMessage(
+    text:
+        'Xin chào! Mình có thể giúp bạn tìm hiểu các chỉ số sức khỏe. Bạn muốn hỏi điều gì?',
+    isUser: false,
+    sentAt: DateTime.now(),
+  );
 
   String _timeLabel(DateTime date) =>
       '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
@@ -276,6 +414,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       if (!mounted) return;
       setState(() {
         _conversationId = response['conversation_id']?.toString();
+        final conversationId = _conversationId;
+        if (conversationId != null) {
+          _conversations.removeWhere(
+            (conversation) => conversation['id']?.toString() == conversationId,
+          );
+          _conversations.insert(0, {
+            'id': conversationId,
+            'profile_id': _chatProfileId,
+            'title': response['title']?.toString() ?? text,
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+        }
         _messages.add(
           _ChatMessage(
             text:
@@ -287,15 +437,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       });
     } catch (error) {
       if (!mounted) return;
-      setState(
-        () => _messages.add(
-          _ChatMessage(
-            text: 'Không gửi được tin nhắn. $error',
-            isUser: false,
-            sentAt: DateTime.now(),
-          ),
-        ),
-      );
+      final message = error is AiFallbackException
+          ? 'Phản hồi dự phòng (chưa được lưu): ${error.fallbackReply}\n\n${error.message}'
+          : 'Không gửi được tin nhắn. $error';
+      setState(() {
+        if (error is AiFallbackException) {
+          _conversationId = error.conversationId;
+          _messageController.text = text;
+        }
+        _messages.add(
+          _ChatMessage(text: message, isUser: false, sentAt: DateTime.now()),
+        );
+      });
     } finally {
       if (mounted) {
         setState(() => _isSendingChat = false);
@@ -524,6 +677,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
               'HIGH' => const Color(0xFFFCE8E8),
               'MEDIUM' => const Color(0xFFFFF4DF),
               'LOW' => const Color(0xFFE8F5EB),
+              'UNKNOWN' => const Color(0xFFFFF7E5),
               _ => const Color(0xFFF0F3F2),
             },
             borderRadius: BorderRadius.circular(14),
@@ -543,7 +697,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
               Expanded(
                 child: Text(
                   _analysisLoaded
-                      ? 'MỨC SÀNG LỌC: ${_riskLabel.toUpperCase()}'
+                      ? (_riskLevel == 'UNKNOWN'
+                            ? 'Chưa đủ dữ liệu sàng lọc'
+                            : 'MỨC SÀNG LỌC: ${_riskLabel.toUpperCase()}')
                       : 'CHƯA CÓ ĐÁNH GIÁ',
                   style: TextStyle(
                     color: _riskColor,
@@ -556,6 +712,49 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           ),
         ),
         const SizedBox(height: 12),
+        if (_analysisLoaded && _riskLevel == 'UNKNOWN')
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Chưa đủ dữ liệu sàng lọc để áp dụng các quy tắc nguy cơ. Hãy bổ sung mẫu đo rồi phân tích lại.',
+                style: TextStyle(
+                  color: Color(0xFF687875),
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final recommendation
+                  in _riskRecommendations.isEmpty
+                      ? const [
+                          'Bổ sung ít nhất 3 mẫu nhịp tim.',
+                          'Hoặc ghi nhận huyết áp, số bước hay calo trong ngày.',
+                        ]
+                      : _riskRecommendations)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '• $recommendation',
+                    style: const TextStyle(
+                      color: Color(0xFF687875),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+            ],
+          )
+        else if (_analysisLoaded)
+          Text(
+            'Căn cứ demo: nhịp tim >120 bpm (R01); 3 mẫu liên tiếp vượt ngưỡng tạo cảnh báo R02. Có ${_measurementsInPeriod ?? 0} mẫu nhịp tim trong 7 ngày, tổng ${_riskAnalyzedCount ?? 0} mẫu được quy tắc đánh giá.',
+            style: const TextStyle(
+              color: Color(0xFF687875),
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+        const SizedBox(height: 8),
         Text(
           _analysisLoaded
               ? 'Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất; ${_measurementsInPeriod ?? 0} lần đo nhịp tim trong 7 ngày.'
@@ -586,6 +785,27 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           Text(
             _riskRecommendation!,
             style: const TextStyle(
+              color: Color(0xFF687875),
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+        ],
+        if (_riskInterpretation != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Diễn giải AI: $_riskInterpretation',
+            style: const TextStyle(
+              color: Color(0xFF315A52),
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+        ] else if (_riskGeneratedBy == 'RULE_ONLY') ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Kết quả này chỉ dựa trên các quy tắc sàng lọc.',
+            style: TextStyle(
               color: Color(0xFF687875),
               fontSize: 12,
               height: 1.45,
@@ -710,11 +930,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                             'Chưa có nhận định bổ sung từ hệ thống.'
                       : _riskWarnings.join(' '))
                 : 'Chưa có dữ liệu phân tích. Hãy tải đánh giá nguy cơ cho hồ sơ đang chọn.',
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 12,
-              height: 1.55,
-            ),
+            style: const TextStyle(color: _ink, fontSize: 12, height: 1.55),
           ),
         ),
         const SizedBox(height: 10),
@@ -758,7 +974,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                       _chatProfileError ??
                           (_isLoadingChatProfile
                               ? 'Đang tải hồ sơ để kết nối trợ lý AI...'
-                              : 'Tin nhắn sẽ được phân tích theo dữ liệu sức khỏe của hồ sơ đang chọn.'),
+                              : _chatHistoryError ??
+                                    (_isLoadingConversations
+                                        ? 'Đang tải hội thoại cũ...'
+                                        : 'Tin nhắn sẽ được phân tích theo dữ liệu sức khỏe của hồ sơ đang chọn.')),
                       style: TextStyle(
                         color: Color(0xFF687875),
                         fontSize: 11,
@@ -769,6 +988,40 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 ],
               ),
             ),
+            if (_conversations.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _conversationId,
+                decoration: const InputDecoration(
+                  labelText: 'Lịch sử hội thoại',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                items: [
+                  for (final conversation in _conversations)
+                    if (conversation['id'] != null)
+                      DropdownMenuItem(
+                        value: conversation['id'].toString(),
+                        child: Text(
+                          conversation['title']?.toString().isNotEmpty == true
+                              ? conversation['title'].toString()
+                              : 'Hội thoại',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                ],
+                onChanged: _isLoadingConversations
+                    ? null
+                    : (conversationId) {
+                        if (conversationId != null) {
+                          _selectConversation(conversationId);
+                        }
+                      },
+              ),
+            ],
             const SizedBox(height: 14),
             for (final message in _messages) _messageBubble(message),
             if (_isSendingChat)

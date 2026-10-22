@@ -1,7 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:frontend/core/network/token_storage.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/widgets/widgets.dart';
+import 'package:frontend/widgets/profile_context_banner.dart';
 
 class MedicalRecordsScreen extends StatefulWidget {
   const MedicalRecordsScreen({super.key});
@@ -34,9 +37,18 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     });
     try {
       final profiles = await ApiService.fetchProfiles();
+      if (!mounted) return;
+      ProfileSelectionScope.of(context).setProfiles(profiles);
+      final globalProfileId = ProfileSelectionScope.of(
+        context,
+      ).selectedProfileId;
       final selectedProfileId =
           profiles.any((profile) => profile['id']?.toString() == _profileId)
           ? _profileId
+          : profiles.any(
+              (profile) => profile['id']?.toString() == globalProfileId,
+            )
+          ? globalProfileId
           : (profiles
                         .where((profile) => profile['profile_type'] == 'SELF')
                         .firstOrNull ??
@@ -46,6 +58,9 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         profileId: selectedProfileId,
       );
       if (!mounted) return;
+      if (selectedProfileId != null) {
+        ProfileSelectionScope.of(context).selectProfileId(selectedProfileId);
+      }
       setState(() {
         _profiles = profiles;
         _profileId = selectedProfileId;
@@ -63,6 +78,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
 
   Future<void> _selectProfile(String? id) async {
     if (id == null || id == _profileId) return;
+    ProfileSelectionScope.of(context).selectProfileId(id);
     setState(() => _profileId = id);
     await _loadData();
   }
@@ -70,16 +86,15 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   Future<void> _uploadDocument() async {
     if (_profileId == null || _isUploading) return;
     final selection = await FilePicker.pickFiles(
-      dialogTitle: 'Chọn tài liệu y tế',
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+      dialogTitle: 'Chọn ảnh hồ sơ y tế',
+      type: FileType.image,
     );
     if (selection.isEmpty || !mounted) return;
     final file = selection.first;
     final fileSize = await file.length();
     if (!mounted) return;
     if (fileSize == null) {
-      _showMessage('KhĂ´ng Ä‘á»c Ä‘Æ°á»£c kĂ­ch thÆ°á»›c tá»‡p Ä‘Ă£ chá»n.');
+      _showMessage('Không đọc được kích thước ảnh đã chọn.');
       return;
     }
     if (fileSize > 10 * 1024 * 1024) {
@@ -96,7 +111,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
 
     setState(() => _isUploading = true);
     try {
-      await ApiService.uploadMedicalDocument(
+      final uploadedDocument = await ApiService.uploadMedicalDocument(
         profileId: _profileId!,
         documentType: metadata.type,
         title: metadata.title,
@@ -105,8 +120,15 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         fileBytes: await file.readAsBytes(),
       );
       if (!mounted) return;
+      setState(() {
+        _documents = [
+          uploadedDocument,
+          ..._documents.where(
+            (document) => document['id'] != uploadedDocument['id'],
+          ),
+        ];
+      });
       _showMessage('Đã tải tài liệu lên.');
-      await _loadData();
     } catch (error) {
       if (mounted) {
         _showMessage(
@@ -151,6 +173,102 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         );
       }
     }
+  }
+
+  bool _isImageDocument(Map<String, dynamic> document) {
+    final name = (document['file_name'] ?? document['file_url'] ?? '')
+        .toString()
+        .split('?')
+        .first
+        .toLowerCase();
+    return name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png');
+  }
+
+  Future<void> _previewDocument(Map<String, dynamic> document) async {
+    final token = await TokenStorage.getAccessToken();
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      _showMessage('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+    final documentId = document['id']?.toString();
+    if (documentId == null || documentId.isEmpty) {
+      _showMessage('Không tìm thấy mã tài liệu.');
+      return;
+    }
+    final imageUrl =
+        '${ApiService.baseUrl}/medical-records/documents/$documentId/download/';
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xFF101817),
+        insetPadding: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: 900,
+          height: MediaQuery.sizeOf(dialogContext).height * 0.82,
+          child: Column(
+            children: [
+              ListTile(
+                title: Text(
+                  document['title']?.toString() ?? 'Ảnh hồ sơ y tế',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Đóng',
+                  onPressed: () => Navigator.pop(dialogContext),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ),
+              Expanded(
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.network(
+                      imageUrl,
+                      headers: {'Authorization': 'Bearer $token'},
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, progress) =>
+                          progress == null
+                          ? child
+                          : const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            ),
+                      errorBuilder: (context, error, stackTrace) => const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white70,
+                              size: 48,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Không thể tải ảnh xem trước. Hãy kiểm tra kết nối hoặc tải tệp xuống.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteDocument(Map<String, dynamic> document) async {
@@ -213,15 +331,15 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
           style: TextStyle(color: _ink, fontWeight: FontWeight.w700),
         ),
         actions: [
-          IconButton(
+          TextButton.icon(
             onPressed: _isUploading ? null : _uploadDocument,
-            tooltip: 'Tải tài liệu lên',
             icon: _isUploading
                 ? const SizedBox.square(
-                    dimension: 20,
+                    dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.upload_file_rounded, color: _teal),
+                : const Icon(Icons.add_photo_alternate_outlined),
+            label: const Text('Thêm tài liệu'),
           ),
         ],
       ),
@@ -236,6 +354,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                     children: [
+                      const ProfileContextBanner(),
                       if (_profiles.isNotEmpty)
                         DropdownButtonFormField<String>(
                           initialValue: _profileId,
@@ -288,6 +407,9 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                                 document['description']?.toString() ?? '',
                             uploadedAt:
                                 document['uploaded_at']?.toString() ?? '',
+                            onPreview: _isImageDocument(document)
+                                ? () => _previewDocument(document)
+                                : null,
                             onDownload: () => _downloadDocument(document),
                             onDelete: () => _deleteDocument(document),
                           ),
@@ -399,6 +521,7 @@ class _DocumentCard extends StatelessWidget {
     required this.type,
     required this.description,
     required this.uploadedAt,
+    this.onPreview,
     required this.onDownload,
     required this.onDelete,
   });
@@ -407,6 +530,7 @@ class _DocumentCard extends StatelessWidget {
   final String type;
   final String description;
   final String uploadedAt;
+  final VoidCallback? onPreview;
   final VoidCallback onDownload;
   final VoidCallback onDelete;
 
@@ -449,6 +573,11 @@ class _DocumentCard extends StatelessWidget {
               ],
             ],
           ),
+        ),
+        IconButton(
+          onPressed: onPreview,
+          tooltip: 'Xem ảnh',
+          icon: const Icon(Icons.zoom_in, color: Color(0xFF168B83)),
         ),
         IconButton(
           onPressed: onDownload,

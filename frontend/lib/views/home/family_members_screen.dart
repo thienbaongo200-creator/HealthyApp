@@ -1,53 +1,110 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/widgets/widgets.dart';
+import 'package:frontend/services/api_service.dart';
+import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/widgets/profile_context_banner.dart';
 
 class FamilyMembersScreen extends StatefulWidget {
   const FamilyMembersScreen({super.key});
-
   @override
   State<FamilyMembersScreen> createState() => _FamilyMembersScreenState();
 }
 
 class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
-  static const _canvas = Color(0xFFF5F9F8);
+  static const _relations = <String, String>{
+    'FATHER': 'Bố',
+    'MOTHER': 'Mẹ',
+    'SPOUSE': 'Vợ/Chồng',
+    'CHILD': 'Con',
+    'SIBLING': 'Anh/Chị/Em',
+    'OTHER': 'Khác',
+  };
+  static const _roleLabels = <String, String>{
+    'OWNER': '[Chủ sở hữu]',
+    'CAREGIVER': '[Người chăm sóc]',
+    'MEMBER': '[Thành viên]',
+  };
+  List<Map<String, dynamic>> _profiles = [];
+  List<Map<String, dynamic>> _households = [];
+  bool _loading = true;
+  String? _error;
 
-  final List<_FamilyMember> _members = [
-    _FamilyMember(name: 'Tôi', relation: 'Chủ hồ sơ', birthYear: ''),
-    _FamilyMember(name: 'Bố', relation: 'Bố', birthYear: ''),
-    _FamilyMember(name: 'Mẹ', relation: 'Mẹ', birthYear: ''),
-  ];
-
-  Future<void> _editMember([int? index]) async {
-    final existing = index == null ? null : _members[index];
-    final result = await showDialog<_FamilyMember>(
-      context: context,
-      builder: (context) => _MemberEditor(member: existing),
-    );
-    if (result == null || !mounted) return;
-    setState(() {
-      if (index == null) {
-        _members.add(result);
-      } else {
-        _members[index] = result;
-      }
-    });
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  Future<void> _deleteMember(int index) async {
-    final member = _members[index];
-    if (member.relation == 'Chủ hồ sơ') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể xóa hồ sơ chính.')),
-      );
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final profiles = await ApiService.fetchProfiles();
+      final households = await ApiService.fetchHouseholds();
+      if (!mounted) return;
+      ProfileSelectionScope.of(context).setProfiles(profiles);
+      setState(() {
+        _profiles = profiles;
+        _households = households;
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _edit([Map<String, dynamic>? profile]) async {
+    final result = await showDialog<_ProfileDraft>(
+      context: context,
+      builder: (_) => _ProfileEditor(
+        profile: profile,
+        relations: _relations,
+        roles: _roleLabels,
+      ),
+    );
+    if (result == null) return;
+    try {
+      if (profile == null) {
+        await ApiService.createDependentProfile(
+          fullName: result.name,
+          relationType: result.relation,
+          householdRole: result.role,
+          dateOfBirth: result.dateOfBirth,
+        );
+      } else {
+        await ApiService.updateProfileDetails(
+          profileId: profile['id'].toString(),
+          fullName: result.name,
+          relationType: result.relation,
+          householdRole: result.role,
+          dateOfBirth: result.dateOfBirth,
+        );
+      }
+      await _load();
+      if (mounted) {
+        _message(profile == null ? 'Đã thêm hồ sơ.' : 'Đã cập nhật hồ sơ.');
+      }
+    } catch (e) {
+      if (mounted) _message(e.toString());
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> profile) async {
+    if (profile['profile_type'] == 'SELF') {
+      _message('Không thể xóa hồ sơ chính.');
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Xóa thành viên?'),
-        content: Text('Bạn có chắc muốn xóa hồ sơ ${member.name}?'),
+        title: const Text('Lưu trữ hồ sơ?'),
+        content: Text('Hồ sơ ${profile['full_name']} sẽ được lưu trữ.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -55,317 +112,324 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC74747)),
-            child: const Text('Xóa'),
+            child: const Text('Lưu trữ'),
           ),
         ],
       ),
     );
-    if (confirmed == true && mounted) {
-      setState(() => _members.removeAt(index));
+    if (accepted != true) return;
+    try {
+      await ApiService.archiveProfile(profile['id'].toString());
+      await _load();
+    } catch (e) {
+      if (mounted) _message(e.toString());
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _canvas,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Quản lý thành viên gia đình',
-          style: TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700),
-        ),
-        leading: IconButton(
-          onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.arrow_back_rounded, color: _ink),
-          tooltip: 'Quay lại',
+  Future<void> _leaveHousehold(Map<String, dynamic> household) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rời hộ gia đình?'),
+        content: Text(
+          'Bạn sẽ mất quyền truy cập các hồ sơ được chia sẻ trong '
+          '${household['name']}.',
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: TextButton.icon(
-              onPressed: () => _editMember(),
-              icon: const Icon(Icons.add_rounded, size: 19),
-              label: const Text('Thêm'),
-              style: TextButton.styleFrom(
-                foregroundColor: _teal,
-                textStyle: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Rời hộ'),
           ),
         ],
       ),
-      body: SkyBackground(
-        child: SafeArea(
-          top: false,
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            itemCount: _members.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return GlassCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE7F5F2),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Icon(Icons.family_restroom, color: _teal),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '${_members.length} hồ sơ thành viên',
-                          style: const TextStyle(
-                            color: _ink,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const Icon(Icons.verified_user_outlined, color: _teal),
-                    ],
-                  ),
-                );
-              }
-              final memberIndex = index - 1;
-              final member = _members[memberIndex];
-              final isPrimary = member.relation == 'Chủ hồ sơ';
-              return GlassCard(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 25,
-                          backgroundColor: const Color(0xFFE7F5F2),
-                          child: Text(
-                            member.name.isEmpty ? '?' : member.name.characters.first,
-                            style: const TextStyle(
-                              color: _teal,
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                member.name,
-                                style: const TextStyle(
-                                  color: _ink,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                member.relation,
-                                style: const TextStyle(
-                                  color: Color(0xFF7D8B88),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (isPrimary)
-                          const Icon(Icons.shield_outlined, color: _teal, size: 20),
-                      ],
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Divider(height: 1, color: Color(0xFFE8EFED)),
-                    ),
-                    Row(
-                      children: [
-                        const Icon(Icons.cake_outlined,
-                            size: 17, color: Color(0xFF82908D)),
-                        const SizedBox(width: 8),
-                        Text(
-                          member.birthYear.isEmpty
-                              ? 'Năm sinh chưa cập nhật'
-                              : 'Năm sinh ${member.birthYear}',
-                          style: const TextStyle(
-                            color: Color(0xFF687875),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => _editMember(memberIndex),
-                          icon: const Icon(Icons.edit_outlined, size: 15),
-                          label: const Text('Sửa'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _teal,
-                            side: const BorderSide(color: Color(0xFFB8DAD5)),
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                        OutlinedButton.icon(
-                          onPressed: () => _deleteMember(memberIndex),
-                          icon: const Icon(Icons.delete_outline, size: 15),
-                          label: const Text('Xóa'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFFC74747),
-                            side: const BorderSide(color: Color(0xFFE9C6C6)),
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ),
     );
-  }
-}
-
-class _FamilyMember {
-  const _FamilyMember({
-    required this.name,
-    required this.relation,
-    required this.birthYear,
-  });
-
-  final String name;
-  final String relation;
-  final String birthYear;
-}
-
-class _MemberEditor extends StatefulWidget {
-  const _MemberEditor({this.member});
-  final _FamilyMember? member;
-
-  @override
-  State<_MemberEditor> createState() => _MemberEditorState();
-}
-
-class _MemberEditorState extends State<_MemberEditor> {
-  late final TextEditingController _nameController;
-  late final TextEditingController _birthYearController;
-  late String _relation;
-  final _formKey = GlobalKey<FormState>();
-  static const _relations = ['Bố', 'Mẹ', 'Vợ/Chồng', 'Con', 'Anh/Chị/Em', 'Khác'];
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.member?.name ?? '');
-    _birthYearController =
-        TextEditingController(text: widget.member?.birthYear ?? '');
-    final savedRelation = widget.member?.relation;
-    _relation = savedRelation == 'Chủ hồ sơ' || _relations.contains(savedRelation)
-        ? savedRelation!
-        : _relations.first;
+    if (accepted != true) return;
+    try {
+      await ApiService.leaveHousehold(household['id'].toString());
+      await _load();
+      if (mounted) _message('Đã rời hộ gia đình.');
+    } catch (error) {
+      if (mounted) _message(error.toString());
+    }
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _birthYearController.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(
-      context,
-      _FamilyMember(
-        name: _nameController.text.trim(),
-        relation: _relation,
-        birthYear: _birthYearController.text.trim(),
-      ),
-    );
-  }
+  void _message(String value) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(value)));
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.member == null ? 'Thêm thành viên' : 'Sửa hồ sơ'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameController,
-                autofocus: true,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Tên thành viên'),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Hãy nhập tên thành viên'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _relation,
-                decoration: const InputDecoration(labelText: 'Mối quan hệ'),
-                items: [
-                  if (widget.member?.relation == 'Chủ hồ sơ')
-                    const DropdownMenuItem(
-                      value: 'Chủ hồ sơ',
-                      child: Text('Chủ hồ sơ'),
-                    ),
-                  for (final relation in _relations)
-                    DropdownMenuItem(value: relation, child: Text(relation)),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => _relation = value);
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _birthYearController,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Năm sinh (không bắt buộc)',
-                  counterText: '',
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  if (!RegExp(r'^\d{4}$').hasMatch(value.trim())) {
-                    return 'Nhập năm gồm 4 chữ số';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
+    final canManageProfiles = _profiles.any(
+      (profile) => _viewerRoleOf(profile) == 'OWNER',
+    );
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Quản lý thành viên gia đình'),
+        actions: [
+          if (canManageProfiles)
+            IconButton(
+              onPressed: () => _edit(),
+              icon: const Icon(Icons.add),
+              tooltip: 'Thêm hồ sơ',
+            ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Hủy'),
-        ),
-        FilledButton(onPressed: _save, child: const Text('Lưu')),
-      ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!),
+                  TextButton(onPressed: _load, child: const Text('Thử lại')),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const ProfileContextBanner(),
+                  Text(
+                    '${_profiles.length} hồ sơ',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  if (_households.any(
+                    (household) => household['viewer_role'] != 'OWNER',
+                  )) ...[
+                    const SizedBox(height: 18),
+                    Text(
+                      'Hộ gia đình được tham gia',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    for (final household in _households)
+                      if (household['viewer_role'] != 'OWNER')
+                        Card(
+                          child: ListTile(
+                            title: Text(
+                              household['name']?.toString() ?? 'Hộ gia đình',
+                            ),
+                            subtitle: Text(
+                              _roleLabels[household['viewer_role']] ??
+                                  _roleLabels['MEMBER']!,
+                            ),
+                            trailing: TextButton(
+                              onPressed: () => _leaveHousehold(household),
+                              child: const Text('Rời hộ'),
+                            ),
+                          ),
+                        ),
+                  ],
+                  const SizedBox(height: 12),
+                  for (final p in _profiles)
+                    Card(
+                      color:
+                          ProfileSelectionScope.of(context).selectedProfileId ==
+                              p['id']?.toString()
+                          ? const Color(0xFFF2FAF8)
+                          : null,
+                      child: ListTile(
+                        onTap: () => ProfileSelectionScope.of(
+                          context,
+                        ).selectProfileId(p['id'].toString()),
+                        leading: CircleAvatar(
+                          child: Text(
+                            (p['full_name']
+                                    ?.toString()
+                                    .characters
+                                    .firstOrNull ??
+                                '?'),
+                          ),
+                        ),
+                        title: Text(p['full_name']?.toString() ?? 'Hồ sơ'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p['profile_type'] == 'SELF'
+                                  ? 'Hồ sơ chính'
+                                  : (_relations[p['relation_type']] ?? 'Khác'),
+                            ),
+                            const SizedBox(height: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE7F5F2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _roleLabels[_roleOf(p)] ??
+                                    _roleLabels['MEMBER']!,
+                                style: const TextStyle(
+                                  color: Color(0xFF246B65),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        trailing:
+                            p['profile_type'] == 'SELF' ||
+                                _viewerRoleOf(p) != 'OWNER'
+                            ? const Icon(Icons.shield_outlined)
+                            : PopupMenuButton<String>(
+                                onSelected: (v) =>
+                                    v == 'edit' ? _edit(p) : _delete(p),
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('Sửa'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('Lưu trữ'),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
     );
   }
+
+  String _roleOf(Map<String, dynamic> profile) =>
+      profile['household_role']?.toString() ??
+      (profile['profile_type'] == 'SELF' ? 'OWNER' : 'MEMBER');
+
+  String _viewerRoleOf(Map<String, dynamic> profile) =>
+      profile['viewer_role']?.toString() ?? _roleOf(profile);
+}
+
+class _ProfileDraft {
+  const _ProfileDraft(this.name, this.relation, this.role, this.dateOfBirth);
+  final String name, relation, role;
+  final String? dateOfBirth;
+}
+
+class _ProfileEditor extends StatefulWidget {
+  const _ProfileEditor({
+    required this.relations,
+    required this.roles,
+    this.profile,
+  });
+  final Map<String, dynamic>? profile;
+  final Map<String, String> relations;
+  final Map<String, String> roles;
+  @override
+  State<_ProfileEditor> createState() => _ProfileEditorState();
+}
+
+class _ProfileEditorState extends State<_ProfileEditor> {
+  late final _name = TextEditingController(
+    text: widget.profile?['full_name']?.toString(),
+  );
+  late final _year = TextEditingController(
+    text:
+        (widget.profile?['date_of_birth']?.toString().split('-').firstOrNull) ??
+        '',
+  );
+  late String _relation =
+      widget.relations.containsKey(widget.profile?['relation_type'])
+      ? widget.profile!['relation_type'] as String
+      : widget.relations.keys.first;
+  late String _role = widget.profile?['household_role'] == 'CAREGIVER'
+      ? 'CAREGIVER'
+      : 'MEMBER';
+  final _form = GlobalKey<FormState>();
+  @override
+  void dispose() {
+    _name.dispose();
+    _year.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+    title: Text(widget.profile == null ? 'Thêm thành viên' : 'Sửa hồ sơ'),
+    content: Form(
+      key: _form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Họ và tên'),
+            validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Nhập họ tên' : null,
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: _relation,
+            decoration: const InputDecoration(labelText: 'Quan hệ'),
+            items: [
+              for (final e in widget.relations.entries)
+                DropdownMenuItem(value: e.key, child: Text(e.value)),
+            ],
+            onChanged: (v) {
+              if (v != null) setState(() => _relation = v);
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _role,
+            decoration: const InputDecoration(labelText: 'Vai trò gia đình'),
+            items: [
+              for (final role in const ['MEMBER', 'CAREGIVER'])
+                DropdownMenuItem(value: role, child: Text(widget.roles[role]!)),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _role = value);
+            },
+          ),
+          TextFormField(
+            controller: _year,
+            keyboardType: TextInputType.number,
+            maxLength: 4,
+            decoration: const InputDecoration(
+              labelText: 'Năm sinh (không bắt buộc)',
+            ),
+            validator: (v) =>
+                v != null && v.isNotEmpty && !RegExp(r'^\d{4}$').hasMatch(v)
+                ? 'Nhập năm gồm 4 chữ số'
+                : null,
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (!_form.currentState!.validate()) return;
+          final year = _year.text.trim();
+          Navigator.pop(
+            context,
+            _ProfileDraft(
+              _name.text.trim(),
+              _relation,
+              _role,
+              year.isEmpty ? null : '$year-01-01',
+            ),
+          );
+        },
+        child: const Text('Lưu'),
+      ),
+    ],
+  );
 }

@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/services/mock_health_data_service.dart';
 import 'package:frontend/services/watch_service.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/widgets/widgets.dart';
+import 'package:frontend/widgets/profile_context_banner.dart';
 
 import 'devices_screen.dart';
 import 'family_members_screen.dart';
@@ -38,14 +40,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double? _weight;
   double? _height;
   double? _sleepHours;
-  bool _isRefreshing = false;
   bool _wearConnected = false;
   int _selectedTab = 0;
   String _member = 'Tôi';
   String? _profileId;
   List<Map<String, dynamic>> _profiles = [];
+  ProfileSelectionController? _profileSelection;
+  bool _profileReady = false;
+  int _refreshRequestId = 0;
   final List<int> _heartRateHistory = [];
-  final List<Map<String, dynamic>> _pendingMeasurements = [];
+  final List<_QueuedMeasurement> _pendingMeasurements = [];
   late final StreamSubscription<Map<String, dynamic>> _wearSubscription;
   Timer? _batchFlushTimer;
   bool _isFlushingBatch = false;
@@ -59,14 +63,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     _wearSubscription = WatchService().wearDataStream.listen(
       (data) {
-        if (!mounted) return;
+        if (!mounted || !_profileReady) return;
+        // Bind destination at event arrival; retries never consult the later UI selection.
+        final capturedProfileId = _profileSelection?.selectedProfileId;
+        if (capturedProfileId == null) {
+          debugPrint('[Wear] No selected profile; sample was not queued.');
+          return;
+        }
         final heartRate =
             (data['heart_rate'] as num?)?.toInt() ??
             (data['heartRate'] as num?)?.toInt();
         final steps = (data['steps'] as num?)?.toInt();
         final calories = (data['calories'] as num?)?.toDouble();
         if (heartRate == null || steps == null || calories == null) {
-          debugPrint('[Phone] Message Wear không đủ dữ liệu: $data');
+          debugPrint('[Phone] Wear message did not contain required fields.');
           return;
         }
 
@@ -96,15 +106,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final sampleKey =
             data['idempotency_key']?.toString() ?? createIdempotencyKey();
         _pendingMeasurements.addAll([
-          {
+          _QueuedMeasurement(capturedProfileId, {
             'measurement_type': 'HEART_RATE',
             'value': heartRate,
             'unit': 'bpm',
             'source': 'WEAR_OS',
             'measured_at': measuredAtIso,
             'idempotency_key': '${sampleKey}_heart_rate',
-          },
-          {
+          }),
+          _QueuedMeasurement(capturedProfileId, {
             'measurement_type': 'STEPS',
             'value': steps,
             'unit': 'steps',
@@ -113,8 +123,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'source': 'WEAR_OS',
             'measured_at': measuredAtIso,
             'idempotency_key': '${sampleKey}_steps',
-          },
-          {
+          }),
+          _QueuedMeasurement(capturedProfileId, {
             'measurement_type': 'CALORIES',
             'value': calories,
             'unit': 'kcal',
@@ -123,19 +133,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'source': 'WEAR_OS',
             'measured_at': measuredAtIso,
             'idempotency_key': '${sampleKey}_calories',
-          },
+          }),
         ]);
         if (_pendingMeasurements.length >= 10) unawaited(_flushMeasurements());
       },
       onError: (Object error) {
-        debugPrint('[Phone] Lỗi khi nhận dữ liệu từ Wear: $error');
+        debugPrint('[Phone] Wear data processing failed.');
       },
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initWatchListener();
-      _loadProfilesAndRefresh();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(_initializeProfileContext()),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final selection = ProfileSelectionScope.of(context);
+    if (identical(selection, _profileSelection)) return;
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _profileSelection = selection..addListener(_onProfileSelectionChanged);
+  }
+
+  void _onProfileSelectionChanged() {
+    if (!_profileReady || !mounted) return;
+    final profile = _profileSelection?.selectedProfile;
+    final profileId = profile?['id']?.toString();
+    final profiles =
+        _profileSelection?.profiles ?? const <Map<String, dynamic>>[];
+    if (profile == null || profileId == null) return;
+    if (profileId == _profileId) {
+      // Family management may have reloaded the global profile list without
+      // changing selection. Keep Dashboard's modal/dropdown list in sync too.
+      if (!identical(_profiles, profiles)) setState(() => _profiles = profiles);
+      return;
+    }
+    _clearDisplayedMeasurements();
+    setState(() {
+      _profiles = profiles;
+      _profileId = profileId;
+      _member = profile['profile_type'] == 'SELF'
+          ? 'T\u00f4i'
+          : profile['full_name']?.toString() ?? 'Th\u00e0nh vi\u00ean';
     });
+    unawaited(_refreshData());
+  }
+
+  void _clearDisplayedMeasurements() {
+    _heartRate = 0;
+    _steps = 0;
+    _calories = 0;
+    _bloodPressure = '\u2014';
+    _glucose = null;
+    _weight = null;
+    _height = null;
+    _sleepHours = null;
+    _heartRateHistory.clear();
+  }
+
+  Future<void> _initializeProfileContext() async {
+    await _loadProfilesAndRefresh();
+    // Start ingest only after the queue has an unambiguous destination profile.
+    if (mounted && _profileId != null) await _initWatchListener();
   }
 
   Future<void> _loadProfilesAndRefresh() async {
@@ -145,10 +205,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .where((profile) => profile['profile_type'] == 'SELF')
           .firstOrNull;
       if (mounted) {
+        _profileReady = false;
+        _profileSelection!.setProfiles(profiles);
+        final selected = _profileSelection!.selectedProfile ?? selfProfile;
         setState(() {
           _profiles = profiles;
-          _profileId = selfProfile?['id']?.toString();
+          _profileId = selected?['id']?.toString();
+          _member = selected == null || selected['profile_type'] == 'SELF'
+              ? 'Tôi'
+              : selected['full_name']?.toString() ?? 'Thành viên';
         });
+        _profileReady = _profileId != null;
       }
     } catch (error) {
       if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
@@ -160,10 +227,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       await WatchService().initPhoneListener(port: 8080);
-    } catch (error, stackTrace) {
-      debugPrint(
-        '[Phone] Không thể khởi tạo Watch listener: $error\n$stackTrace',
-      );
+    } catch (_) {
+      debugPrint('[Phone] Could not initialize the watch listener.');
     }
   }
 
@@ -172,10 +237,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _isFlushingBatch = true;
     try {
       while (_pendingMeasurements.isNotEmpty) {
-        final batch = _pendingMeasurements.take(100).toList(growable: false);
+        final batchProfileId = _pendingMeasurements.first.profileId;
+        final queuedBatch = _pendingMeasurements
+            .where((item) => item.profileId == batchProfileId)
+            .take(100)
+            .toList(growable: false);
         final result = await ApiService.sendHealthMeasurements(
-          batch,
-          profileId: _profileId,
+          queuedBatch.map((item) => item.measurement).toList(growable: false),
+          profileId: batchProfileId,
         );
         if (result == null) return;
 
@@ -185,9 +254,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         };
         if (terminalKeys.isNotEmpty) {
           _pendingMeasurements.removeWhere(
-            (measurement) => terminalKeys.contains(
-              measurement['idempotency_key']?.toString(),
-            ),
+            (item) =>
+                item.profileId == batchProfileId &&
+                terminalKeys.contains(
+                  item.measurement['idempotency_key']?.toString(),
+                ),
           );
         }
 
@@ -201,6 +272,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
     _batchFlushTimer?.cancel();
     _wearSubscription.cancel();
     super.dispose();
@@ -213,13 +285,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData() async {
-    if (_isRefreshing) return;
-    _isRefreshing = true;
+    final requestedProfileId =
+        _profileSelection?.selectedProfileId ?? _profileId;
+    if (requestedProfileId == null) return;
+    final requestId = ++_refreshRequestId;
     try {
       final records = await ApiService.fetchHealthMeasurements(
-        profileId: _profileId,
+        profileId: requestedProfileId,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          requestId != _refreshRequestId ||
+          requestedProfileId !=
+              (_profileSelection?.selectedProfileId ?? _profileId)) {
+        return;
+      }
       Map<String, dynamic>? latest(String type) {
         final record = records
             .where((r) => r['measurement_type'] == type)
@@ -261,15 +340,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       });
     } catch (error) {
-      if (mounted) {
+      if (mounted &&
+          requestId == _refreshRequestId &&
+          requestedProfileId ==
+              (_profileSelection?.selectedProfileId ?? _profileId)) {
         _showMessage(
           error is ApiException
               ? error.message
               : 'Không thể tải dữ liệu sức khỏe.',
         );
       }
-    } finally {
-      _isRefreshing = false;
     }
   }
 
@@ -359,12 +439,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .where((item) => item['id']?.toString() == member)
           .firstOrNull;
       if (profile == null) return;
+      _profileReady = false;
+      _profileSelection?.selectProfileId(member);
+      _clearDisplayedMeasurements();
       setState(() {
         _profileId = member;
         _member = profile['profile_type'] == 'SELF'
-            ? 'Tôi'
-            : profile['full_name']?.toString() ?? 'Thành viên';
+            ? 'T\u00f4i'
+            : profile['full_name']?.toString() ?? 'Th\u00e0nh vi\u00ean';
       });
+      _profileReady = true;
       await _refreshData();
     }
   }
@@ -396,6 +480,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
               children: [
+                const ProfileContextBanner(),
                 Row(
                   children: [
                     Expanded(
@@ -933,6 +1018,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     if (mounted) setState(() => _selectedTab = 0);
   }
+}
+
+class _QueuedMeasurement {
+  const _QueuedMeasurement(this.profileId, this.measurement);
+
+  final String profileId;
+  final Map<String, dynamic> measurement;
 }
 
 class _HeartRateChart extends StatelessWidget {

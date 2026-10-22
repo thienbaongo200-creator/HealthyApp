@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/widgets/widgets.dart';
 import 'main_navigation_wrapper.dart';
 import 'quick_add_screen.dart';
@@ -195,6 +196,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
             ? 'Tôi'
             : profile['full_name']?.toString() ?? 'Thành viên';
       });
+      ProfileSelectionScope.of(context).selectProfileId(profileId);
       await _loadMeasurements();
     }
   }
