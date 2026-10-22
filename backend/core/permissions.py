@@ -52,7 +52,7 @@ class PermissionService:
     def has_profile_access(user, profile_id, required_permission='view'):
         """
         Kiểm tra xem user có quyền truy cập vào một PersonProfile cụ thể hay không.
-        - required_permission: 'view' (đọc) hoặc 'edit' (ghi/tạo log)
+        - required_permission: 'view', 'measurement_write' hoặc 'edit'
         """
         if not user or not user.is_authenticated:
             return False
@@ -106,7 +106,7 @@ class PermissionService:
             if required_permission == 'view' and level in ['VIEW_ONLY', 'VIEW_AND_LOG']:
                 return True
             if (
-                required_permission == 'edit'
+                required_permission == 'measurement_write'
                 and level == 'VIEW_AND_LOG'
                 and share.member.role != 'CAREGIVER'
             ):

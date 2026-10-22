@@ -1,4 +1,6 @@
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.utils.dateparse import parse_date
 from django.utils import timezone
@@ -6,6 +8,7 @@ from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.settings import api_settings
@@ -27,6 +30,7 @@ def get_or_create_self_profile(account):
 
 
 class RegisterView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -40,10 +44,24 @@ class RegisterView(APIView):
             )
 
         Account = get_user_model()
+        if request.data.get("password_confirm") != password:
+            return Response(
+                {"password_confirm": ["Mật khẩu xác nhận không khớp."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            validate_password(password, user=Account(email=email))
+        except DjangoValidationError as error:
+            return Response(
+                {"password": error.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if Account.objects.filter(email__iexact=email).exists():
             return Response(
                 {"detail": "Email is already in use."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
         try:
@@ -52,7 +70,7 @@ class RegisterView(APIView):
         except IntegrityError:
             return Response(
                 {"detail": "Email is already in use."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
         return Response(
@@ -126,7 +144,10 @@ class AiConsentView(APIView):
 
 
 class LoginView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
     def post(self, request):
         email = str(request.data.get("email", request.data.get("account", ""))).strip()

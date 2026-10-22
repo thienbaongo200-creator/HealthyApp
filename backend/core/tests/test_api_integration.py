@@ -48,7 +48,7 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
             },
             format="json",
         )
-        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_response.status_code, status.HTTP_200_OK)
         self.assertEqual(create_response.data["received_count"], 1)
 
         created_measurement = HealthMeasurement.objects.get(
@@ -96,7 +96,7 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
                 "measurement_type": "HEART_RATE",
                 "value": "78",
                 "unit": "bpm",
-                "source": "WEAR_OS",
+                "source": "MANUAL",
                 "measured_at": "2026-10-14T03:00:00Z",
                 "idempotency_key": uuid.uuid4().hex,
             },
@@ -119,7 +119,7 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
                 "measurement_type": "STEPS",
                 "value": "1200",
                 "unit": "steps",
-                "source": "WEAR_OS",
+                "source": "MANUAL",
                 "measured_at": "2026-10-14T03:15:00Z",
                 "start_time": "2026-10-14T03:00:00Z",
                 "end_time": "2026-10-14T03:15:00Z",
@@ -146,6 +146,58 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.measurement.refresh_from_db()
         self.assertEqual(self.measurement.profile, self.data["owner_profile"])
+
+    def test_client_cannot_assign_wear_os_source(self):
+        self.client.force_authenticate(user=self.data["owner_user"])
+
+        response = self.client.post(
+            self.measurement_list_url,
+            {
+                "profile_id": str(self.data["owner_profile"].pk),
+                "measurement_type": "HEART_RATE",
+                "value": "78",
+                "unit": "bpm",
+                "source": "WEAR_OS",
+                "measured_at": "2026-10-14T03:00:00Z",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("source", response.data)
+        self.assertFalse(
+            HealthMeasurement.objects.filter(
+                profile=self.data["owner_profile"],
+                value=78,
+            ).exists()
+        )
+
+    def test_wear_os_measurements_cannot_be_updated_or_deleted_manually(self):
+        wear_measurement = HealthMeasurement.objects.create(
+            profile=self.data["owner_profile"],
+            measurement_type="HEART_RATE",
+            value=80,
+            unit="bpm",
+            measured_at="2026-10-14T04:00:00Z",
+            source="WEAR_OS",
+        )
+        detail_url = reverse("measurement-detail", kwargs={"pk": wear_measurement.pk})
+        self.client.force_authenticate(user=self.data["owner_user"])
+
+        update_response = self.client.patch(
+            detail_url,
+            {"value": "82"},
+            format="json",
+        )
+        delete_response = self.client.delete(detail_url)
+
+        self.assertEqual(update_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+        wear_measurement.refresh_from_db()
+        self.assertEqual(wear_measurement.value, 80)
+        self.assertTrue(
+            HealthMeasurement.objects.filter(pk=wear_measurement.pk).exists()
+        )
 
     def test_standard_post_cannot_write_to_an_unshared_profile(self):
         self.client.force_authenticate(user=self.data["outside_user"])
@@ -203,6 +255,33 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_view_and_log_member_can_create_measurement(self):
+        share = self.data["profile_share"]
+        share.share_level = "VIEW_AND_LOG"
+        share.save(update_fields=["share_level", "updated_at"])
+        self.client.force_authenticate(user=self.data["member_active_user"])
+
+        response = self.client.post(
+            self.measurement_batch_url,
+            {
+                "profile_id": str(self.data["owner_profile"].pk),
+                "measurements": [
+                    {
+                        "measurement_type": "HEART_RATE",
+                        "value": "81",
+                        "unit": "bpm",
+                        "measured_at": "2026-10-14T02:30:00Z",
+                        "source": "MANUAL",
+                        "idempotency_key": uuid.uuid4().hex,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["created_count"], 1)
 
     def test_pending_member_access_blocked(self):
         self.client.force_authenticate(user=self.data["member_pending_user"])

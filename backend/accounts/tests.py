@@ -1,4 +1,7 @@
+from unittest.mock import patch
+
 from django.contrib.auth import authenticate, get_user_model
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.urls import reverse
 from django.utils.dateparse import parse_date
@@ -191,7 +194,8 @@ class AccountsAuthIntegrationTestCase(APITestCase):
         
         self.user_data = {
             "email": "testuser@example.com",
-            "password": "SecurePassword123!"
+            "password": "SecurePassword123!",
+            "password_confirm": "SecurePassword123!",
         }
 
     def test_01_register_success(self):
@@ -201,6 +205,46 @@ class AccountsAuthIntegrationTestCase(APITestCase):
         self.assertIn('message', response.data)
         self.assertIn('user', response.data)
         self.assertEqual(response.data['user']['email'], self.user_data['email'])
+
+    def test_register_ignores_stale_authorization_header(self):
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-valid-jwt")
+
+        response = self.client.post(self.register_url, self.user_data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_registration_rejects_password_confirmation_mismatch(self):
+        payload = {
+            **self.user_data,
+            "password_confirm": "DifferentPassword123!",
+        }
+
+        response = self.client.post(self.register_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email=self.user_data["email"]).exists())
+
+    def test_registration_rejects_weak_password(self):
+        payload = {
+            **self.user_data,
+            "password": "password123",
+            "password_confirm": "password123",
+        }
+
+        response = self.client.post(self.register_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("password", response.data)
+
+    def test_registration_duplicate_email_returns_conflict(self):
+        User.objects.create_user(
+            email=self.user_data["email"],
+            password="SecurePassword123!",
+        )
+
+        response = self.client.post(self.register_url, self.user_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
     def test_02_login_and_logout_flow(self):
         """Kiểm tra đăng nhập lấy token và đăng xuất an toàn"""
@@ -225,3 +269,49 @@ class AccountsAuthIntegrationTestCase(APITestCase):
         
         # Chấp nhận mã 205 (Reset Content như code view của bạn) hoặc 200 OK
         self.assertIn(logout_response.status_code, [status.HTTP_205_RESET_CONTENT, status.HTTP_200_OK])
+
+    def test_login_ignores_stale_authorization_header(self):
+        User.objects.create_user(
+            email="loginuser@example.com",
+            password="SecurePassword123!",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-valid-jwt")
+
+        response = self.client.post(
+            self.login_url,
+            {"email": "loginuser@example.com", "password": "SecurePassword123!"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+
+    def test_login_throttle_is_limited_per_ip(self):
+        cache.clear()
+        payload = {"email": "unknown@example.com", "password": "WrongPassword"}
+        request_meta = {"REMOTE_ADDR": "203.0.113.10"}
+
+        with patch(
+            "rest_framework.throttling.ScopedRateThrottle.THROTTLE_RATES",
+            {"login": "2/min", "ai_chat": "2/min"},
+        ):
+            first = self.client.post(
+                self.login_url, payload, format="json", **request_meta
+            )
+            second = self.client.post(
+                self.login_url, payload, format="json", **request_meta
+            )
+            limited = self.client.post(
+                self.login_url, payload, format="json", **request_meta
+            )
+            other_ip = self.client.post(
+                self.login_url,
+                payload,
+                format="json",
+                REMOTE_ADDR="203.0.113.11",
+            )
+
+        self.assertEqual(first.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(second.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(limited.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(other_ip.status_code, status.HTTP_401_UNAUTHORIZED)

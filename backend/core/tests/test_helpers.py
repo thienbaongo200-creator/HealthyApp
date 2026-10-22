@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth import get_user_model
 
 from households.models import Household, HouseholdMember, ProfileShare
@@ -8,20 +10,21 @@ User = get_user_model()
 
 
 def create_test_household_setup():
+    test_id = uuid.uuid4().hex
     owner_user = User.objects.create_user(
-        email="owner@example.com",
+        email=f"owner-{test_id}@example.com",
         password="test-password",
     )
     member_active_user = User.objects.create_user(
-        email="member-active@example.com",
+        email=f"member-active-{test_id}@example.com",
         password="test-password",
     )
     member_pending_user = User.objects.create_user(
-        email="member-pending@example.com",
+        email=f"member-pending-{test_id}@example.com",
         password="test-password",
     )
     outside_user = User.objects.create_user(
-        email="outside@example.com",
+        email=f"outside-{test_id}@example.com",
         password="test-password",
     )
 

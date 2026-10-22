@@ -1,3 +1,5 @@
+import uuid
+
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from profiles.models import PersonProfile
@@ -8,9 +10,10 @@ User = get_user_model()
 
 class PermissionServiceTestCase(TestCase):
     def setUp(self):
+        test_id = uuid.uuid4().hex
         # 1. Tạo 2 tài khoản người dùng độc lập
-        self.user_owner = User.objects.create_user(email="owner@example.com", password="password123")
-        self.user_other = User.objects.create_user(email="other@example.com", password="password123")
+        self.user_owner = User.objects.create_user(email=f"owner-{test_id}@example.com", password="password123")
+        self.user_other = User.objects.create_user(email=f"other-{test_id}@example.com", password="password123")
 
         # 2. Tạo profile cho owner và other
         self.profile_owner = PersonProfile.objects.create(
@@ -62,7 +65,20 @@ class PermissionServiceTestCase(TestCase):
         # Trường hợp 2: Nâng cấp lên cho phép cả ghi log (VIEW_AND_LOG)
         share.share_level = 'VIEW_AND_LOG'
         share.save()
-        self.assertTrue(PermissionService.has_profile_access(self.user_other, self.profile_owner.id, 'edit'))
+        self.assertFalse(
+            PermissionService.has_profile_access(
+                self.user_other,
+                self.profile_owner.id,
+                'edit',
+            )
+        )
+        self.assertTrue(
+            PermissionService.has_profile_access(
+                self.user_other,
+                self.profile_owner.id,
+                'measurement_write',
+            )
+        )
 
     def test_caregiver_share_is_read_only_even_when_share_level_allows_logging(self):
         caregiver_membership = self.household_member_other
@@ -87,5 +103,12 @@ class PermissionServiceTestCase(TestCase):
                 self.user_other,
                 self.profile_owner.id,
                 required_permission="edit",
+            )
+        )
+        self.assertFalse(
+            PermissionService.has_profile_access(
+                self.user_other,
+                self.profile_owner.id,
+                required_permission="measurement_write",
             )
         )

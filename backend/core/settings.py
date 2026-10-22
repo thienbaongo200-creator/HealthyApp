@@ -25,7 +25,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 GEMINI_ENABLED = os.getenv('GEMINI_ENABLED', 'False').strip().lower() in {'true', '1', 'yes'}
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
-GEMINI_TIMEOUT_MS = int(os.getenv('GEMINI_TIMEOUT_MS', '10000'))
+GEMINI_TIMEOUT_MS = int(os.getenv('GEMINI_TIMEOUT_MS', '30000'))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -148,6 +148,23 @@ DATABASES = {
         'PORT': os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '5432')),
     }
 }
+if os.getenv('POSTGRES_TEST_DB'):
+    DATABASES['default']['TEST'] = {'NAME': os.environ['POSTGRES_TEST_DB']}
+
+API_THROTTLE_TEST_MODE = os.getenv(
+    'API_THROTTLE_TEST_MODE',
+    'False',
+).strip().lower() in {'true', '1', 'yes'}
+API_THROTTLE_RATES = {
+    'login': os.getenv(
+        'API_LOGIN_RATE',
+        '1000/min' if API_THROTTLE_TEST_MODE else '10/min',
+    ),
+    'ai_chat': os.getenv(
+        'API_AI_CHAT_RATE',
+        '1000/min' if API_THROTTLE_TEST_MODE else '20/min',
+    ),
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -155,13 +172,26 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
-    ]
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': API_THROTTLE_RATES,
 }
 
 # Cấu hình Simple JWT
+JWT_TEST_MODE = os.getenv('JWT_TEST_MODE', 'False').strip().lower() in {
+    'true',
+    '1',
+    'yes',
+}
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': (
+        timedelta(seconds=60) if JWT_TEST_MODE else timedelta(minutes=60)
+    ),
+    'REFRESH_TOKEN_LIFETIME': (
+        timedelta(days=1) if JWT_TEST_MODE else timedelta(days=7)
+    ),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
