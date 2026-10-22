@@ -2,7 +2,7 @@
 
 > Lộ trình này được lập để đưa prototype hiện tại khớp dần với `docs/Chuong2_HoanChinh.docx` (Chương 2). Sprint được sắp theo phụ thuộc kỹ thuật: **hợp đồng dữ liệu → CSDL/model → logic bảo mật/nghiệp vụ → API → đồng bộ/AI → Flutter → nghiệm thu**. Chỉ đánh dấu `[x]` khi có mã nguồn và bằng chứng kiểm thử tương ứng; UI hoặc endpoint giả lập không được tính là hoàn thành nghiệp vụ.
 >
-> Trạng thái kiểm tra kỹ thuật thực tế: Backend đã có 16 models theo Data Dictionary, kiểm tra quyền cơ bản qua `PermissionService` (RBAC & chống IDOR) và unique constraint chống trùng lặp dữ liệu đo lường. Tuy nhiên, các CRUD y bạ (Visit, Allergy, Medication,...), Device API, Redis Blacklist (BR01), Redis Idempotency Lock (BR07/BR08), kiểm tra `ai_consent` cho hồ sơ giám hộ/DEPENDENT (BR10) và tích hợp AI Provider kèm Fallback (BR12) chưa hoàn thiện hoặc chưa có mã nguồn triển khai.
+> Trạng thái kiểm tra kỹ thuật thực tế: Backend đã có 16 models theo Data Dictionary, kiểm tra quyền cơ bản qua `PermissionService` (RBAC & chống IDOR), unique constraint chống trùng lặp dữ liệu đo lường và BR10 consent cho hồ sơ SELF/DEPENDENT. Tuy nhiên, các CRUD y bạ (Visit, Allergy, Medication,...), Device API, Redis Blacklist (BR01), Redis Idempotency Lock (BR07/BR08) và tích hợp AI Provider kèm Fallback (BR12) chưa hoàn thiện hoặc chưa có mã nguồn triển khai.
 >
 > - `[ ]` Chưa thực hiện (Không tìm thấy code triển khai)
 > - `[~]` Đã có một phần, cần sửa/bổ sung/kiểm thử (Mã nguồn mới viết khung, thiếu logic bảo mật hoặc chưa hoàn thiện theo Chương 2)
@@ -160,8 +160,9 @@
 - [ ] Tạo `InsightService`: kiểm tra profile permission → nạp dữ liệu → chạy Rule → kiểm tra BR10 consent → gọi Provider → lưu `AIInsight`.
 - [~] Thực hiện BR10 ở backend trước mỗi lời gọi AI:
   - [x] Kiểm tra `ai_consent` trên Account của profile SELF (`HealthRiskAssessmentView` đã chặn 403 nếu `ai_consent=False`).
-  - [ ] Kiểm tra `ai_consent` của Owner/giám hộ đối với DEPENDENT.
-  - [ ] Từ chối gọi Provider nếu chưa có consent; fallback sang kết quả phân tích Rule-based.
+  - [x] Kiểm tra `ai_consent` của Account sở hữu profile hoặc Owner/người tạo/Owner Household đối với DEPENDENT; fail-closed nếu không xác định được chủ thể consent (`PermissionService`).
+  - [x] Từ chối truy cập AI nếu thiếu consent trước khi chạy Risk Engine/AI Chat; kiểm thử trả 403 khi consent bị tắt.
+- [x] Caregiver chỉ đọc được measurements và Risk AI sau consent của Owner; role Caregiver luôn bị chặn quyền ghi dù `share_level=VIEW_AND_LOG` (`PermissionService`, `HealthMeasurementViewSet`).
 - [ ] Thực hiện BR09 ẩn danh dữ liệu (de-identification): loại bỏ PII (tên, email, ngày sinh chính xác, liên hệ khẩn cấp) trước khi gửi prompt đến AI Provider.
 - [x] Tạo API `/api/ai/assess-risk/<uuid:profile_id>/` phân tích rủi ro dựa trên chuỗi thời gian đo lường (`backend/ai_services/views.py`).
 - [~] Hoàn thiện Chat API theo contract (`/conversations/`, `/messages/`): hiện `POST /api/ai/chat/<profile_id>/` đã kiểm tra quyền/consent, lưu Conversation và Message, tạo context từ measurement và trả `conversation_id`; chưa có API liệt kê/lấy lịch sử hội thoại, AI Provider, BR09/BR12 hoặc test TC07.1–TC07.5.
@@ -172,7 +173,7 @@
 ### Definition of Done
 
 - [x] Test đánh giá rủi ro sinh trắc học API (`ai_services/tests.py:HealthRiskAssessmentApiTests`).
-- [~] Test chứng minh Provider/API bị chặn khi `ai_consent = False` theo BR10 (Đã kiểm tra qua code `HealthRiskAssessmentView`, cần bổ sung test method khẳng định 403 khi consent false).
+- [x] Test chứng minh API AI bị chặn khi `ai_consent = False` theo BR10, bao gồm hồ sơ DEPENDENT không gắn Account (`ai_services/tests.py`).
 - [ ] Test kiểm tra prompt không chứa PII theo BR09; test timeout kích hoạt Fallback BR12.
 - [ ] Hoàn thành API Chat Conversation và Message có kiểm soát phân quyền.
 
@@ -187,10 +188,11 @@
 - [~] Hợp nhất `ApiClient`: Dự án đang tồn tại 2 file `frontend/lib/core/network/api_client.dart` và `frontend/lib/services/api_client.dart` với cách cấu hình URL khác nhau, cần chuẩn hóa về một client duy nhất dùng `api_config.dart`.
 - [x] Luồng xác thực SCR-01, SCR-02, SCR-03: Đăng ký, đăng nhập, lưu JWT vào `FlutterSecureStorage`, điều hướng qua `AuthGate` (`login_screen.dart`, `register_screen.dart`, `profile_setup_screen.dart`).
 - [~] SCR-04 (Dashboard): Đã tải hồ sơ và measurement qua API, gửi batch pending lên backend; dữ liệu Wear/mock và hàng đợi pending chưa bền vững qua restart, chưa đạt TC05/NFR05–NFR06.
-- [~] SCR-05 (Family Members): Giao diện `family_members_screen.dart` vẫn đang dùng danh sách fix cứng (`_FamilyMember(name: 'Tôi', ...)`), chưa gọi API Household backend.
+- [~] SCR-05 (Family Members): `family_members_screen.dart` tải hồ sơ qua API, hiển thị role tag Owner/Member/Caregiver và banner ngữ cảnh quyền; mời/chấp nhận thành viên qua Household API chưa được nối UI.
 - [~] SCR-06 (Devices): `devices_screen.dart` đã có giao diện đồng bộ và modal ghép nối, nhưng chưa nối Device API backend.
 - [~] SCR-07 (Health Journal): `health_journal_screen.dart` tải measurement qua API; tài liệu có màn riêng `MedicalRecordsScreen`, nhưng histories/allergies/visits/medications/lab-results chưa có CRUD API/UI theo FR04.
-- [~] SCR-08 (AI Assistant): `ai_assistant_screen.dart` gọi API thật cho risk và chat, giữ `conversation_id`; chat phụ `ai_chat_screen.dart` vẫn in-memory. Backend mới là rule-based, chưa đáp ứng đầy đủ R01–R04, AI Provider, BR09/BR10 cho DEPENDENT, BR12 và các TC07/TC08.
+- [~] SCR-08 (AI Assistant): `ai_assistant_screen.dart` gọi API thật cho risk và chat, giữ `conversation_id`; HTTP 422 `UNKNOWN` và BR10 consent cho DEPENDENT đã được xử lý. Chat phụ `ai_chat_screen.dart` vẫn in-memory; AI Provider, BR09, BR12 và các TC07/TC08 chưa hoàn thiện.
+- [x] Hợp đồng Risk Engine HTTP 422: `AiApiService` trả `RiskAssessmentResult` với `riskLevel=UNKNOWN`; UI hiển thị cảnh báo và khuyến nghị bổ sung mẫu đo (`frontend/test/ai_service_test.dart`).
 - [~] SCR-09 (Quick Add): `quick_add_screen.dart` POST measurement thủ công qua `ApiService.createManualMeasurements`; cần kiểm chứng validation theo miền, phản hồi lỗi và refresh SCR-04/SCR-07/SCR-10 theo TC04.1–TC04.4.
 - [~] SCR-10 (Health Trends): `health_trends_screen.dart` đang đọc dữ liệu từ `ApiService.fetchHealthMeasurements`, cần xử lý đầy đủ các nhóm chỉ số sinh trắc khác.
 - [x] Tự động Refresh Token khi gặp lỗi 401 qua `AuthInterceptor` và hỗ trợ đăng xuất an toàn xóa bộ nhớ bảo mật.
@@ -212,7 +214,7 @@
 
 - [x] Chạy toàn bộ test suite backend cho models, permission logic, data migration guard (`backend/*/tests.py`, `backend/core/tests/`).
 - [x] Chạy Flutter tests (`frontend/test/`).
-- [~] Thực hiện acceptance test matrix: TC01 (Auth) và TC05 (Batch Idempotency DB) đã có test tự động; TC02 (IDOR) đã có test; các TC liên quan đến AI Provider, BR10 Consent, Device Revocation và Offline Reconnect cần bổ sung test suite.
+- [~] Thực hiện acceptance test matrix: TC01 (Auth), TC02 (IDOR), BR10 Consent và HTTP 422 UNKNOWN có test tự động; các TC liên quan đến AI Provider, Device Revocation và Offline Reconnect cần bổ sung test suite.
 - [x] Đảm bảo cấu hình production an toàn trong `settings.py`: CSRF, HSTS, SECURE_SSL_REDIRECT, CORS và SECRET_KEY đọc từ biến môi trường `.env`.
 - [ ] Cấu hình Redis Cache và Redis Token Blacklist backend theo BR01.
 - [~] Cập nhật tài liệu API, OpenAPI Swagger và sơ đồ kiến trúc đồng bộ với các đường dẫn endpoint thực tế.
@@ -221,7 +223,7 @@
 ### Definition of Done
 
 - [x] Toàn bộ test hiện có đều pass không có regression.
-- [~] Test chống IDOR và test Unique Idempotency đã có; cần bổ sung test tự động cho AI Consent (BR10) và Device Pairing.
+- [~] Test chống IDOR, Unique Idempotency và AI Consent (BR10) đã có; cần bổ sung test tự động cho Device Pairing.
 - [~] Tài liệu kỹ thuật cần cập nhật chính xác vị trí router của Health Measurements và Medical Records.
 
 ---

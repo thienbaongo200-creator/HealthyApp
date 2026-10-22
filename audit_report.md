@@ -1,0 +1,66 @@
+﻿# HealthyApp — Báo cáo kiểm toán kiến trúc và mã nguồn
+
+- Ngày kiểm toán: 2026-10-17
+- Phạm vi: toàn bộ mã nguồn Backend Django và Flutter trong repo; đối chiếu `docs/Chuong2.docx` (đặc biệt FR02–FR08, NFR05–NFR08, BR03–BR12, các kịch bản TC05–TC09) và `CHECKLIST.md`.
+- Phương pháp: rà soát tĩnh mã nguồn, route, call-site và test definitions. Không chạy test/build trong lần audit này; trạng thái “Đạt” là kết luận theo code/config và test hiện có, không thay thế xác nhận runtime. Không đánh dấu test pass chỉ dựa trên khai báo.
+- Phạm vi kiểm tra dead code: tham chiếu trong source repo, không thể chứng minh không có tham chiếu động từ bên ngoài.
+
+## Tổng quan
+
+| Tiêu chí | Trạng thái | Kết luận |
+|---|---|---|
+| CRUD hồ sơ gia đình Flutter | Cần sửa | Đã gọi `/profiles/` API, không còn mock CRUD ở `FamilyMembersScreen`; tuy nhiên UI quản lý profile đang thay cho Household/member invite và backend cho phép mọi tài khoản tự tạo DEPENDENT, không chỉ Owner. |
+| PermissionService / IDOR | Cần sửa | Health measurements, documents và AI kiểm tra `profile_id`; profile querysets được giới hạn. Chưa có CRUD cho phần lớn medical records, nên chưa thể coi “mọi endpoint y tế” đã được bảo vệ/triển khai. Có hai implementation route profile gây phân kỳ. |
+| AI consent / PHI | Vi phạm | Consent chỉ nằm trên Account. Luồng AI chặn cả Rule-based risk khi consent thiếu; DEPENDENT chưa đăng nhập không có consent guardian/profile-level; hội thoại không ẩn danh đầu vào người dùng. |
+| Risk engine / 422 UNKNOWN | Đạt một phần | `RiskRuleEngine` độc lập với provider; backend phát 422/UNKNOWN và `AiApiService` giữ nguyên payload. Tuy vậy giao diện cần được coi là đạt contract chỉ sau kiểm thử UI; kết quả hiện tại không được lưu thành AIInsight. |
+| Wearable offline queue | Vi phạm | Queue nằm trong RAM của Dashboard, mất khi process/app bị đóng; không có durable outbox, retry/backoff và state machine bền vững. |
+| Clean code / dead / duplicate | Cần sửa | Có view profile cũ trùng luồng; Dashboard chứa orchestration + queue + mapping chỉ số; API service lớn và có API legacy. Chưa có bằng chứng đủ để khẳng định file backend nào hoàn toàn không dùng ngoài repo. |
+
+## 1. Tuân thủ kiến trúc và yêu cầu Chương 2
+
+| Hạng mục | Trạng thái | Bằng chứng và tác động |
+|---|---|---|
+| CRUD hồ sơ thành viên dùng API | **Đạt một phần** | `frontend/lib/views/home/family_members_screen.dart:30-108` gọi `fetchProfiles`, `createDependentProfile`, `updateProfileDetails`, `archiveProfile`. Không thấy mock store cho CRUD hồ sơ. Đây là CRUD PersonProfile, không phải luồng quản trị HouseholdMember: UI hiện không mời/thêm tài khoản thành viên, phản hồi invitation, thay role hoặc share-level dù backend có routes household. |
+| Chỉ Owner tạo DEPENDENT | **Vi phạm** | `backend/profiles/views.py:67-77` `ProfileListCreateView.perform_create` gắn bất kỳ user hiện tại nào và ép loại DEPENDENT, nhưng không kiểm tra Owner/household. `accessible_profiles_for` cấp danh sách chia sẻ rộng hơn quyền sửa; class cũ `PersonProfileViewSet` ở `:32-64` có chính sách cập nhật khác. Nên thống nhất endpoint và kiểm tra quyền Owner trước create. |
+| Profile CRUD không IDOR | **Cần sửa** | Route dùng `ProfileListCreateView`/`ProfileDetailView`, queryset giới hạn ở `accessible_profiles_for` (`backend/profiles/views.py:12-29, 67-99`); update/delete còn xác nhận `account_id` chủ sở hữu. Các hồ sơ chia sẻ chỉ đọc đúng ở update/delete. Nhưng hai bộ view (`PersonProfileViewSet` và generic views) tạo code path trùng và có thể lệch policy; xóa/đổi route cũ sau khi xác nhận không còn consumer. |
+| PermissionService kiểm tra profile_id y tế | **Đạt một phần** | `backend/core/permissions.py:5-66` xác minh authenticated user, profile còn hoạt động, owner/household owner hoặc share-level. Measurement create/batch gọi quyền `edit` (`backend/medical_records/views.py:81-109, 112-140`); document list/create/delete/download cũng kiểm tra (`:248-309`); AI gọi quyền `view` (`backend/ai_services/views.py:15-24`). Queryset lọc dữ liệu theo profile. |
+| Bao phủ mọi API y tế | **Vi phạm** | `backend/medical_records/views.py` hiện chỉ có HealthMeasurement và MedicalDocument viewsets; các model History, Allergy, Visit, Medication, LabResult chưa có CRUD API theo FR04. Vì chưa có endpoints, yêu cầu bảo vệ mọi CRUD endpoint chưa thể được nghiệm thu. Medical-document query kiểm tra quyền từng profile; nên ưu tiên lọc ở DB để tránh tải tập dữ liệu rồi lọc Python (`:248-264`). |
+| Household RBAC | **Cần sửa** | Backend có household/member/invitation CRUD trong `backend/households/views.py:43-300`. `PermissionService` cho household owner đọc profile cùng hộ; share trực tiếp có phân biệt VIEW_ONLY/VIEW_AND_LOG. Tuy nhiên Household UI không dùng các API đó. Xác minh role transition và share theo profile với ma trận TC03/TC09 khi chạy test. |
+| Consent trước AI / đúng chủ thể | **Vi phạm** | `backend/accounts/views.py:93-123` chỉ cập nhật consent của `request.user`. `authorized_profile` lấy `profile.account.ai_consent` (`backend/ai_services/views.py:15-24`), do đó không có mô hình/luồng consent của Owner giám hộ khi `profile.account is None` (DEPENDENT). Ngược lại, chặn luôn request khi consent false làm mất fallback rule-based được BR10/BR12 kỳ vọng cho risk analysis. Consent cần được xác định theo chủ thể dữ liệu hoặc guardian hợp lệ và kiểm tra ngay trước provider call. |
+| PHI / giảm thiểu dữ liệu gửi provider | **Cần sửa** | Rule engine không gọi LLM. Chat dùng context tổng hợp 30 ngày (`backend/ai_services/services/assistant.py:12-47`) nhưng gửi nguyên `message` do người dùng nhập qua `generate_reply` (`backend/ai_services/views.py:40-65`); người dùng có thể nhập PII/PHI tự do. Chưa thấy de-identification hoặc policy lọc prompt. Cần lọc/giảm thiểu nội dung và chỉ gọi provider khi consent hợp lệ. |
+| Tách Rule-based khỏi LLM | **Đạt** | `backend/ai_services/services/risk_engine.py:8-...` là xử lý xác định từ dữ liệu đo, không import/gọi provider. Risk view gọi `RiskRuleEngine().assess` trực tiếp (`backend/ai_services/views.py:27-34`). Đây là tách biệt ở module, dù view đang tự điều phối business flow. |
+| Luồng UNKNOWN/422 | **Đạt một phần** | Backend trả 422 khi `risk_level == UNKNOWN` (`backend/ai_services/views.py:30-34`); `frontend/lib/services/ai_service.dart:24-26` nhận 422 + UNKNOWN như kết quả bình thường. `frontend/lib/views/home/ai_assistant_screen.dart:538-565` có nhánh hiển thị UNKNOWN/thiếu dữ liệu. Cần test contract widget/service để xác nhận warnings và recommendation được render nguyên vẹn. |
+| Lưu AIInsight / BR12 | **Vi phạm** | `HealthRiskAssessmentView` chỉ trả kết quả engine, không lưu `AIInsight` và cũng chưa gọi provider; không có cơ chế fallback từ AI risk provider vì provider chưa nằm trong risk flow. AI chat provider có fallback local (`assistant.py:50-67`), nhưng exception ngoài `ProviderError`, timeout cụ thể, phản hồi lỗi, và không lưu phản hồi định sẵn/retry UI theo TC07.3 chưa được bảo đảm. |
+| Batch idempotency | **Đạt một phần** | Batch API trả status theo từng key, xử lý unique race và retryable operational errors (`backend/medical_records/views.py:112-225`); Flutter phân loại ACK/reject/retry (`frontend/lib/services/api_service.dart:264-330`). Đây là tiến bộ so với mô tả cũ trong checklist. Device `last_synced_at` và thiết bị API vẫn chưa được nối vào luồng. |
+| Durable Offline Queue NFR05/NFR06/BR08 | **Vi phạm nghiêm trọng** | `frontend/lib/views/home/dashboard_screen.dart:53, 109, 235-268` giữ `_pendingMeasurements` trong List RAM. Mất mạng thì giữ trong phiên, nhưng process kill/restart là mất dữ liệu. Timer 30 giây (`:61-64`) không phải retry khi app mở lại; state UI chỉ đếm số pending, không có CHỜ_GỬI/ĐANG_GỬI/ĐÃ_ĐỒNG_BỘ/THẤT_BẠI, retry count hay last error. Cần SQLite/Drift outbox, ghi trước network, worker/retry có backoff và idempotency key ổn định. |
+| Route / contract | **Cần sửa** | `backend/core/urls.py:22-32` khai báo cả alias `/api/medical/`, canonical `/api/health-measurements/`, `/medical-records/`, nhưng route `/api/` cũng include profile URLs và `/api/profiles/` include lại (`:21-23`). Flutter sử dụng lẫn `/medical/measurements/` và `/health-measurements/batch/`. Chốt canonical routes, di chuyển client rồi xóa alias trong phiên bản tương thích. `/api/devices/` còn comment. |
+
+## 2. Dead code, code smells và trùng lặp
+
+| Ưu tiên | Phát hiện | Vị trí | Đề xuất an toàn |
+|---|---|---|---|
+| P1 | Hai triển khai profile CRUD cùng hoạt động tiềm năng, nhưng một route hiện dùng generic views; ViewSet có policy riêng. | `backend/profiles/views.py:32-64` so với `:67-99`; routes ở `backend/profiles/urls.py` | Kiểm tra toàn repo/route names, chọn một implementation, chuyển test và xóa implementation không còn route/call-site. Không xóa chỉ dựa vào tên “cũ”. |
+| P1 | Queue và retry orchestration đặt trong Screen, trạng thái chỉ tồn tại trong widget. | `frontend/lib/views/home/dashboard_screen.dart:53-64, 90-139, 235-275` | Tách `MeasurementOutboxRepository` (SQLite/Drift), `SyncCoordinator` (retry/backoff, per-item state) và widget chỉ subscribe state. Migrate từng phần, giữ `ApiService.sendHealthMeasurements` làm transport. |
+| P1 | Profile create policy sai tầng/thiếu quyền Owner. | `backend/profiles/views.py:75-77` | Đưa rule Owner/guardian vào service/permission backend, transaction liên kết profile và household; giữ serializer chỉ validate payload. |
+| P2 | Business orchestration dày trong APIView: permission, consent, conversation, provider và persistence chung trong view. | `backend/ai_services/views.py:15-65` | Tạo `RiskAssessmentService`/`ChatService` để điều phối policy, provider và persistence; view chỉ validate request/response. Đưa consent gate sát provider invocation. |
+| P2 | API service Flutter gom auth, profile, health, AI consent và upload document; có phương thức legacy `sendHealthData` ngoài batch flow. | `frontend/lib/services/api_service.dart:35-...`, `sendHealthData` khoảng `:220`; batch API cùng file | Chia transport/repository theo domain; tìm call-site `sendHealthData` trước khi xóa, nếu không dùng thì bỏ sau khi xác nhận. Chuẩn hóa một `ApiClient` dùng token/error policy chung. |
+| P2 | Logic permission/quyền profile được tái hiện trong queryset profile, measurement, document và AI. | `backend/profiles/views.py:12-29`; `backend/medical_records/views.py:35-79, 248-264`; `backend/ai_services/views.py:15-24` | Tạo query helper `accessible_profile_ids(user, permission)` hoặc queryset policy dùng chung, đồng bộ view-level check và queryset. Thêm test matrix đọc/ghi để không đổi semantics. |
+| P2 | Household UI quản lý profile phụ thuộc nhưng tiêu đề gợi ý quản lý thành viên; không có luồng invitation/role/share. | `frontend/lib/views/home/family_members_screen.dart:5-180` | Tách màn Profile dependents và Household members, gọi đúng `/households/` API cho mời/nhận lời mời/role/share. |
+| P3 | Có comment/template scaffold và `render` import không dùng trong devices view; đây là cleanup nhỏ, không phải dead module. | `backend/devices/views.py:1-3` | Bỏ `render` và placeholder comment khi implement API; tránh xóa file vì Device model/admin/tests đang dùng. |
+| P3 | Profile list tạo `list(...)`/`set(...)` ID collections cho queryset lớn, thêm truy vấn Python ở document list. | `backend/medical_records/views.py:44-65, 255-264` | Dùng subquery/`Exists`/join lọc ở SQL; đo query count sau thay đổi. |
+
+### Phân loại dead code
+
+Chưa xác nhận file/class nào chắc chắn không được dùng trong toàn hệ thống. `PersonProfileViewSet` là **ứng viên implementation dư** vì URL hiện trỏ generic views, nhưng cần tìm external imports/route registration trước khi xóa. `sendHealthData` là **ứng viên API legacy**, cần tìm call-site. `MockHealthDataService` không phải dead code: nó được `main_wear.dart` dùng làm dữ liệu mô phỏng; cần giữ rõ ràng là demo/mock, không biểu diễn thiết bị thật.
+
+## 3. Kế hoạch sửa theo thứ tự, giảm rủi ro test
+
+1. Bổ sung regression tests theo contract hiện hữu trước khi refactor: Owner tạo dependent vs Member bị 403; consent SELF/guardian/dependent và provider không được gọi; rule-only khi thiếu consent; 422 payload UI; queue restart/retry và partial batch. Không thay đổi tên/status response hiện hữu trong cùng bước.
+2. Chốt policy permission và profile CRUD: một route/implementation, Owner-only dependent creation theo BR/TC, giữ queryset scoping và object permission.
+3. Tạo durable outbox local với key ổn định, trạng thái theo bản ghi, retry có backoff và flush khi app khởi động/có mạng; cập nhật UI theo trạng thái, không xóa item trước ACK.
+4. Tách domain services (medical records, AI, sync) khỏi views/screens; chuyển từng use case và chạy suite sau mỗi bước.
+5. Chốt API contract canonical, triển khai các CRUD FR04 và device API, rồi mới deprecate alias/legacy method.
+
+## Giới hạn
+
+Audit này rà soát mã nguồn và tài liệu hiện có; không xác nhận hành vi trên thiết bị, cấu hình production, database thực, quyền chia sẻ runtime, hay số test đang pass. `CHECKLIST.md` và báo cáo cũ ghi nhận nhiều gap phù hợp với phát hiện nhưng trạng thái trong tài liệu không được xem là bằng chứng duy nhất. Trước khi nghiệm thu cần chạy backend tests và Flutter tests/analyze trong môi trường dự án, đồng thời bổ sung integration tests cho các TC còn thiếu.

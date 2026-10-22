@@ -180,6 +180,12 @@ adb -s <phone-device-id> forward tcp:8080 tcp:8080
 adb -s <wear-device-id> reverse tcp:8080 tcp:8080
 ```
 
+Ví dụ thực tế: 
+```powershell
+adb -s adb-R5CX826Q9VB-IjsOKx._adb-tls-connect._tcp forward tcp:8080 tcp:8080
+adb -s emulator-5554 reverse tcp:8080 tcp:8080
+```
+
 `adb reverse` chuyển cổng `8080` trên Wear Emulator về cổng `8080` của máy tính; `adb forward` chuyển tiếp cổng máy tính tới listener trên Phone thật. Giữ cả hai kết nối ADB hoạt động trong khi thử nghiệm. Nếu thiết bị ngắt kết nối, chạy lại các lệnh này.
 
 ### Bước 4 — Khởi chạy Wear OS app và kiểm tra đồng bộ
@@ -190,6 +196,13 @@ Mở terminal khác:
 cd D:\HealthyApp\frontend
 flutter run -t lib/main_wear.dart -d <wear-device-id> --dart-define=WATCH_SYNC_URL=http://localhost:8080/sync
 ```
+
+Ví dụ thực tế: 
+```powershell
+cd D:\HealthyApp\frontend
+flutter run -t lib/main_wear.dart -d emulator-5554 --dart-define=WATCH_SYNC_URL=http://localhost:8080/sync
+```
+
 
 Wear OS mặc định dùng `http://localhost:8080/sync`; `WATCH_SYNC_URL` ở trên ghi rõ endpoint cho emulator. Mở chế độ **Vận động** để gửi mẫu mỗi 5 giây; chế độ nghỉ gửi mỗi 60 giây. Kiểm tra log của Phone để xác nhận có nhận snapshot và sau đó đồng bộ batch lên Django.
 
