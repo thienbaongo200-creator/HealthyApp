@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -48,10 +49,19 @@ class HouseholdListCreateView(APIView):
 
     def get(self, request):
         households = Household.objects.filter(
-            members__account=request.user,
             members__status="ACTIVE",
+        ).filter(
+            Q(members__account=request.user)
+            | Q(members__profile__account=request.user)
+            | Q(members__profile__created_by=request.user)
         ).distinct()
-        return Response(HouseholdSerializer(households, many=True).data)
+        return Response(
+            HouseholdSerializer(
+                households,
+                many=True,
+                context={"request": request},
+            ).data
+        )
 
     def post(self, request):
         serializer = HouseholdSerializer(data=request.data)
@@ -81,12 +91,45 @@ class HouseholdDetailView(APIView):
     def get(self, request, household_id):
         household = get_object_or_404(
             Household.objects.filter(
-                members__account=request.user,
                 members__status="ACTIVE",
-            ).distinct(),
+            )
+            .filter(
+                Q(members__account=request.user)
+                | Q(members__profile__account=request.user)
+                | Q(members__profile__created_by=request.user)
+            )
+            .distinct(),
             pk=household_id,
         )
-        return Response(HouseholdSerializer(household).data)
+        return Response(
+            HouseholdSerializer(household, context={"request": request}).data
+        )
+
+
+class HouseholdLeaveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, household_id):
+        memberships = HouseholdMember.objects.filter(
+            household_id=household_id,
+            status="ACTIVE",
+        ).filter(
+            Q(account=request.user)
+            | Q(profile__account=request.user)
+            | Q(profile__created_by=request.user)
+        )
+        if not memberships.exists():
+            return Response(
+                {"detail": "Active household membership was not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if memberships.filter(role="OWNER").exists():
+            raise PermissionDenied(
+                "Household owners must transfer ownership before leaving."
+            )
+
+        memberships.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class HouseholdMemberListCreateView(APIView):

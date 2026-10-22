@@ -1,11 +1,31 @@
+from django.db.models import Q
 from rest_framework import serializers
 from .models import Household, HouseholdMember
 
 class HouseholdSerializer(serializers.ModelSerializer):
+    viewer_role = serializers.SerializerMethodField()
+
     class Meta:
         model = Household
-        fields = ['id', 'name', 'created_at']
+        fields = ['id', 'name', 'created_at', 'viewer_role']
         read_only_fields = ['id', 'created_at']
+
+    def get_viewer_role(self, household):
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return None
+
+        return (
+            household.members.filter(status="ACTIVE")
+            .filter(
+                Q(account=request.user)
+                | Q(profile__account=request.user)
+                | Q(profile__created_by=request.user)
+            )
+            .order_by("created_at")
+            .values_list("role", flat=True)
+            .first()
+        )
 
 
 class HouseholdMemberSerializer(serializers.ModelSerializer):

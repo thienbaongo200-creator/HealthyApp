@@ -1,3 +1,5 @@
+import uuid
+
 from accounts.models import Account
 from django.db import IntegrityError, transaction
 from django.test import TestCase
@@ -11,8 +13,9 @@ from .models import Household, HouseholdMember, ProfileShare
 
 class HouseholdModelTests(TestCase):
     def setUp(self):
+        test_id = uuid.uuid4().hex
         self.owner = Account.objects.create_user(
-            email="household-owner@example.com",
+            email=f"household-owner-{test_id}@example.com",
             password="safe-password",
         )
         self.owner_profile = PersonProfile.objects.create(
@@ -88,8 +91,9 @@ class HouseholdModelTests(TestCase):
 
 class HouseholdAPITests(APITestCase):
     def setUp(self):
+        test_id = uuid.uuid4().hex
         self.owner = Account.objects.create_user(
-            email="household-api-owner@example.com",
+            email=f"household-api-owner-{test_id}@example.com",
             password="test-password-123",
         )
         self.owner_profile = PersonProfile.objects.create(
@@ -98,7 +102,7 @@ class HouseholdAPITests(APITestCase):
             full_name="Household API Owner",
         )
         self.invitee = Account.objects.create_user(
-            email="household-api-invitee@example.com",
+            email=f"household-api-invitee-{test_id}@example.com",
             password="test-password-123",
         )
         self.client.force_authenticate(user=self.owner)
@@ -137,6 +141,63 @@ class HouseholdAPITests(APITestCase):
                 status="ACTIVE",
             ).exists()
         )
+
+    def test_member_can_list_and_leave_household_but_owner_cannot_leave(self):
+        household = Household.objects.create(
+            name="Leave Flow Household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.owner,
+            profile=self.owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        invitee_profile = PersonProfile.objects.create(
+            account=self.invitee,
+            profile_type="SELF",
+            full_name="Household Invitee",
+        )
+        invitee_membership = HouseholdMember.objects.create(
+            household=household,
+            account=self.invitee,
+            profile=invitee_profile,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+        share = ProfileShare.objects.create(
+            member=invitee_membership,
+            profile=self.owner_profile,
+            share_level="VIEW_ONLY",
+        )
+
+        self.client.force_authenticate(user=self.invitee)
+        household_list = self.client.get(reverse("household-list"))
+        self.assertEqual(household_list.status_code, status.HTTP_200_OK)
+        listed = next(
+            item for item in household_list.data if item["id"] == str(household.pk)
+        )
+        self.assertEqual(listed["viewer_role"], "MEMBER")
+
+        leave = self.client.post(
+            reverse("household-leave", kwargs={"household_id": household.pk}),
+            {},
+            format="json",
+        )
+        self.assertEqual(leave.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            HouseholdMember.objects.filter(pk=invitee_membership.pk).exists()
+        )
+        self.assertFalse(ProfileShare.objects.filter(pk=share.pk).exists())
+
+        self.client.force_authenticate(user=self.owner)
+        owner_leave = self.client.post(
+            reverse("household-leave", kwargs={"household_id": household.pk}),
+            {},
+            format="json",
+        )
+        self.assertEqual(owner_leave.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_owner_invites_account_invitee_accepts_and_owner_can_remove_member(self):
         household = Household.objects.create(

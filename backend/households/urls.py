@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     HouseholdDetailView,
+    HouseholdLeaveView,
     HouseholdListCreateView,
     HouseholdMemberDetailView,
     HouseholdMemberListCreateView,
@@ -13,6 +14,11 @@ from .views import (
 urlpatterns = [
     path("", HouseholdListCreateView.as_view(), name="household-list"),
     path("<uuid:household_id>/", HouseholdDetailView.as_view(), name="household-detail"),
+    path(
+        "<uuid:household_id>/leave/",
+        HouseholdLeaveView.as_view(),
+        name="household-leave",
+    ),
     path(
         "<uuid:household_id>/members/",
         HouseholdMemberListCreateView.as_view(),
