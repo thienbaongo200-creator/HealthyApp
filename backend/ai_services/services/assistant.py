@@ -49,20 +49,27 @@ def build_health_context(profile):
 
 def get_assistant_provider():
     if getattr(settings, "GEMINI_ENABLED", False):
-        try:
-            from ai_services.providers.gemini import GeminiProvider
-            return GeminiProvider()
-        except Exception:
-            # Missing SDK/key or client setup failure: local provider remains available.
-            pass
+        from ai_services.providers.gemini import GeminiProvider
+
+        return GeminiProvider()
     return LocalRuleProvider()
 
 
 def generate_reply(*, message: str, context: str):
-    """Return (reply, provider); runtime Gemini failures fall back to deterministic rules."""
-    provider = get_assistant_provider()
+    """Return (reply, provider, is_fallback) without hiding provider failures."""
     try:
-        return provider.generate_reply(message=message, context=context), provider
+        provider = get_assistant_provider()
     except ProviderError:
         local = LocalRuleProvider()
-        return local.generate_reply(message=message, context=context), local
+        return local.generate_reply(message=message, context=context), local, True
+
+    try:
+        reply = provider.generate_reply(message=message, context=context)
+        if not isinstance(reply, str) or not reply.strip():
+            raise ProviderError("Assistant provider returned invalid output.")
+        return reply, provider, False
+    except ProviderError:
+        if isinstance(provider, LocalRuleProvider):
+            raise
+        local = LocalRuleProvider()
+        return local.generate_reply(message=message, context=context), local, True
