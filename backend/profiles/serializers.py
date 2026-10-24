@@ -79,12 +79,14 @@ class PersonProfileSerializer(serializers.ModelSerializer):
     household_role = HouseholdRoleField(required=False)
     viewer_role = serializers.SerializerMethodField()
     share_level = serializers.SerializerMethodField()
+    is_current_user = serializers.SerializerMethodField()
 
     class Meta:
         model = PersonProfile
         fields = [
             "id",
             "profile_type",
+            "is_current_user",
             "relation_type",
             "household_role",
             "viewer_role",
@@ -101,6 +103,15 @@ class PersonProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "profile_type", "is_archived", "created_at", "updated_at"]
+
+    def get_is_current_user(self, profile):
+        request = self.context.get("request")
+        return bool(
+            request
+            and request.user.is_authenticated
+            and profile.profile_type == "SELF"
+            and profile.account_id == request.user.pk
+        )
 
     def _sharing(self, profile):
         request = self.context.get("request")

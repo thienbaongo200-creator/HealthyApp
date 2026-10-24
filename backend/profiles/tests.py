@@ -2,10 +2,11 @@ from accounts.models import Account
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 
 from households.models import HouseholdMember
 from .models import PersonProfile
+from .serializers import PersonProfileSerializer
 
 
 class PersonProfileModelTests(TestCase):
@@ -61,6 +62,22 @@ class PersonProfileAPITests(APITestCase):
         self.client.force_authenticate(user=self.account)
 
     def test_create_list_update_and_archive_profile(self):
+        own_profile = PersonProfile.objects.create(
+            account=self.account,
+            created_by=self.account,
+            profile_type="SELF",
+            full_name="Profile Owner",
+        )
+        self_profile_response = self.client.get(reverse("profile-list"))
+        self.assertEqual(self_profile_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            next(
+                item
+                for item in self_profile_response.data
+                if item["id"] == str(own_profile.pk)
+            )["is_current_user"]
+        )
+
         create_response = self.client.post(
             reverse("profile-list"),
             {
@@ -79,6 +96,7 @@ class PersonProfileAPITests(APITestCase):
         self.assertEqual(profile.profile_type, "DEPENDENT")
         self.assertEqual(create_response.data["household_role"], "CAREGIVER")
         self.assertEqual(create_response.data["viewer_role"], "OWNER")
+        self.assertFalse(create_response.data["is_current_user"])
         self.assertTrue(
             HouseholdMember.objects.filter(
                 profile=profile,
@@ -93,6 +111,10 @@ class PersonProfileAPITests(APITestCase):
         self.assertEqual(len(list_response.data), 2)
         self.assertTrue(
             any(item["id"] == profile_id for item in list_response.data)
+        )
+        self.assertEqual(
+            sum(item["is_current_user"] for item in list_response.data),
+            1,
         )
 
         update_response = self.client.patch(
@@ -155,3 +177,24 @@ class PersonProfileAPITests(APITestCase):
             HouseholdMember.objects.filter(profile=profile, status="ACTIVE").count(),
             1,
         )
+
+    def test_other_accounts_self_profile_is_not_the_current_users_profile(self):
+        other_account = Account.objects.create_user(
+            email="other-profile-owner@example.com",
+            password="test-password",
+        )
+        other_profile = PersonProfile.objects.create(
+            account=other_account,
+            created_by=other_account,
+            profile_type="SELF",
+            full_name="Other Profile Owner",
+        )
+        request = APIRequestFactory().get("/api/profiles/")
+        request.user = self.account
+
+        serialized = PersonProfileSerializer(
+            other_profile,
+            context={"request": request},
+        ).data
+
+        self.assertFalse(serialized["is_current_user"])
