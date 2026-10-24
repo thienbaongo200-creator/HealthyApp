@@ -9,28 +9,13 @@ class ProfileContextBanner extends StatelessWidget {
     final profile = ProfileSelectionScope.of(context).selectedProfile;
     if (profile == null) return const SizedBox.shrink();
     final name = profile['full_name']?.toString() ?? 'Hồ sơ';
-    final relationType = profile['relation_type']?.toString();
-    final relation = profile['profile_type'] == 'SELF'
-        ? 'Chủ hồ sơ'
-        : const {
-                'FATHER': 'Bố',
-                'MOTHER': 'Mẹ',
-                'SPOUSE': 'Vợ/Chồng',
-                'CHILD': 'Con',
-                'SIBLING': 'Anh/Chị/Em',
-                'OTHER': 'Khác',
-              }[relationType] ??
-              'Chưa xác định';
-    final role =
-        profile['household_role']?.toString() ??
-        (profile['profile_type'] == 'SELF' ? 'OWNER' : 'MEMBER');
-    final roleLabel =
-        const {
-          'OWNER': 'Chủ sở hữu',
-          'CAREGIVER': 'Người chăm sóc',
-          'MEMBER': 'Thành viên',
-        }[role] ??
-        'Thành viên';
+    final relation = profileRelationshipLabel(profile);
+    final roleLabel = profileRoleLabel(profile) ?? 'Chủ sở hữu';
+    final role = switch (roleLabel) {
+      'Chủ hộ' || 'Chủ sở hữu' => 'OWNER',
+      'Người chăm sóc' => 'CAREGIVER',
+      _ => 'MEMBER',
+    };
     final shareLevel = profile['share_level']?.toString();
     final permissions = switch (role) {
       'OWNER' => 'Toàn quyền quản lý hồ sơ và dữ liệu',

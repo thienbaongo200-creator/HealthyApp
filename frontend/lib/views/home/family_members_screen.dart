@@ -25,6 +25,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   };
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _households = [];
+  List<Map<String, dynamic>> _invitations = [];
   bool _loading = true;
   String? _error;
 
@@ -35,18 +36,23 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final profiles = await ApiService.fetchProfiles();
+      if (!mounted) return;
       final households = await ApiService.fetchHouseholds();
+      if (!mounted) return;
+      final invitations = await ApiService.fetchHouseholdInvitations();
       if (!mounted) return;
       ProfileSelectionScope.of(context).setProfiles(profiles);
       setState(() {
         _profiles = profiles;
         _households = households;
+        _invitations = invitations;
         _loading = false;
       });
     } catch (e) {
@@ -92,6 +98,48 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       }
     } catch (e) {
       if (mounted) _message(e.toString());
+    }
+  }
+
+  Future<void> _inviteMember(String householdId) async {
+    final draft = await showDialog<_InvitationDraft>(
+      context: context,
+      builder: (_) => const _InvitationEditor(),
+    );
+    if (!mounted || draft == null) return;
+
+    try {
+      await ApiService.inviteHouseholdMember(
+        householdId: householdId,
+        email: draft.email,
+        role: draft.role,
+      );
+      if (!mounted) return;
+      await _load();
+      if (mounted) _message('Đã gửi lời mời.');
+    } catch (error) {
+      if (mounted) _message(error.toString());
+    }
+  }
+
+  Future<void> _respondToInvitation(
+    Map<String, dynamic> invitation,
+    String action,
+  ) async {
+    try {
+      await ApiService.respondToHouseholdInvitation(
+        memberId: invitation['id'].toString(),
+        action: action,
+      );
+      if (!mounted) return;
+      await _load();
+      if (mounted) {
+        _message(
+          action == 'accept' ? 'Đã chấp nhận lời mời.' : 'Đã từ chối lời mời.',
+        );
+      }
+    } catch (error) {
+      if (mounted) _message(error.toString());
     }
   }
 
@@ -200,31 +248,76 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     '${_profiles.length} hồ sơ',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  if (_households.any(
-                    (household) => household['viewer_role'] != 'OWNER',
-                  )) ...[
+                  if (_invitations.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     Text(
-                      'Hộ gia đình được tham gia',
+                      'Lời mời đang chờ',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    for (final invitation in _invitations)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.mail_outline),
+                          title: Text(
+                            invitation['household_name']?.toString() ??
+                                'Hộ gia đình',
+                          ),
+                          subtitle: Text(
+                            'Vai trò: ${_roleLabels[invitation['role']] ?? _roleLabels['MEMBER']}',
+                          ),
+                          isThreeLine: true,
+                          trailing: Wrap(
+                            spacing: 4,
+                            children: [
+                              IconButton(
+                                tooltip: 'Từ chối lời mời',
+                                onPressed: () =>
+                                    _respondToInvitation(invitation, 'decline'),
+                                icon: const Icon(Icons.close),
+                              ),
+                              IconButton(
+                                tooltip: 'Chấp nhận lời mời',
+                                onPressed: () =>
+                                    _respondToInvitation(invitation, 'accept'),
+                                icon: const Icon(
+                                  Icons.check,
+                                  color: Color(0xFF246B65),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                  if (_households.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Text(
+                      'Hộ gia đình',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     for (final household in _households)
-                      if (household['viewer_role'] != 'OWNER')
-                        Card(
-                          child: ListTile(
-                            title: Text(
-                              household['name']?.toString() ?? 'Hộ gia đình',
-                            ),
-                            subtitle: Text(
-                              _roleLabels[household['viewer_role']] ??
-                                  _roleLabels['MEMBER']!,
-                            ),
-                            trailing: TextButton(
-                              onPressed: () => _leaveHousehold(household),
-                              child: const Text('Rời hộ'),
-                            ),
+                      Card(
+                        child: ListTile(
+                          title: Text(
+                            household['name']?.toString() ?? 'Hộ gia đình',
                           ),
+                          subtitle: Text(
+                            _roleLabels[household['viewer_role']] ??
+                                _roleLabels['MEMBER']!,
+                          ),
+                          trailing: household['viewer_role'] == 'OWNER'
+                              ? TextButton.icon(
+                                  onPressed: () =>
+                                      _inviteMember(household['id'].toString()),
+                                  icon: const Icon(Icons.person_add_alt_1),
+                                  label: const Text('Mời'),
+                                )
+                              : TextButton(
+                                  onPressed: () => _leaveHousehold(household),
+                                  child: const Text('Rời hộ'),
+                                ),
                         ),
+                      ),
                   ],
                   const SizedBox(height: 12),
                   for (final p in _profiles)
@@ -304,9 +397,12 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     );
   }
 
-  String _roleOf(Map<String, dynamic> profile) =>
-      profile['household_role']?.toString() ??
-      (profile['profile_type'] == 'SELF' ? 'OWNER' : 'MEMBER');
+  String _roleOf(Map<String, dynamic> profile) {
+    final viewerRole = profile['viewer_role']?.toString();
+    if (viewerRole != null && viewerRole != 'OWNER') return viewerRole;
+    return profile['household_role']?.toString() ??
+        (profile['profile_type'] == 'SELF' ? 'OWNER' : 'MEMBER');
+  }
 
   String _viewerRoleOf(Map<String, dynamic> profile) =>
       profile['viewer_role']?.toString() ?? _roleOf(profile);
@@ -316,6 +412,85 @@ class _ProfileDraft {
   const _ProfileDraft(this.name, this.relation, this.role, this.dateOfBirth);
   final String name, relation, role;
   final String? dateOfBirth;
+}
+
+class _InvitationDraft {
+  const _InvitationDraft(this.email, this.role);
+  final String email;
+  final String role;
+}
+
+class _InvitationEditor extends StatefulWidget {
+  const _InvitationEditor();
+
+  @override
+  State<_InvitationEditor> createState() => _InvitationEditorState();
+}
+
+class _InvitationEditorState extends State<_InvitationEditor> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  String _role = 'MEMBER';
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Mời thành viên'),
+    content: Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: 'Email tài khoản'),
+            validator: (value) {
+              final email = value?.trim() ?? '';
+              return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)
+                  ? null
+                  : 'Nhập email hợp lệ';
+            },
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: _role,
+            decoration: const InputDecoration(labelText: 'Vai trò'),
+            items: const [
+              DropdownMenuItem(value: 'MEMBER', child: Text('Thành viên')),
+              DropdownMenuItem(
+                value: 'CAREGIVER',
+                child: Text('Người chăm sóc'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _role = value);
+            },
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (!_formKey.currentState!.validate()) return;
+          Navigator.pop(
+            context,
+            _InvitationDraft(_emailController.text.trim(), _role),
+          );
+        },
+        child: const Text('Gửi lời mời'),
+      ),
+    ],
+  );
 }
 
 class _ProfileEditor extends StatefulWidget {

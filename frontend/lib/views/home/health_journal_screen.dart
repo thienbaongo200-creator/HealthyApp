@@ -81,8 +81,9 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   List<_JournalEntry> get _entries {
     final entries = <_JournalEntry>[];
     for (final record in _measurements) {
-      final measuredAt = DateTime.tryParse(record['measured_at']?.toString() ?? '')
-          ?.toLocal();
+      final measuredAt = DateTime.tryParse(
+        record['measured_at']?.toString() ?? '',
+      )?.toLocal();
       if (measuredAt == null ||
           measuredAt.year != _selectedDate.year ||
           measuredAt.month != _selectedDate.month ||
@@ -91,15 +92,24 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
       }
       final type = record['measurement_type']?.toString();
       if (_selectedType != 'ALL' && type != _selectedType) continue;
-      num? number(dynamic raw) => raw is num ? raw : num.tryParse(raw?.toString() ?? '');
+      num? number(dynamic raw) =>
+          raw is num ? raw : num.tryParse(raw?.toString() ?? '');
       final value = number(record['value']);
-      final heartRate = number(record['heart_rate'] ?? (type == 'HEART_RATE' ? value : null))?.toInt();
-      final steps = number(record['steps'] ?? (type == 'STEPS' ? value : null))?.toInt();
-      final calories = number(record['calories'] ?? (type == 'CALORIES' ? value : null))?.toDouble();
+      final heartRate = number(
+        record['heart_rate'] ?? (type == 'HEART_RATE' ? value : null),
+      )?.toInt();
+      final steps = number(
+        record['steps'] ?? (type == 'STEPS' ? value : null),
+      )?.toInt();
+      final calories = number(
+        record['calories'] ?? (type == 'CALORIES' ? value : null),
+      )?.toDouble();
       final detail = switch (type) {
         'HEART_RATE' => 'Nhịp tim ${value?.toStringAsFixed(0) ?? '—'} bpm',
-        'BLOOD_PRESSURE' => 'Huyết áp ${value?.toStringAsFixed(0) ?? '—'}/${number(record['value_secondary'])?.toStringAsFixed(0) ?? '—'} mmHg',
-        'BLOOD_GLUCOSE' => 'Đường huyết ${value ?? '—'} ${record['unit'] ?? ''}',
+        'BLOOD_PRESSURE' =>
+          'Huyết áp ${value?.toStringAsFixed(0) ?? '—'}/${number(record['value_secondary'])?.toStringAsFixed(0) ?? '—'} mmHg',
+        'BLOOD_GLUCOSE' =>
+          'Đường huyết ${value ?? '—'} ${record['unit'] ?? ''}',
         'WEIGHT' => 'Cân nặng ${value ?? '—'} ${record['unit'] ?? ''}',
         'HEIGHT' => 'Chiều cao ${value ?? '—'} ${record['unit'] ?? ''}',
         'TEMPERATURE' => 'Thân nhiệt ${value ?? '—'} ${record['unit'] ?? ''}',
@@ -114,15 +124,17 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
           detail == null) {
         continue;
       }
-      entries.add(_JournalEntry(
-        measuredAt: measuredAt,
-        heartRate: heartRate,
-        steps: steps,
-        calories: calories,
-        device: record['device_id']?.toString() ?? 'Thiết bị sức khỏe',
-        activityState: record['activity_state']?.toString(),
-        detail: detail,
-      ));
+      entries.add(
+        _JournalEntry(
+          measuredAt: measuredAt,
+          heartRate: heartRate,
+          steps: steps,
+          calories: calories,
+          device: record['device_id']?.toString() ?? 'Thiết bị sức khỏe',
+          activityState: record['activity_state']?.toString(),
+          detail: detail,
+        ),
+      );
     }
     entries.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
     return entries;
@@ -167,18 +179,15 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
             for (final profile in _profiles)
               ListTile(
                 leading: const Icon(Icons.person_outline),
-                title: Text(
-                  profile['profile_type'] == 'SELF'
-                      ? 'Tôi'
-                      : profile['full_name']?.toString() ?? 'Thành viên',
-                ),
+                title: Text(profileDisplayName(profile)),
+                subtitle: profileRoleLabel(profile) == null
+                    ? null
+                    : Text('[${profileRoleLabel(profile)}]'),
                 trailing: profile['id']?.toString() == _profileId
                     ? const Icon(Icons.check, color: _teal)
                     : null,
-                onTap: () => Navigator.pop(
-                  sheetContext,
-                  profile['id']?.toString(),
-                ),
+                onTap: () =>
+                    Navigator.pop(sheetContext, profile['id']?.toString()),
               ),
             const SizedBox(height: 10),
           ],
@@ -192,9 +201,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
       if (profile == null) return;
       setState(() {
         _profileId = profileId;
-        _selectedMember = profile['profile_type'] == 'SELF'
-            ? 'Tôi'
-            : profile['full_name']?.toString() ?? 'Thành viên';
+        _selectedMember = profileDisplayName(profile);
       });
       ProfileSelectionScope.of(context).selectProfileId(profileId);
       await _loadMeasurements();
@@ -210,10 +217,8 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   Future<void> _openQuickAdd() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => QuickAddScreen(
-          member: _selectedMember,
-          profileId: _profileId,
-        ),
+        builder: (_) =>
+            QuickAddScreen(member: _selectedMember, profileId: _profileId),
       ),
     );
     if (saved == true && mounted) await _loadMeasurements();
@@ -229,7 +234,11 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
         surfaceTintColor: Colors.transparent,
         title: const Text(
           'Nhật ký sức khỏe',
-          style: TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: _ink,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
@@ -277,16 +286,34 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                     ),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'ALL', child: Text('Tất cả chỉ số')),
-                    DropdownMenuItem(value: 'HEART_RATE', child: Text('Nhịp tim')),
-                    DropdownMenuItem(value: 'BLOOD_PRESSURE', child: Text('Huyết áp')),
-                    DropdownMenuItem(value: 'BLOOD_GLUCOSE', child: Text('Đường huyết')),
+                    DropdownMenuItem(
+                      value: 'ALL',
+                      child: Text('Tất cả chỉ số'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'HEART_RATE',
+                      child: Text('Nhịp tim'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'BLOOD_PRESSURE',
+                      child: Text('Huyết áp'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'BLOOD_GLUCOSE',
+                      child: Text('Đường huyết'),
+                    ),
                     DropdownMenuItem(value: 'SLEEP', child: Text('Giấc ngủ')),
                     DropdownMenuItem(value: 'WEIGHT', child: Text('Cân nặng')),
                     DropdownMenuItem(value: 'HEIGHT', child: Text('Chiều cao')),
-                    DropdownMenuItem(value: 'TEMPERATURE', child: Text('Thân nhiệt')),
+                    DropdownMenuItem(
+                      value: 'TEMPERATURE',
+                      child: Text('Thân nhiệt'),
+                    ),
                     DropdownMenuItem(value: 'STEPS', child: Text('Bước đi')),
-                    DropdownMenuItem(value: 'CALORIES', child: Text('Năng lượng')),
+                    DropdownMenuItem(
+                      value: 'CALORIES',
+                      child: Text('Năng lượng'),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value != null) setState(() => _selectedType = value);
@@ -365,7 +392,10 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                   )
                 else
                   for (var index = 0; index < entries.length; index++)
-                    _timelineEntry(entries[index], isLast: index == entries.length - 1),
+                    _timelineEntry(
+                      entries[index],
+                      isLast: index == entries.length - 1,
+                    ),
               ],
             ),
           ),
@@ -385,138 +415,144 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-  }) =>
-      OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 17),
-        label: Flexible(
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _ink,
-          backgroundColor: Colors.white.withValues(alpha: .78),
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          side: const BorderSide(color: Color(0xFFE0EBE8)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-      );
+  }) => OutlinedButton.icon(
+    onPressed: onTap,
+    icon: Icon(icon, size: 17),
+    label: Flexible(
+      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+    ),
+    style: OutlinedButton.styleFrom(
+      foregroundColor: _ink,
+      backgroundColor: Colors.white.withValues(alpha: .78),
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      side: const BorderSide(color: Color(0xFFE0EBE8)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+  );
 
   Widget _timelineEntry(_JournalEntry entry, {required bool isLast}) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: 28,
-              child: Column(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    margin: const EdgeInsets.only(top: 22),
-                    decoration: BoxDecoration(
-                      color: _teal,
-                      border: Border.all(color: Colors.white, width: 2),
-                      shape: BoxShape.circle,
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x33168B83), blurRadius: 5),
-                      ],
-                    ),
-                  ),
-                  if (!isLast)
-                    Expanded(
-                      child: Container(
-                        width: 2,
-                        margin: const EdgeInsets.symmetric(vertical: 3),
-                        color: const Color(0xFFB8DAD5),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: GlassCard(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          _timeLabel(entry.measuredAt),
-                          style: const TextStyle(
-                            color: _ink,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const Spacer(),
-                        Flexible(
-                          child: Text(
-                            entry.device,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.end,
-                            style: const TextStyle(
-                              color: Color(0xFF82908D),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (entry.heartRate != null)
-                          _measureChip(
-                            Icons.favorite_rounded,
-                            'Nhịp tim',
-                            '${entry.heartRate} bpm',
-                            const Color(0xFFE16E77),
-                          ),
-                        if (entry.steps != null)
-                          _measureChip(
-                            Icons.directions_walk_rounded,
-                            'Bước đi',
-                            '${entry.steps} bước',
-                            const Color(0xFF438ED8),
-                          ),
-                        if (entry.calories != null)
-                          _measureChip(
-                            Icons.local_fire_department_rounded,
-                            'Năng lượng',
-                            '${entry.calories!.toStringAsFixed(0)} kcal',
-                            const Color(0xFFE39A47),
-                          ),
-                      ],
-                    ),
-                    if (entry.activityState != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        entry.activityState == 'active'
-                            ? 'Đang vận động'
-                            : 'Trạng thái nghỉ',
-                        style: const TextStyle(
-                          color: Color(0xFF687875),
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                    if (entry.detail != null) ...[
-                      const SizedBox(height: 9),
-                      Text(entry.detail!, style: const TextStyle(color: _ink, fontSize: 13, fontWeight: FontWeight.w600)),
-                    ],
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 28,
+          child: Column(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                margin: const EdgeInsets.only(top: 22),
+                decoration: BoxDecoration(
+                  color: _teal,
+                  border: Border.all(color: Colors.white, width: 2),
+                  shape: BoxShape.circle,
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x33168B83), blurRadius: 5),
                   ],
                 ),
               ),
-            ),
-          ],
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 3),
+                    color: const Color(0xFFB8DAD5),
+                  ),
+                ),
+            ],
+          ),
         ),
-      );
+        Expanded(
+          child: GlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      _timeLabel(entry.measuredAt),
+                      style: const TextStyle(
+                        color: _ink,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    Flexible(
+                      child: Text(
+                        entry.device,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(
+                          color: Color(0xFF82908D),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (entry.heartRate != null)
+                      _measureChip(
+                        Icons.favorite_rounded,
+                        'Nhịp tim',
+                        '${entry.heartRate} bpm',
+                        const Color(0xFFE16E77),
+                      ),
+                    if (entry.steps != null)
+                      _measureChip(
+                        Icons.directions_walk_rounded,
+                        'Bước đi',
+                        '${entry.steps} bước',
+                        const Color(0xFF438ED8),
+                      ),
+                    if (entry.calories != null)
+                      _measureChip(
+                        Icons.local_fire_department_rounded,
+                        'Năng lượng',
+                        '${entry.calories!.toStringAsFixed(0)} kcal',
+                        const Color(0xFFE39A47),
+                      ),
+                  ],
+                ),
+                if (entry.activityState != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    entry.activityState == 'active'
+                        ? 'Đang vận động'
+                        : 'Trạng thái nghỉ',
+                    style: const TextStyle(
+                      color: Color(0xFF687875),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+                if (entry.detail != null) ...[
+                  const SizedBox(height: 9),
+                  Text(
+                    entry.detail!,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _measureChip(IconData icon, String label, String value, Color color) =>
       Container(
@@ -547,36 +583,31 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
     required String title,
     required String message,
     Widget? action,
-  }) =>
-      GlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: const Color(0xFF82908D)),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _ink,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF82908D),
-                fontSize: 12,
-                height: 1.4,
-              ),
-            ),
-            if (action != null) ...[const SizedBox(height: 8), action],
-          ],
+  }) => GlassCard(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+    child: Column(
+      children: [
+        Icon(icon, size: 32, color: const Color(0xFF82908D)),
+        const SizedBox(height: 10),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _ink, fontWeight: FontWeight.w700),
         ),
-      );
-
+        const SizedBox(height: 6),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF82908D),
+            fontSize: 12,
+            height: 1.4,
+          ),
+        ),
+        if (action != null) ...[const SizedBox(height: 8), action],
+      ],
+    ),
+  );
 }
 
 class _JournalEntry {

@@ -173,9 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _profiles = profiles;
       _profileId = profileId;
-      _member = profile['profile_type'] == 'SELF'
-          ? 'T\u00f4i'
-          : profile['full_name']?.toString() ?? 'Th\u00e0nh vi\u00ean';
+      _member = profileDisplayName(profile);
     });
     unawaited(_refreshData());
   }
@@ -201,9 +199,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadProfilesAndRefresh() async {
     try {
       final profiles = await ApiService.fetchProfiles();
-      final selfProfile = profiles
-          .where((profile) => profile['profile_type'] == 'SELF')
-          .firstOrNull;
+      final selfProfile = profiles.where(isCurrentUserProfile).firstOrNull;
       if (mounted) {
         _profileReady = false;
         _profileSelection!.setProfiles(profiles);
@@ -211,9 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         setState(() {
           _profiles = profiles;
           _profileId = selected?['id']?.toString();
-          _member = selected == null || selected['profile_type'] == 'SELF'
-              ? 'Tôi'
-              : selected['full_name']?.toString() ?? 'Thành viên';
+          _member = selected == null ? '' : profileDisplayName(selected);
         });
         _profileReady = _profileId != null;
       }
@@ -407,17 +401,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 leading: CircleAvatar(
                   backgroundColor: const Color(0xFFE6F4F1),
                   child: Icon(
-                    profile['profile_type'] == 'SELF'
+                    isCurrentUserProfile(profile)
                         ? Icons.person
                         : Icons.family_restroom,
                     color: _teal,
                   ),
                 ),
-                title: Text(
-                  profile['profile_type'] == 'SELF'
-                      ? 'Tôi'
-                      : profile['full_name']?.toString() ?? 'Thành viên',
-                ),
+                title: Text(profileDisplayName(profile)),
+                subtitle: profileRoleLabel(profile) == null
+                    ? null
+                    : Text('[${profileRoleLabel(profile)}]'),
                 trailing: profile['id']?.toString() == _profileId
                     ? const Icon(Icons.check, color: _teal)
                     : null,
@@ -444,9 +437,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _clearDisplayedMeasurements();
       setState(() {
         _profileId = member;
-        _member = profile['profile_type'] == 'SELF'
-            ? 'T\u00f4i'
-            : profile['full_name']?.toString() ?? 'Th\u00e0nh vi\u00ean';
+        _member = profileDisplayName(profile);
       });
       _profileReady = true;
       await _refreshData();

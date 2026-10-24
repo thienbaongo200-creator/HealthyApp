@@ -471,6 +471,75 @@ class ApiService {
     return payload.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
+  static Future<Map<String, dynamic>> inviteHouseholdMember({
+    required String householdId,
+    required String email,
+    String role = 'MEMBER',
+    String shareLevel = 'VIEW_ONLY',
+  }) async {
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/households/$householdId/members/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({
+        'email': email,
+        'role': role,
+        'share_level': shareLevel,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể gửi lời mời.'),
+      );
+    }
+    final payload = jsonDecode(utf8.decode(response.bodyBytes));
+    if (payload is! Map<String, dynamic>) {
+      throw const FormatException('Invitation response must be an object.');
+    }
+    return payload;
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchHouseholdInvitations() async {
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse('$baseUrl/households/invitations/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể tải lời mời.'),
+      );
+    }
+    final payload = jsonDecode(response.body);
+    if (payload is! List) {
+      throw const FormatException('Invitation response must be a list.');
+    }
+    return payload.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  static Future<void> respondToHouseholdInvitation({
+    required String memberId,
+    required String action,
+  }) async {
+    if (action != 'accept' && action != 'decline') {
+      throw ArgumentError.value(action, 'action', 'Must be accept or decline.');
+    }
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/households/invitations/$memberId/respond/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({'action': action}),
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể phản hồi lời mời.'),
+      );
+    }
+  }
+
   static Future<void> leaveHousehold(String householdId) async {
     final response = await _httpClient.request(
       'POST',

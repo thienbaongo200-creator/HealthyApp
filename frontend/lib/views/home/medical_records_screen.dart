@@ -49,9 +49,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
               (profile) => profile['id']?.toString() == globalProfileId,
             )
           ? globalProfileId
-          : (profiles
-                        .where((profile) => profile['profile_type'] == 'SELF')
-                        .firstOrNull ??
+          : (profiles.where(isCurrentUserProfile).firstOrNull ??
                     profiles.firstOrNull)?['id']
                 ?.toString();
       final documents = await ApiService.fetchMedicalDocuments(
@@ -367,7 +365,10 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                               DropdownMenuItem(
                                 value: profile['id'].toString(),
                                 child: Text(
-                                  profile['full_name']?.toString() ?? 'Hồ sơ',
+                                  profileRoleLabel(profile) == null
+                                      ? profileDisplayName(profile)
+                                      : '${profileDisplayName(profile)} '
+                                            '[${profileRoleLabel(profile)}]',
                                 ),
                               ),
                           ],

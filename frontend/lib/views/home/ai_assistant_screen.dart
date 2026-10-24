@@ -204,7 +204,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 .where((item) => item['id']?.toString() == initialProfileId)
                 .firstOrNull
           : _selectedMember == _self
-          ? profiles.where((item) => item['profile_type'] == 'SELF').firstOrNull
+          ? profiles.where(isCurrentUserProfile).firstOrNull
           : profiles
                 .where(
                   (item) =>
