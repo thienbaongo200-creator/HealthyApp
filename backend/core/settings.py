@@ -21,6 +21,35 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load file .env 
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'HealthyApp <no-reply@localhost>')
+
+MAIL_BACKEND = os.getenv(
+    'MAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
+)
+
+# THÊM DÒNG NÀY ĐỂ DJANGO NHẬN DIỆN ĐÚNG BACKEND GỬI MAIL:
+EMAIL_BACKEND = MAIL_BACKEND
+
+MAIL_OPTIONS = {}
+if MAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend':
+    MAIL_OPTIONS = {
+        'host': os.getenv('EMAIL_HOST', 'localhost'),
+        'port': int(os.getenv('EMAIL_PORT', '587')),
+        'username': os.getenv('EMAIL_HOST_USER', ''),
+        'password': os.getenv('EMAIL_HOST_PASSWORD', ''),
+        'use_tls': os.getenv('EMAIL_USE_TLS', 'True').strip().lower()
+        in {'true', '1', 'yes'},
+        'use_ssl': os.getenv('EMAIL_USE_SSL', 'False').strip().lower()
+        in {'true', '1', 'yes'},
+        'timeout': int(os.getenv('EMAIL_TIMEOUT', '15')),
+    }
+    MAILERS = {
+    'default': {
+        'BACKEND': MAIL_BACKEND,
+        'OPTIONS': MAIL_OPTIONS,
+    }
+}
+
 # Optional chat generation provider. Rule based risk screening is always local.
 GEMINI_ENABLED = os.getenv('GEMINI_ENABLED', 'False').strip().lower() in {'true', '1', 'yes'}
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -160,6 +189,8 @@ API_THROTTLE_RATES = {
         'API_LOGIN_RATE',
         '1000/min' if API_THROTTLE_TEST_MODE else '10/min',
     ),
+    'forgot_password': os.getenv('API_FORGOT_PASSWORD_RATE', '5/hour'),
+    'reset_password': os.getenv('API_RESET_PASSWORD_RATE', '10/hour'),
     'ai_chat': os.getenv(
         'API_AI_CHAT_RATE',
         '1000/min' if API_THROTTLE_TEST_MODE else '20/min',

@@ -32,24 +32,19 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
         idempotency_key = uuid.uuid4().hex
 
         create_response = self.client.post(
-            self.measurement_batch_url,
+            self.measurement_list_url,
             {
                 "profile_id": str(self.data["owner_profile"].pk),
-                "measurements": [
-                    {
-                        "measurement_type": "HEART_RATE",
-                        "value": "80",
-                        "unit": "bpm",
-                        "measured_at": "2026-10-14T01:00:00Z",
-                        "source": "MANUAL",
-                        "idempotency_key": idempotency_key,
-                    }
-                ],
+                "measurement_type": "HEART_RATE",
+                "value": "80",
+                "unit": "bpm",
+                "measured_at": "2026-10-14T01:00:00Z",
+                "source": "MANUAL",
+                "idempotency_key": idempotency_key,
             },
             format="json",
         )
-        self.assertEqual(create_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(create_response.data["received_count"], 1)
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
 
         created_measurement = HealthMeasurement.objects.get(
             idempotency_key=idempotency_key,
@@ -263,25 +258,26 @@ class HealthMeasurementAPIIntegrationTestCase(APITestCase):
         self.client.force_authenticate(user=self.data["member_active_user"])
 
         response = self.client.post(
-            self.measurement_batch_url,
+            self.measurement_list_url,
             {
                 "profile_id": str(self.data["owner_profile"].pk),
-                "measurements": [
-                    {
-                        "measurement_type": "HEART_RATE",
-                        "value": "81",
-                        "unit": "bpm",
-                        "measured_at": "2026-10-14T02:30:00Z",
-                        "source": "MANUAL",
-                        "idempotency_key": uuid.uuid4().hex,
-                    }
-                ],
+                "measurement_type": "HEART_RATE",
+                "value": "81",
+                "unit": "bpm",
+                "measured_at": "2026-10-14T02:30:00Z",
+                "source": "MANUAL",
+                "idempotency_key": uuid.uuid4().hex,
             },
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["created_count"], 1)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            HealthMeasurement.objects.filter(
+                profile=self.data["owner_profile"],
+                value=81,
+            ).exists()
+        )
 
     def test_pending_member_access_blocked(self):
         self.client.force_authenticate(user=self.data["member_pending_user"])

@@ -8,35 +8,11 @@ class PermissionService:
     Dịch vụ trung tâm xử lý logic phân quyền object-level theo Sơ đồ 2.4.
     """
 
-    @staticmethod
-    def consent_account_for_profile(profile):
-        if profile.account_id:
-            return profile.account
-        if profile.created_by_id:
-            return profile.created_by
-
-        linked_households = HouseholdMember.objects.filter(
-            profile=profile,
-            status='ACTIVE',
-        ).values('household_id')
-        owner_membership = (
-            HouseholdMember.objects.select_related('account', 'household__created_by')
-            .filter(
-                household_id__in=linked_households,
-                status='ACTIVE',
-                role='OWNER',
-            )
-            .order_by('created_at')
-            .first()
-        )
-        if owner_membership:
-            return owner_membership.account or owner_membership.household.created_by
-        return None
-
     @classmethod
     def has_profile_ai_consent(cls, profile):
-        consent_account = cls.consent_account_for_profile(profile)
-        return bool(consent_account and consent_account.ai_consent)
+        from ai_services.services.consent import AIConsentService
+
+        return AIConsentService.has_consent(profile)
 
     @staticmethod
     def is_caregiver_for_profile(user, profile):

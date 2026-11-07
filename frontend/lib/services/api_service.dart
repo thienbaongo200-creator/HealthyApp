@@ -182,17 +182,48 @@ class ApiService {
     return accessToken;
   }
 
-  Future<String?> loginWithGoogle(String accessToken) async {
+  Future<void> requestPasswordReset(String email) async {
     final response = await _httpClient.request(
       'POST',
-      Uri.parse('$baseUrl/auth/google/'),
+      Uri.parse('$baseUrl/auth/forgot-password/'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'access_token': accessToken}),
+      body: jsonEncode({'email': email}),
       retryUnauthorized: false,
     );
-    if (response.statusCode != 200) return null;
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return data['access'] as String? ?? data['token'] as String?;
+    if (response.statusCode != 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(
+        response.statusCode,
+        data['detail']?.toString() ?? 'Could not request a reset code.',
+      );
+    }
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/auth/reset-password/'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'otp': otp,
+        'new_password': newPassword,
+      }),
+      retryUnauthorized: false,
+    );
+    if (response.statusCode != 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      throw ApiException(
+        response.statusCode,
+        data['detail']?.toString() ??
+            data['new_password']?.toString() ??
+            'Could not reset password.',
+      );
+    }
   }
 
   Future<void> setToken(String token) async {
@@ -452,6 +483,34 @@ class ApiService {
     return profiles.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
+  static Future<List<Map<String, dynamic>>> fetchAIInsights({
+    required String profileId,
+  }) async {
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse(
+        '$baseUrl/ai-insights/',
+      ).replace(queryParameters: {'profile_id': profileId}),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(
+        response.statusCode,
+        'KhĂ´ng thá»ƒ táº£i nháº­n Ä‘á»‹nh AI.',
+      );
+    }
+    final payload = jsonDecode(response.body);
+    final insights = payload is List
+        ? payload
+        : payload is Map<String, dynamic>
+        ? payload['results']
+        : null;
+    if (insights is! List) {
+      throw const FormatException('AI insight response must contain a list.');
+    }
+    return insights.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
   static Future<List<Map<String, dynamic>>> fetchHouseholds() async {
     final response = await _httpClient.request(
       'GET',
@@ -469,6 +528,64 @@ class ApiService {
       throw const FormatException('Household response must be a list.');
     }
     return payload.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchDevices({
+    required String profileId,
+  }) async {
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse(
+        '$baseUrl/devices/',
+      ).replace(queryParameters: {'profile_id': profileId}),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, 'Không thể tải thiết bị.');
+    }
+    final body = jsonDecode(utf8.decode(response.bodyBytes));
+    if (body is! List) throw const FormatException('Device API phải trả list.');
+    return body.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  static Future<Map<String, dynamic>> pairDevice({
+    required String profileId,
+    required String identifier,
+    String? name,
+  }) async {
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/devices/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({
+        'profile_id': profileId,
+        'device_identifier': identifier,
+        if (name != null && name.isNotEmpty) 'device_name': name,
+      }),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể ghép nối thiết bị.'),
+      );
+    }
+    final body = jsonDecode(utf8.decode(response.bodyBytes));
+    if (body is! Map<String, dynamic>) {
+      throw const FormatException('Device API phải trả object.');
+    }
+    return body;
+  }
+
+  static Future<void> revokeDevice(String deviceId) async {
+    final response = await _httpClient.request(
+      'PATCH',
+      Uri.parse('$baseUrl/devices/$deviceId/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({'status': 'REVOKED'}),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, 'Không thể thu hồi thiết bị.');
+    }
   }
 
   static Future<Map<String, dynamic>> inviteHouseholdMember({
@@ -623,30 +740,33 @@ class ApiService {
     }
   }
 
-  static Future<bool> fetchAiConsent() async {
+  static Future<bool> fetchAiConsent({required String profileId}) async {
     final response = await _httpClient.request(
       'GET',
-      Uri.parse('$baseUrl/auth/ai-consent/'),
+      Uri.parse('$baseUrl/profiles/$profileId/ai-consent/'),
       headers: await _authHeaders(),
     );
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, 'Không thể tải tùy chọn AI.');
     }
     final payload = jsonDecode(response.body);
-    if (payload is! Map<String, dynamic> || payload['ai_consent'] is! bool) {
+    if (payload is! Map<String, dynamic> || payload['consent'] is! bool) {
       throw const FormatException(
         'AI consent response must contain a boolean.',
       );
     }
-    return payload['ai_consent'] as bool;
+    return payload['consent'] as bool;
   }
 
-  static Future<bool> updateAiConsent(bool consent) async {
+  static Future<bool> updateAiConsent({
+    required String profileId,
+    required bool consent,
+  }) async {
     final response = await _httpClient.request(
-      'PATCH',
-      Uri.parse('$baseUrl/auth/ai-consent/'),
+      'PUT',
+      Uri.parse('$baseUrl/profiles/$profileId/ai-consent/'),
       headers: {'Content-Type': 'application/json', ...await _authHeaders()},
-      body: jsonEncode({'ai_consent': consent}),
+      body: jsonEncode({'consent': consent, 'consent_version': '1.0'}),
     );
     if (response.statusCode != 200) {
       throw ApiException(
@@ -655,12 +775,12 @@ class ApiService {
       );
     }
     final payload = jsonDecode(response.body);
-    if (payload is! Map<String, dynamic> || payload['ai_consent'] is! bool) {
+    if (payload is! Map<String, dynamic> || payload['consent'] is! bool) {
       throw const FormatException(
         'AI consent response must contain a boolean.',
       );
     }
-    return payload['ai_consent'] as bool;
+    return payload['consent'] as bool;
   }
 
   static Future<List<Map<String, dynamic>>> fetchMedicalDocuments({
@@ -781,18 +901,25 @@ class ApiService {
     List<Map<String, dynamic>> measurements, {
     String? profileId,
   }) async {
-    final headers = await _authHeaders();
-    final response = await _httpClient.request(
-      'POST',
-      Uri.parse('$baseUrl/medical/measurements/batch/'),
-      headers: {'Content-Type': 'application/json', ...headers},
-      body: jsonEncode({
-        'measurements': measurements,
-        'profile_id': ?profileId,
-      }),
-    );
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      throw ApiException(response.statusCode, 'Khong the luu chi so suc khoe.');
+    final headers = {
+      'Content-Type': 'application/json',
+      ...await _authHeaders(),
+    };
+    for (final measurement in measurements) {
+      final payload = <String, dynamic>{...measurement};
+      if (profileId != null) payload['profile_id'] = profileId;
+      final response = await _httpClient.request(
+        'POST',
+        Uri.parse('$baseUrl/health-measurements/'),
+        headers: headers,
+        body: jsonEncode(payload),
+      );
+      if (response.statusCode != 201) {
+        throw ApiException(
+          response.statusCode,
+          _responseMessage(response.body, 'Không thể lưu chỉ số sức khỏe.'),
+        );
+      }
     }
   }
 }

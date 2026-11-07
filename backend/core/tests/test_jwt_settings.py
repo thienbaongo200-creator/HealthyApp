@@ -22,11 +22,12 @@ class JwtLifetimeSettingsTestCase(SimpleTestCase):
         )
 
     def test_scoped_throttle_rates_use_test_overrides(self):
-        expected_rates = (
-            {'login': '1000/min', 'ai_chat': '1000/min'}
-            if settings.API_THROTTLE_TEST_MODE
-            else {'login': '10/min', 'ai_chat': '20/min'}
-        )
+        expected_rates = {
+            "login": "1000/min" if settings.API_THROTTLE_TEST_MODE else "10/min",
+            "forgot_password": "5/hour",
+            "reset_password": "10/hour",
+            "ai_chat": "1000/min" if settings.API_THROTTLE_TEST_MODE else "20/min",
+        }
 
         self.assertEqual(
             settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'],
