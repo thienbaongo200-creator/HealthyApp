@@ -1,9 +1,16 @@
+import secrets
+import logging
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError
-from django.utils.dateparse import parse_date
+from django.core.mail import send_mail
+from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.exceptions import PermissionDenied
@@ -16,6 +23,10 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from profiles.models import PersonProfile
+from ai_services.services.consent import AIConsentService
+from .models import PasswordResetCode
+
+logger = logging.getLogger(__name__)
 
 
 def get_or_create_self_profile(account):
@@ -115,10 +126,10 @@ class AiConsentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        profile, _ = get_or_create_self_profile(request.user)
         return Response(
             {
-                "ai_consent": request.user.ai_consent,
-                "ai_consent_at": request.user.ai_consent_at,
+                "ai_consent": AIConsentService.has_consent(profile),
             },
             status=status.HTTP_200_OK,
         )
@@ -131,13 +142,17 @@ class AiConsentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        request.user.ai_consent = consent
-        request.user.ai_consent_at = timezone.now() if consent else None
-        request.user.save(update_fields=["ai_consent", "ai_consent_at"])
+        profile, _ = get_or_create_self_profile(request.user)
+        AIConsentService.set_consent(
+            user=request.user,
+            profile=profile,
+            granted=consent,
+            version=str(request.data.get("consent_version") or "1.0"),
+        )
+        consent_record_exists = AIConsentService.has_consent(profile)
         return Response(
             {
-                "ai_consent": request.user.ai_consent,
-                "ai_consent_at": request.user.ai_consent_at,
+                "ai_consent": consent_record_exists,
             },
             status=status.HTTP_200_OK,
         )
@@ -179,6 +194,85 @@ class LoginView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class ForgotPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "forgot_password"
+
+    def post(self, request):
+        email = str(request.data.get("email", "")).strip()
+        if not email or "@" not in email:
+            return Response({"email": ["Enter a valid email address."]}, status=400)
+        account = get_user_model().objects.filter(email__iexact=email, is_active=True).first()
+        if account:
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            PasswordResetCode.objects.filter(account=account).delete()
+            reset = PasswordResetCode.objects.create(
+                account=account,
+                code_hash=make_password(code),
+                expires_at=timezone.now() + timedelta(minutes=15),
+            )
+            try:
+                sent = send_mail(
+                    "HealthyApp password reset code",
+                    f"Your password reset code is {code}. It expires in 15 minutes.",
+                    settings.DEFAULT_FROM_EMAIL,
+                    [account.email],
+                    fail_silently=False,
+                )
+                if not sent:
+                    reset.delete()
+            except Exception:
+                logger.exception("Failed to send a password reset code")
+                reset.delete()
+                # Keep the response indistinguishable from an unknown email.
+                return Response({"detail": "If an account exists for this email, a reset code has been sent."})
+        return Response({"detail": "If an account exists for this email, a reset code has been sent."})
+
+
+class ResetPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "reset_password"
+
+    def post(self, request):
+        email = str(request.data.get("email", "")).strip()
+        code = str(request.data.get("otp", "")).strip()
+        new_password = request.data.get("new_password", "")
+        if not email or not code or not isinstance(new_password, str):
+            return Response({"detail": "email, otp and new_password are required."}, status=400)
+        if len(code) != 6 or not code.isdigit():
+            return Response({"detail": "Reset code is invalid or expired."}, status=400)
+        with transaction.atomic():
+            account = get_user_model().objects.select_for_update().filter(
+                email__iexact=email, is_active=True
+            ).first()
+            reset = (
+                PasswordResetCode.objects.select_for_update()
+                .filter(account=account)
+                .order_by("-created_at")
+                .first()
+                if account
+                else None
+            )
+            if reset is None or reset.expires_at <= timezone.now() or reset.attempts >= 5:
+                return Response({"detail": "Reset code is invalid or expired."}, status=400)
+            if not check_password(code, reset.code_hash):
+                reset.attempts += 1
+                reset.save(update_fields=["attempts"])
+                return Response({"detail": "Reset code is invalid or expired."}, status=400)
+            try:
+                validate_password(new_password, user=account)
+            except DjangoValidationError as error:
+                return Response({"new_password": error.messages}, status=400)
+            account.set_password(new_password)
+            account.save(update_fields=["password"])
+            PasswordResetCode.objects.filter(account=account).delete()
+        return Response({"detail": "Password has been reset successfully."})
 
 
 class LogoutView(APIView):

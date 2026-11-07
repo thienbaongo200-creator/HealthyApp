@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import '../../services/api_service.dart';
 import '../../widgets/widgets.dart';
 import 'profile_setup_screen.dart';
@@ -53,13 +55,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
 
     if (result['success'] == true) {
-      _showSnackBar(result['message'] as String, const Color(0xFF43A047));
+      _showSnackBar(result['message'] as String, AppColors.success);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
       );
     } else {
-      _showSnackBar(result['message'] as String, Colors.redAccent);
+      _showSnackBar(result['message'] as String, AppColors.danger);
     }
   }
 
@@ -84,17 +86,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: SingleChildScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.fromLTRB(
-              28,
-              16,
-              28,
-              16 + MediaQuery.of(context).viewInsets.bottom,
+              AppSpacing.x6,
+              AppSpacing.x4,
+              AppSpacing.x6,
+              AppSpacing.x4 + MediaQuery.of(context).viewInsets.bottom,
             ),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.x2),
 
                   // 🌿 Icon + Tiêu đề
                   Center(
@@ -102,73 +104,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       width: 80,
                       height: 80,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFE8F5E9), Color(0xFFC8E6C9)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                        color: AppColors.primarySoft,
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(
-                              0xFF2E7D32,
-                            ).withValues(alpha: 0.2),
+                            color: AppColors.primary.withValues(alpha: 0.12),
                             blurRadius: 15,
                             offset: const Offset(0, 6),
                           ),
                         ],
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.5),
+                          color: AppColors.surface.withValues(alpha: 0.5),
                           width: 2,
                         ),
                       ),
                       child: const Icon(
                         Icons.person_add_rounded,
                         size: 40,
-                        color: Color(0xFF43A047),
+                        color: AppColors.primary,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.x5),
 
                   Text(
                     'Tạo tài khoản mới',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF2E7D32),
-                      shadows: [
-                        Shadow(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: AppSpacing.x1),
                   Text(
                     'Đăng ký để trải nghiệm chăm sóc sức khỏe xanh 🌿',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: const Color(0xFF558B2F).withValues(alpha: 0.9),
-                      fontWeight: FontWeight.w500,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: AppSpacing.x6),
 
                   // 🌿 Card form
-                  GlassCard(
-                    padding: const EdgeInsets.all(20),
+                  AppCard(
+                    padding: const EdgeInsets.all(AppSpacing.x4),
                     child: Column(
                       children: [
                         // Username
                         TextFormField(
                           controller: _usernameController,
                           focusNode: _usernameFocusNode,
-                          style: const TextStyle(color: Color(0xFF33691E)),
+                          style: Theme.of(context).textTheme.bodyLarge,
                           textInputAction: TextInputAction.next,
                           onFieldSubmitted: (_) =>
                               _emailFocusNode.requestFocus(),
@@ -181,13 +166,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ? 'Vui lòng nhập tên đăng nhập'
                               : null,
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: AppSpacing.x3),
 
                         // Email
                         TextFormField(
                           controller: _emailController,
                           focusNode: _emailFocusNode,
-                          style: const TextStyle(color: Color(0xFF33691E)),
+                          style: Theme.of(context).textTheme.bodyLarge,
                           textInputAction: TextInputAction.next,
                           onFieldSubmitted: (_) =>
                               _passwordFocusNode.requestFocus(),
@@ -201,14 +186,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ? 'Định dạng Email không hợp lệ'
                               : null,
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: AppSpacing.x3),
 
                         // Mật khẩu
                         TextFormField(
                           controller: _passwordController,
                           focusNode: _passwordFocusNode,
                           obscureText: !_isPasswordVisible,
-                          style: const TextStyle(color: Color(0xFF33691E)),
+                          style: Theme.of(context).textTheme.bodyLarge,
                           textInputAction: TextInputAction.next,
                           onFieldSubmitted: (_) =>
                               _confirmPasswordFocusNode.requestFocus(),
@@ -231,14 +216,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ? 'Mật khẩu phải từ 8 ký tự trở lên'
                               : null,
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: AppSpacing.x3),
 
                         // Xác nhận mật khẩu
                         TextFormField(
                           controller: _confirmPasswordController,
                           focusNode: _confirmPasswordFocusNode,
                           obscureText: !_isConfirmPasswordVisible,
-                          style: const TextStyle(color: Color(0xFF33691E)),
+                          style: Theme.of(context).textTheme.bodyLarge,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _handleRegister(),
                           decoration: InputDecoration(
@@ -261,10 +246,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ? 'Mật khẩu xác nhận không khớp'
                               : null,
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: AppSpacing.x6),
 
                         // Nút Đăng ký Gradient
-                        GradientButton(
+                        PrimaryButton(
                           label: 'Đăng ký ngay',
                           icon: Icons.check_circle_outline,
                           onPressed: _isLoading ? null : _handleRegister,
@@ -273,7 +258,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.x5),
 
                   // Quay lại đăng nhập
                   Row(
@@ -281,37 +266,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     children: [
                       Text(
                         'Đã có tài khoản? ',
-                        style: TextStyle(
-                          color: const Color(0xFF558B2F).withValues(alpha: 0.8),
-                          fontSize: 14,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       GestureDetector(
                         onTap: () => Navigator.pop(context),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
+                            horizontal: AppSpacing.x3,
+                            vertical: AppSpacing.x2,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFE8F5E9,
-                            ).withValues(alpha: 0.6),
+                            color: AppColors.primarySoft,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Đăng nhập',
-                            style: TextStyle(
-                              color: Color(0xFF2E7D32),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: AppColors.primary),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.x4),
                 ],
               ),
             ),
