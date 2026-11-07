@@ -5,11 +5,13 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from accounts.models import Account
+from ai_services.services.consent import AIConsentService
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 from django.test import TestCase
 from django.test.utils import override_settings
+from devices.models import Device
 from health_measurements.models import HealthMeasurement
 from households.models import Household, HouseholdMember, ProfileShare
 from profiles.models import PersonProfile
@@ -276,19 +278,35 @@ class HealthMeasurementBatchApiTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.account)
 
+    def _paired_device(self):
+        profile = PersonProfile.objects.create(
+            account=self.account,
+            profile_type="SELF",
+            full_name="Health Owner",
+        )
+        device = Device.objects.create(
+            profile=profile,
+            device_identifier=f"test-watch-{uuid.uuid4()}",
+        )
+        return profile, device
+
     def test_batch_creates_measurements_for_account_profile(self):
+        profile, device = self._paired_device()
         measurement = {
             "measurement_type": "HEART_RATE",
             "value": "72",
             "unit": "bpm",
             "measured_at": "2026-10-04T05:00:00Z",
-            "source": "WEAR_OS",
+            "device_id": str(device.pk),
             "idempotency_key": str(uuid.uuid4()),
         }
 
         response = self.client.post(
             "/api/medical/measurements/batch/",
-            {"measurements": [measurement]},
+            {
+                "profile_id": str(profile.pk),
+                "measurements": [measurement],
+            },
             format="json",
         )
 
@@ -299,28 +317,35 @@ class HealthMeasurementBatchApiTests(TestCase):
         self.assertEqual(HealthMeasurement.objects.count(), 1)
         created = HealthMeasurement.objects.get()
         self.assertEqual(created.measurement_type, "HEART_RATE")
-        self.assertEqual(created.profile.account, self.account)
+        self.assertEqual(created.profile, profile)
         self.assertEqual(created.source, "WEAR_OS")
 
     def test_batch_retry_does_not_duplicate_idempotency_key(self):
+        profile, device = self._paired_device()
         measurement = {
             "measurement_type": "HEART_RATE",
             "value": "120",
             "unit": "bpm",
             "measured_at": "2026-10-04T05:00:00Z",
-            "source": "WEAR_OS",
+            "device_id": str(device.pk),
             "idempotency_key": str(uuid.uuid4()),
         }
         url = "/api/medical/measurements/batch/"
 
         first_response = self.client.post(
             url,
-            {"measurements": [measurement]},
+            {
+                "profile_id": str(profile.pk),
+                "measurements": [measurement],
+            },
             format="json",
         )
         retry_response = self.client.post(
             url,
-            {"measurements": [measurement]},
+            {
+                "profile_id": str(profile.pk),
+                "measurements": [measurement],
+            },
             format="json",
         )
 
@@ -488,8 +513,12 @@ class HealthMeasurementBatchApiTests(TestCase):
         denied = self.client.get(url, {"profile_id": str(owner_profile.pk)})
         self.assertEqual(denied.status_code, 403)
 
-        owner.ai_consent = True
-        owner.save(update_fields=["ai_consent"])
+        AIConsentService.set_consent(
+            user=owner,
+            profile=owner_profile,
+            granted=True,
+            version="test",
+        )
         allowed = self.client.get(url, {"profile_id": str(owner_profile.pk)})
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(len(allowed.data["results"]), 1)
