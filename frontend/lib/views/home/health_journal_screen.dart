@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/widgets/widgets.dart';
 import 'main_navigation_wrapper.dart';
 import 'quick_add_screen.dart';
@@ -20,8 +22,8 @@ class HealthJournalScreen extends StatefulWidget {
 }
 
 class _HealthJournalScreenState extends State<HealthJournalScreen> {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
+  static const _teal = AppColors.primary;
+  static const _ink = AppColors.textPrimary;
 
   late DateTime _selectedDate;
   late String _selectedMember;
@@ -228,17 +230,13 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   Widget build(BuildContext context) {
     final entries = _entries;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9F8),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'Nhật ký sức khỏe',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
@@ -253,7 +251,12 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
             color: _teal,
             onRefresh: _loadMeasurements,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.x4,
+                AppSpacing.x2,
+                AppSpacing.x4,
+                AppSpacing.x6,
+              ),
               children: [
                 Row(
                   children: [
@@ -264,7 +267,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                         onTap: _chooseDate,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: AppSpacing.x2),
                     Expanded(
                       child: _filterButton(
                         icon: Icons.person_outline,
@@ -274,13 +277,13 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpacing.x2),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedType,
                   decoration: InputDecoration(
                     labelText: 'Lọc theo loại chỉ số',
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: .82),
+                    fillColor: AppColors.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -320,8 +323,8 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                   },
                 ),
                 const SizedBox(height: 14),
-                GlassCard(
-                  padding: const EdgeInsets.all(14),
+                AppCard(
+                  padding: const EdgeInsets.all(AppSpacing.x3),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -332,63 +335,43 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                           _selectedMember == 'Tôi'
                               ? 'Nguồn hiện tại lưu nhịp tim và hoạt động từ đồng hồ. Huyết áp chưa có dữ liệu trong API.'
                               : 'Nhật ký hiện chỉ tải dữ liệu của tài khoản đang đăng nhập; dữ liệu thành viên gia đình chưa được liên kết riêng.',
-                          style: const TextStyle(
-                            color: Color(0xFF687875),
-                            height: 1.4,
-                            fontSize: 12,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    const Text(
-                      'Các mốc đo trong ngày',
-                      style: TextStyle(
-                        color: _ink,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${entries.length} mốc',
-                      style: const TextStyle(
-                        color: Color(0xFF82908D),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: AppSpacing.x4),
+                SectionHeader(
+                  title: 'Các mốc đo trong ngày',
+                  subtitle: '${entries.length} mốc',
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.x3),
                 if (_isLoading)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.x8),
                     child: Center(
                       child: CircularProgressIndicator(color: _teal),
                     ),
                   )
                 else if (_error != null)
-                  _stateCard(
-                    icon: Icons.cloud_off_outlined,
-                    title: 'Chưa tải được nhật ký',
+                  ErrorState(
                     message: _error!,
-                    action: TextButton.icon(
-                      onPressed: _loadMeasurements,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Thử lại'),
-                    ),
+                    title: 'Chưa tải được nhật ký',
+                    onRetry: _loadMeasurements,
                   )
                 else if (entries.isEmpty)
-                  _stateCard(
+                  EmptyState(
                     icon: Icons.event_note_outlined,
                     title: 'Chưa có bản ghi trong ngày này',
                     message: _selectedMember == 'Tôi'
                         ? 'Khi đồng hồ gửi dữ liệu, các mốc đo sẽ xuất hiện ở đây.'
                         : 'Chưa có dữ liệu riêng cho thành viên này.',
+                    action: PrimaryButton(
+                      label: 'Thêm chỉ số',
+                      icon: Icons.add,
+                      onPressed: _openQuickAdd,
+                    ),
                   )
                 else
                   for (var index = 0; index < entries.length; index++)
@@ -423,16 +406,16 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
     ),
     style: OutlinedButton.styleFrom(
       foregroundColor: _ink,
-      backgroundColor: Colors.white.withValues(alpha: .78),
+      backgroundColor: AppColors.surface,
       alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      side: const BorderSide(color: Color(0xFFE0EBE8)),
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      side: const BorderSide(color: AppColors.border),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
   );
 
   Widget _timelineEntry(_JournalEntry entry, {required bool isLast}) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.only(bottom: AppSpacing.x3),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -443,13 +426,16 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
               Container(
                 width: 12,
                 height: 12,
-                margin: const EdgeInsets.only(top: 22),
+                margin: const EdgeInsets.only(top: AppSpacing.x6),
                 decoration: BoxDecoration(
                   color: _teal,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: AppColors.surface, width: 2),
                   shape: BoxShape.circle,
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x33168B83), blurRadius: 5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                      blurRadius: 5,
+                    ),
                   ],
                 ),
               ),
@@ -457,16 +443,16 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                 Expanded(
                   child: Container(
                     width: 2,
-                    margin: const EdgeInsets.symmetric(vertical: 3),
-                    color: const Color(0xFFB8DAD5),
+                    margin: const EdgeInsets.symmetric(vertical: AppSpacing.x1),
+                    color: AppColors.border,
                   ),
                 ),
             ],
           ),
         ),
         Expanded(
-          child: GlassCard(
-            padding: const EdgeInsets.all(16),
+          child: AppCard(
+            padding: const EdgeInsets.all(AppSpacing.x4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -474,11 +460,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                   children: [
                     Text(
                       _timeLabel(entry.measuredAt),
-                      style: const TextStyle(
-                        color: _ink,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const Spacer(),
                     Flexible(
@@ -487,15 +469,12 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.end,
-                        style: const TextStyle(
-                          color: Color(0xFF82908D),
-                          fontSize: 10,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.x3),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -505,45 +484,38 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                         Icons.favorite_rounded,
                         'Nhịp tim',
                         '${entry.heartRate} bpm',
-                        const Color(0xFFE16E77),
+                        AppColors.danger,
                       ),
                     if (entry.steps != null)
                       _measureChip(
                         Icons.directions_walk_rounded,
                         'Bước đi',
                         '${entry.steps} bước',
-                        const Color(0xFF438ED8),
+                        AppColors.primary,
                       ),
                     if (entry.calories != null)
                       _measureChip(
                         Icons.local_fire_department_rounded,
                         'Năng lượng',
                         '${entry.calories!.toStringAsFixed(0)} kcal',
-                        const Color(0xFFE39A47),
+                        AppColors.warning,
                       ),
                   ],
                 ),
                 if (entry.activityState != null) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: AppSpacing.x2),
                   Text(
                     entry.activityState == 'active'
                         ? 'Đang vận động'
                         : 'Trạng thái nghỉ',
-                    style: const TextStyle(
-                      color: Color(0xFF687875),
-                      fontSize: 11,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
                 if (entry.detail != null) ...[
-                  const SizedBox(height: 9),
+                  const SizedBox(height: AppSpacing.x2),
                   Text(
                     entry.detail!,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
               ],
@@ -556,7 +528,10 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
 
   Widget _measureChip(IconData icon, String label, String value, Color color) =>
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.x3,
+          vertical: AppSpacing.x2,
+        ),
         decoration: BoxDecoration(
           color: color.withValues(alpha: .09),
           borderRadius: BorderRadius.circular(12),
@@ -568,46 +543,13 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
             const SizedBox(width: 6),
             Text(
               '$label · $value',
-              style: TextStyle(
-                color: _ink,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(color: AppColors.textPrimary),
             ),
           ],
         ),
       );
-
-  Widget _stateCard({
-    required IconData icon,
-    required String title,
-    required String message,
-    Widget? action,
-  }) => GlassCard(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
-    child: Column(
-      children: [
-        Icon(icon, size: 32, color: const Color(0xFF82908D)),
-        const SizedBox(height: 10),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: _ink, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF82908D),
-            fontSize: 12,
-            height: 1.4,
-          ),
-        ),
-        if (action != null) ...[const SizedBox(height: 8), action],
-      ],
-    ),
-  );
 }
 
 class _JournalEntry {

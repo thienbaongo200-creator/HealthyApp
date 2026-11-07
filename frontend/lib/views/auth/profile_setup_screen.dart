@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/theme/app_colors.dart';
 import '../../services/api_service.dart';
 import '../../widgets/widgets.dart';
 import '../home/dashboard_screen.dart';
@@ -103,7 +104,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _isLoading = false);
 
     if (result['success']) {
-      _showSnackBar(result['message'], const Color(0xFF43A047));
+      _showSnackBar(result['message'], AppColors.success);
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -234,7 +235,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       style: OutlinedButton.styleFrom(
                                         backgroundColor:
                                             _selectedGender == 'Nam'
-                                            ? Colors.green.shade50
+                                            ? AppColors.primarySoft
                                             : Colors.transparent,
                                       ),
                                       child: const Text('Nam'),
@@ -246,7 +247,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       onPressed: () => _setGender('Nữ'),
                                       style: OutlinedButton.styleFrom(
                                         backgroundColor: _selectedGender == 'Nữ'
-                                            ? Colors.green.shade50
+                                            ? AppColors.primarySoft
                                             : Colors.transparent,
                                       ),
                                       child: const Text('Nữ'),

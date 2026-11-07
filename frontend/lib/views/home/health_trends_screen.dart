@@ -1,17 +1,15 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 import 'main_navigation_wrapper.dart';
 import 'quick_add_screen.dart';
 
 class HealthTrendsScreen extends StatefulWidget {
-  const HealthTrendsScreen({
-    super.key,
-    this.member = 'Tôi',
-    this.profileId,
-  });
+  const HealthTrendsScreen({super.key, this.member = 'Tôi', this.profileId});
 
   final String member;
   final String? profileId;
@@ -21,8 +19,8 @@ class HealthTrendsScreen extends StatefulWidget {
 }
 
 class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
+  static const _teal = AppColors.primary;
+  static const _ink = AppColors.textPrimary;
   static const _measurements = <String, String>{
     'HEART_RATE': 'Nhịp tim',
     'BLOOD_PRESSURE': 'Huyết áp',
@@ -64,9 +62,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
           record['measured_at']?.toString() ?? '',
         )?.toLocal();
         final value = _number(record['value']);
-        if (measuredAt == null ||
-            measuredAt.isBefore(start) ||
-            value == null) {
+        if (measuredAt == null || measuredAt.isBefore(start) || value == null) {
           continue;
         }
         final day = DateTime(measuredAt.year, measuredAt.month, measuredAt.day);
@@ -145,10 +141,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     color: color,
     barWidth: 2.5,
     dotData: const FlDotData(show: true),
-    belowBarData: BarAreaData(
-      show: fill,
-      color: color.withValues(alpha: .10),
-    ),
+    belowBarData: BarAreaData(show: fill, color: color.withValues(alpha: .10)),
   );
 
   Widget _chart() {
@@ -161,26 +154,16 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     if (_error != null) {
       return SizedBox(
         height: 250,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center),
-              TextButton(onPressed: _loadRecords, child: const Text('Thử lại')),
-            ],
-          ),
-        ),
+        child: ErrorState(message: _error!, onRetry: _loadRecords),
       );
     }
     if (_points.isEmpty) {
-      return const SizedBox(
+      return SizedBox(
         height: 250,
-        child: Center(
-          child: Text(
-            'Chưa có dữ liệu đo trong khoảng thời gian này.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF82908D)),
-          ),
+        child: const EmptyState(
+          title: 'Chưa có dữ liệu đo',
+          message: 'Chưa có dữ liệu đo trong khoảng thời gian này.',
+          icon: Icons.show_chart_rounded,
         ),
       );
     }
@@ -199,14 +182,11 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
     ];
     if (_selectedType == 'BLOOD_PRESSURE') {
       lines.add(
-        _line(
-          [
-            for (var i = 0; i < _points.length; i++)
-              if (_points[i].secondary != null)
-                FlSpot(i.toDouble(), _points[i].secondary!),
-          ],
-          const Color(0xFF438ED8),
-        ),
+        _line([
+          for (var i = 0; i < _points.length; i++)
+            if (_points[i].secondary != null)
+              FlSpot(i.toDouble(), _points[i].secondary!),
+        ], AppColors.warning),
       );
     }
     return SizedBox(
@@ -237,10 +217,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                 reservedSize: 42,
                 getTitlesWidget: (value, _) => Text(
                   value.toStringAsFixed(0),
-                  style: const TextStyle(
-                    color: Color(0xFF82908D),
-                    fontSize: 9,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
             ),
@@ -256,10 +233,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                   }
                   return Text(
                     _dateLabel(_points[index].date),
-                    style: const TextStyle(
-                      color: Color(0xFF82908D),
-                      fontSize: 9,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
                   );
                 },
               ),
@@ -274,10 +248,8 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
   Future<void> _openQuickAdd() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => QuickAddScreen(
-          member: widget.member,
-          profileId: widget.profileId,
-        ),
+        builder: (_) =>
+            QuickAddScreen(member: widget.member, profileId: widget.profileId),
       ),
     );
     if (saved == true && mounted) await _loadRecords();
@@ -285,13 +257,13 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF5F9F8),
+    backgroundColor: AppColors.background,
     appBar: AppBar(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      title: const Text(
+      title: Text(
         'Thống kê & Xu hướng',
-        style: TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700),
+        style: Theme.of(context).textTheme.titleLarge,
       ),
       leading: IconButton(
         onPressed: () => Navigator.maybePop(context),
@@ -305,7 +277,12 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
           color: _teal,
           onRefresh: _loadRecords,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.x4,
+              AppSpacing.x3,
+              AppSpacing.x4,
+              AppSpacing.x6,
+            ),
             children: [
               DropdownButtonFormField<String>(
                 initialValue: _selectedType,
@@ -324,7 +301,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                   _loadRecords();
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.x3),
               SegmentedButton<int>(
                 segments: const [
                   ButtonSegment(value: 7, label: Text('7 ngày')),
@@ -336,28 +313,22 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                   _loadRecords();
                 },
               ),
-              const SizedBox(height: 14),
-              GlassCard(
-                padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+              const SizedBox(height: AppSpacing.x3),
+              AppCard(
+                padding: const EdgeInsets.all(AppSpacing.x4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '${_measurements[_selectedType]} · $_periodDays ngày',
-                      style: const TextStyle(
-                        color: _ink,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     _chart(),
                     if (!_isLoading && _error == null && _points.isNotEmpty)
                       Text(
                         'Trung bình: ${_average.toStringAsFixed(1)} $_unit · ${_points.length} ngày có dữ liệu',
-                        style: const TextStyle(
-                          color: Color(0xFF687875),
-                          fontSize: 11,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     if (_selectedType == 'BLOOD_PRESSURE') ...[
                       const SizedBox(height: 8),
@@ -366,7 +337,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                         children: [
                           _Legend(color: _teal, label: 'Tâm thu'),
                           _Legend(
-                            color: Color(0xFF438ED8),
+                            color: AppColors.warning,
                             label: 'Tâm trương',
                           ),
                         ],
@@ -414,10 +385,7 @@ class _Legend extends StatelessWidget {
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
       const SizedBox(width: 6),
-      Text(
-        label,
-        style: const TextStyle(color: Color(0xFF687875), fontSize: 10),
-      ),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
     ],
   );
 }

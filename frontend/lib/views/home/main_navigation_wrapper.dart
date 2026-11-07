@@ -1,6 +1,5 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
+import 'package:frontend/theme/app_colors.dart';
 
 class MainNavigationWrapper extends StatelessWidget {
   const MainNavigationWrapper({
@@ -23,45 +22,38 @@ class MainNavigationWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 9, sigmaY: 9),
-          child: Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: colors.surface.withValues(alpha: .72),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: colors.outline.withValues(alpha: .8), width: .5),
-            ),
-            child: Row(
-              children: [
-                for (var i = 0; i < 2; i++)
-                  Expanded(
-                    child: _NavigationItem(
-                      icon: _items[i].$1,
-                      label: _items[i].$2,
-                      selected: i == selectedIndex,
-                      onTap: () => onSelected(i),
-                    ),
-                  ),
-                Expanded(child: _QuickAddNavigationItem(onTap: onQuickAdd)),
-                for (var i = 2; i < _items.length; i++)
-                  Expanded(
-                    child: _NavigationItem(
-                      icon: _items[i].$1,
-                      label: _items[i].$2,
-                      selected: i == selectedIndex,
-                      onTap: () => onSelected(i),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+      child: Container(
+        height: 72,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < 2; i++)
+              Expanded(
+                child: _NavigationItem(
+                  icon: _items[i].$1,
+                  label: _items[i].$2,
+                  selected: i == selectedIndex,
+                  onTap: () => onSelected(i),
+                ),
+              ),
+            Expanded(child: _QuickAddNavigationItem(onTap: onQuickAdd)),
+            for (var i = 2; i < _items.length; i++)
+              Expanded(
+                child: _NavigationItem(
+                  icon: _items[i].$1,
+                  label: _items[i].$2,
+                  selected: i == selectedIndex,
+                  onTap: () => onSelected(i),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -69,27 +61,32 @@ class MainNavigationWrapper extends StatelessWidget {
 }
 
 class _QuickAddNavigationItem extends StatelessWidget {
-    const _QuickAddNavigationItem({required this.onTap});
+  const _QuickAddNavigationItem({required this.onTap});
 
-    final VoidCallback onTap;
+  final VoidCallback onTap;
 
-    @override
-    Widget build(BuildContext context) => Center(
-      child: IconButton.filled(
-        onPressed: onTap,
-        tooltip: 'Thêm chỉ số',
-        icon: const Icon(Icons.add_rounded),
-        style: IconButton.styleFrom(
-          backgroundColor: const Color(0xFF168B83),
-          foregroundColor: Colors.white,
-          minimumSize: const Size(44, 44),
-        ),
+  @override
+  Widget build(BuildContext context) => Center(
+    child: IconButton.filled(
+      onPressed: onTap,
+      tooltip: 'Thêm chỉ số',
+      icon: const Icon(Icons.add_rounded),
+      style: IconButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(44, 44),
       ),
-    );
+    ),
+  );
 }
 
 class _NavigationItem extends StatelessWidget {
-  const _NavigationItem({required this.icon, required this.label, required this.selected, required this.onTap});
+  const _NavigationItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -98,8 +95,7 @@ class _NavigationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final color = selected ? colors.primary : colors.onSurface.withValues(alpha: .58);
+    final color = selected ? AppColors.primary : AppColors.textSecondary;
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -114,7 +110,11 @@ class _NavigationItem extends StatelessWidget {
           const SizedBox(height: 3),
           AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 180),
-            style: TextStyle(fontSize: 9, color: color, fontWeight: selected ? FontWeight.w700 : FontWeight.w500),
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
             child: Text(label, maxLines: 1),
           ),
         ],

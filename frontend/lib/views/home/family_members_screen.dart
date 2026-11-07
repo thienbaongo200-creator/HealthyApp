@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/widgets/profile_context_banner.dart';
+import 'package:frontend/widgets/widgets.dart';
 
 class FamilyMembersScreen extends StatefulWidget {
   const FamilyMembersScreen({super.key});
@@ -227,173 +230,186 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_error!),
-                  TextButton(onPressed: _load, child: const Text('Thử lại')),
-                ],
-              ),
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
             )
+          : _error != null
+          ? ErrorState(message: _error!, onRetry: _load)
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.x4),
                 children: [
                   const ProfileContextBanner(),
-                  Text(
-                    '${_profiles.length} hồ sơ',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  SectionHeader(title: '${_profiles.length} hồ sơ'),
                   if (_invitations.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    Text(
-                      'Lời mời đang chờ',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                    const SizedBox(height: AppSpacing.x4),
+                    const SectionHeader(title: 'Lời mời đang chờ'),
                     for (final invitation in _invitations)
-                      Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.mail_outline),
-                          title: Text(
-                            invitation['household_name']?.toString() ??
-                                'Hộ gia đình',
-                          ),
-                          subtitle: Text(
-                            'Vai trò: ${_roleLabels[invitation['role']] ?? _roleLabels['MEMBER']}',
-                          ),
-                          isThreeLine: true,
-                          trailing: Wrap(
-                            spacing: 4,
-                            children: [
-                              IconButton(
-                                tooltip: 'Từ chối lời mời',
-                                onPressed: () =>
-                                    _respondToInvitation(invitation, 'decline'),
-                                icon: const Icon(Icons.close),
-                              ),
-                              IconButton(
-                                tooltip: 'Chấp nhận lời mời',
-                                onPressed: () =>
-                                    _respondToInvitation(invitation, 'accept'),
-                                icon: const Icon(
-                                  Icons.check,
-                                  color: Color(0xFF246B65),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      _invitationCard(invitation),
                   ],
                   if (_households.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    Text(
-                      'Hộ gia đình',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                    const SizedBox(height: AppSpacing.x4),
+                    const SectionHeader(title: 'Hộ gia đình'),
                     for (final household in _households)
-                      Card(
-                        child: ListTile(
-                          title: Text(
-                            household['name']?.toString() ?? 'Hộ gia đình',
-                          ),
-                          subtitle: Text(
-                            _roleLabels[household['viewer_role']] ??
-                                _roleLabels['MEMBER']!,
-                          ),
-                          trailing: household['viewer_role'] == 'OWNER'
-                              ? TextButton.icon(
-                                  onPressed: () =>
-                                      _inviteMember(household['id'].toString()),
-                                  icon: const Icon(Icons.person_add_alt_1),
-                                  label: const Text('Mời'),
-                                )
-                              : TextButton(
-                                  onPressed: () => _leaveHousehold(household),
-                                  child: const Text('Rời hộ'),
-                                ),
-                        ),
-                      ),
+                      _householdCard(household),
                   ],
-                  const SizedBox(height: 12),
-                  for (final p in _profiles)
-                    Card(
-                      color:
-                          ProfileSelectionScope.of(context).selectedProfileId ==
-                              p['id']?.toString()
-                          ? const Color(0xFFF2FAF8)
-                          : null,
-                      child: ListTile(
-                        onTap: () => ProfileSelectionScope.of(
-                          context,
-                        ).selectProfileId(p['id'].toString()),
-                        leading: CircleAvatar(
-                          child: Text(
-                            (p['full_name']
-                                    ?.toString()
-                                    .characters
-                                    .firstOrNull ??
-                                '?'),
-                          ),
-                        ),
-                        title: Text(p['full_name']?.toString() ?? 'Hồ sơ'),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              p['profile_type'] == 'SELF'
-                                  ? 'Hồ sơ chính'
-                                  : (_relations[p['relation_type']] ?? 'Khác'),
-                            ),
-                            const SizedBox(height: 5),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE7F5F2),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                _roleLabels[_roleOf(p)] ??
-                                    _roleLabels['MEMBER']!,
-                                style: const TextStyle(
-                                  color: Color(0xFF246B65),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing:
-                            p['profile_type'] == 'SELF' ||
-                                _viewerRoleOf(p) != 'OWNER'
-                            ? const Icon(Icons.shield_outlined)
-                            : PopupMenuButton<String>(
-                                onSelected: (v) =>
-                                    v == 'edit' ? _edit(p) : _delete(p),
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'edit',
-                                    child: Text('Sửa'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Text('Lưu trữ'),
-                                  ),
-                                ],
-                              ),
+                  const SizedBox(height: AppSpacing.x3),
+                  if (_profiles.isEmpty)
+                    EmptyState(
+                      title: 'Chưa có hồ sơ thành viên',
+                      message: 'Thêm hồ sơ để quản lý sức khỏe gia đình.',
+                      icon: Icons.groups_outlined,
+                      action: PrimaryButton(
+                        label: 'Thêm hồ sơ',
+                        icon: Icons.add,
+                        onPressed: () => _edit(),
                       ),
                     ),
+                  for (final p in _profiles) _profileCard(p),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _invitationCard(Map<String, dynamic> invitation) => AppCard(
+    margin: const EdgeInsets.only(top: AppSpacing.x2),
+    padding: const EdgeInsets.all(AppSpacing.x3),
+    child: Row(
+      children: [
+        const Icon(Icons.mail_outline, color: AppColors.primary),
+        const SizedBox(width: AppSpacing.x2),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                invitation['household_name']?.toString() ?? 'Hộ gia đình',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.x1),
+              Text(
+                'Vai trò: ${_roleLabels[invitation['role']] ?? _roleLabels['MEMBER']}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Từ chối lời mời',
+          onPressed: () => _respondToInvitation(invitation, 'decline'),
+          icon: const Icon(Icons.close),
+        ),
+        IconButton(
+          tooltip: 'Chấp nhận lời mời',
+          onPressed: () => _respondToInvitation(invitation, 'accept'),
+          icon: const Icon(Icons.check, color: AppColors.primary),
+        ),
+      ],
+    ),
+  );
+
+  Widget _householdCard(Map<String, dynamic> household) => AppCard(
+    margin: const EdgeInsets.only(top: AppSpacing.x2),
+    padding: const EdgeInsets.all(AppSpacing.x3),
+    child: Row(
+      children: [
+        const Icon(Icons.groups_outlined, color: AppColors.primary),
+        const SizedBox(width: AppSpacing.x2),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                household['name']?.toString() ?? 'Hộ gia đình',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.x1),
+              StatusBadge(
+                label:
+                    _roleLabels[household['viewer_role']] ??
+                    _roleLabels['MEMBER']!,
+              ),
+            ],
+          ),
+        ),
+        if (household['viewer_role'] == 'OWNER')
+          TextButton.icon(
+            onPressed: () => _inviteMember(household['id'].toString()),
+            icon: const Icon(Icons.person_add_alt_1),
+            label: const Text('Mời'),
+          )
+        else
+          TextButton(
+            onPressed: () => _leaveHousehold(household),
+            child: const Text('Rời hộ'),
+          ),
+      ],
+    ),
+  );
+
+  Widget _profileCard(Map<String, dynamic> profile) {
+    final selected =
+        ProfileSelectionScope.of(context).selectedProfileId ==
+        profile['id']?.toString();
+    final canEdit =
+        profile['profile_type'] != 'SELF' && _viewerRoleOf(profile) == 'OWNER';
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.x2),
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      onTap: () => ProfileSelectionScope.of(
+        context,
+      ).selectProfileId(profile['id'].toString()),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: AppColors.primarySoft,
+            foregroundColor: AppColors.primary,
+            child: Text(
+              (profile['full_name']?.toString().characters.firstOrNull ?? '?'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  profile['full_name']?.toString() ?? 'Hồ sơ',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpacing.x1),
+                Text(
+                  profile['profile_type'] == 'SELF'
+                      ? 'Hồ sơ chính'
+                      : (_relations[profile['relation_type']] ?? 'Khác'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: AppSpacing.x1),
+                StatusBadge(
+                  label:
+                      _roleLabels[_roleOf(profile)] ?? _roleLabels['MEMBER']!,
+                  tone: selected ? StatusTone.success : StatusTone.neutral,
+                ),
+              ],
+            ),
+          ),
+          if (selected)
+            const Icon(Icons.check_circle, color: AppColors.success)
+          else if (!canEdit)
+            const Icon(Icons.shield_outlined, color: AppColors.textSecondary)
+          else
+            PopupMenuButton<String>(
+              onSelected: (value) =>
+                  value == 'edit' ? _edit(profile) : _delete(profile),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Sửa')),
+                PopupMenuItem(value: 'delete', child: Text('Lưu trữ')),
+              ],
+            ),
+        ],
+      ),
     );
   }
 
@@ -533,7 +549,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     scrollable: true,
-    insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+    insetPadding: const EdgeInsets.all(AppSpacing.x6),
     title: Text(widget.profile == null ? 'Thêm thành viên' : 'Sửa hồ sơ'),
     content: Form(
       key: _form,

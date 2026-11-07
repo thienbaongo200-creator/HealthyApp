@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:frontend/core/network/token_storage.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/widgets/widgets.dart';
 import 'package:frontend/widgets/profile_context_banner.dart';
 
@@ -14,8 +16,10 @@ class MedicalRecordsScreen extends StatefulWidget {
 }
 
 class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
+  static const _teal = AppColors.primary;
+
+  // TODO(SCR-07): Add profile-scoped CRUD for MedicalHistory, Allergy, Visit,
+  // Medication, and LabResult. This screen currently manages uploaded documents only.
 
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _documents = [];
@@ -202,8 +206,8 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
       context: context,
       barrierColor: Colors.black87,
       builder: (dialogContext) => Dialog(
-        backgroundColor: const Color(0xFF101817),
-        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: AppColors.textPrimary,
+        insetPadding: const EdgeInsets.all(AppSpacing.x4),
         child: SizedBox(
           width: 900,
           height: MediaQuery.sizeOf(dialogContext).height * 0.82,
@@ -214,12 +218,14 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                   document['title']?.toString() ?? 'Ảnh hồ sơ y tế',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(color: AppColors.surface),
                 ),
                 trailing: IconButton(
                   tooltip: 'Đóng',
                   onPressed: () => Navigator.pop(dialogContext),
-                  icon: const Icon(Icons.close, color: Colors.white),
+                  icon: const Icon(Icons.close, color: AppColors.surface),
                 ),
               ),
               Expanded(
@@ -236,24 +242,29 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                           ? child
                           : const Center(
                               child: CircularProgressIndicator(
-                                color: Colors.white,
+                                color: AppColors.surface,
                               ),
                             ),
-                      errorBuilder: (context, error, stackTrace) => const Padding(
-                        padding: EdgeInsets.all(24),
+                      errorBuilder: (context, error, stackTrace) => Padding(
+                        padding: const EdgeInsets.all(AppSpacing.x6),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
                               Icons.broken_image_outlined,
-                              color: Colors.white70,
+                              color: AppColors.surface.withValues(alpha: .75),
                               size: 48,
                             ),
                             SizedBox(height: 12),
                             Text(
                               'Không thể tải ảnh xem trước. Hãy kiểm tra kết nối hoặc tải tệp xuống.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white70),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: AppColors.surface.withValues(
+                                      alpha: .75,
+                                    ),
+                                  ),
                             ),
                           ],
                         ),
@@ -320,13 +331,13 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9F8),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'Hồ sơ y tế',
-          style: TextStyle(color: _ink, fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         actions: [
           TextButton.icon(
@@ -350,12 +361,18 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.x4,
+                      AppSpacing.x3,
+                      AppSpacing.x4,
+                      AppSpacing.x6,
+                    ),
                     children: [
                       const ProfileContextBanner(),
                       if (_profiles.isNotEmpty)
                         DropdownButtonFormField<String>(
                           initialValue: _profileId,
+                          isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Hồ sơ thành viên',
                             prefixIcon: Icon(Icons.person_outline),
@@ -369,34 +386,34 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                                       ? profileDisplayName(profile)
                                       : '${profileDisplayName(profile)} '
                                             '[${profileRoleLabel(profile)}]',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                           ],
                           onChanged: _selectProfile,
                         ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.x4),
+                      const SectionHeader(title: 'Tài liệu y tế'),
+                      const SizedBox(height: AppSpacing.x2),
                       if (_error != null)
-                        _StateCard(
-                          icon: Icons.error_outline,
-                          text: _error!,
-                          action: TextButton(
-                            onPressed: _loadData,
-                            child: const Text('Thử lại'),
-                          ),
-                        )
+                        ErrorState(message: _error!, onRetry: _loadData)
                       else if (_documents.isEmpty)
-                        _StateCard(
+                        EmptyState(
                           icon: Icons.folder_open_outlined,
-                          text: 'Chưa có tài liệu y tế cho hồ sơ này.',
-                          action: FilledButton.icon(
-                            onPressed: _isUploading ? null : _uploadDocument,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Thêm tài liệu'),
+                          title: 'Chưa có tài liệu y tế',
+                          message:
+                              'Tải lên đơn thuốc, xét nghiệm hoặc hồ sơ y tế cho thành viên này.',
+                          action: PrimaryButton(
+                            label: 'Thêm tài liệu',
+                            icon: Icons.add,
+                            isLoading: _isUploading,
+                            onPressed: _uploadDocument,
                           ),
                         )
                       else
                         for (final document in _documents) ...[
-                          const SizedBox(height: 10),
+                          const SizedBox(height: AppSpacing.x2),
                           _DocumentCard(
                             title:
                                 document['title']?.toString() ??
@@ -536,15 +553,15 @@ class _DocumentCard extends StatelessWidget {
   final VoidCallback onDelete;
 
   @override
-  Widget build(BuildContext context) => GlassCard(
-    padding: const EdgeInsets.all(16),
+  Widget build(BuildContext context) => AppCard(
+    padding: const EdgeInsets.all(AppSpacing.x3),
     child: Row(
       children: [
         const CircleAvatar(
-          backgroundColor: Color(0xFFE7F5F2),
-          child: Icon(Icons.description_outlined, color: Color(0xFF168B83)),
+          backgroundColor: AppColors.primarySoft,
+          child: Icon(Icons.description_outlined, color: AppColors.primary),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: AppSpacing.x3),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,23 +570,20 @@ class _DocumentCard extends StatelessWidget {
                 title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF18343A),
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.x1),
               Text(
                 '$type${uploadedAt.isEmpty ? '' : ' · ${uploadedAt.substring(0, uploadedAt.length >= 10 ? 10 : uploadedAt.length)}'}',
-                style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               if (description.isNotEmpty) ...[
-                const SizedBox(height: 5),
+                const SizedBox(height: AppSpacing.x1),
                 Text(
                   description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ],
@@ -578,7 +592,7 @@ class _DocumentCard extends StatelessWidget {
         IconButton(
           onPressed: onPreview,
           tooltip: 'Xem ảnh',
-          icon: const Icon(Icons.zoom_in, color: Color(0xFF168B83)),
+          icon: const Icon(Icons.zoom_in, color: AppColors.primary),
         ),
         IconButton(
           onPressed: onDownload,
@@ -588,34 +602,8 @@ class _DocumentCard extends StatelessWidget {
         IconButton(
           onPressed: onDelete,
           tooltip: 'Xóa tài liệu',
-          icon: const Icon(Icons.delete_outline, color: Color(0xFFC74747)),
+          icon: const Icon(Icons.delete_outline, color: AppColors.danger),
         ),
-      ],
-    ),
-  );
-}
-
-class _StateCard extends StatelessWidget {
-  const _StateCard({
-    required this.icon,
-    required this.text,
-    required this.action,
-  });
-
-  final IconData icon;
-  final String text;
-  final Widget action;
-
-  @override
-  Widget build(BuildContext context) => GlassCard(
-    padding: const EdgeInsets.all(24),
-    child: Column(
-      children: [
-        Icon(icon, size: 34, color: const Color(0xFF168B83)),
-        const SizedBox(height: 12),
-        Text(text, textAlign: TextAlign.center),
-        const SizedBox(height: 10),
-        action,
       ],
     ),
   );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/widgets/widgets.dart';
 
 enum _MetricType {
@@ -14,11 +16,7 @@ enum _MetricType {
 }
 
 class QuickAddScreen extends StatefulWidget {
-  const QuickAddScreen({
-    super.key,
-    this.member = 'Tôi',
-    this.profileId,
-  });
+  const QuickAddScreen({super.key, this.member = 'Tôi', this.profileId});
 
   final String member;
   final String? profileId;
@@ -28,9 +26,9 @@ class QuickAddScreen extends StatefulWidget {
 }
 
 class _QuickAddScreenState extends State<QuickAddScreen> {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
-  static const _canvas = Color(0xFFF5F9F8);
+  static const _teal = AppColors.primary;
+  static const _ink = AppColors.textPrimary;
+  static const _canvas = AppColors.background;
 
   final _formKey = GlobalKey<FormState>();
   final _systolicController = TextEditingController();
@@ -62,24 +60,24 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
   }
 
   String _typeLabel(_MetricType type) => switch (type) {
-        _MetricType.bloodPressure => 'Huyết áp',
-        _MetricType.heartRate => 'Nhịp tim',
-        _MetricType.weight => 'Cân nặng',
-        _MetricType.glucose => 'Đường huyết',
-        _MetricType.sleep => 'Giấc ngủ',
-        _MetricType.temperature => 'Thân nhiệt',
-        _MetricType.height => 'Chiều cao',
-      };
+    _MetricType.bloodPressure => 'Huyết áp',
+    _MetricType.heartRate => 'Nhịp tim',
+    _MetricType.weight => 'Cân nặng',
+    _MetricType.glucose => 'Đường huyết',
+    _MetricType.sleep => 'Giấc ngủ',
+    _MetricType.temperature => 'Thân nhiệt',
+    _MetricType.height => 'Chiều cao',
+  };
 
   IconData _typeIcon(_MetricType type) => switch (type) {
-        _MetricType.bloodPressure => Icons.monitor_heart_outlined,
-        _MetricType.heartRate => Icons.favorite_border_rounded,
-        _MetricType.weight => Icons.monitor_weight_outlined,
-        _MetricType.glucose => Icons.water_drop_outlined,
-        _MetricType.sleep => Icons.bedtime_outlined,
-        _MetricType.temperature => Icons.thermostat_rounded,
-        _MetricType.height => Icons.height_rounded,
-      };
+    _MetricType.bloodPressure => Icons.monitor_heart_outlined,
+    _MetricType.heartRate => Icons.favorite_border_rounded,
+    _MetricType.weight => Icons.monitor_weight_outlined,
+    _MetricType.glucose => Icons.water_drop_outlined,
+    _MetricType.sleep => Icons.bedtime_outlined,
+    _MetricType.temperature => Icons.thermostat_rounded,
+    _MetricType.height => Icons.height_rounded,
+  };
 
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
@@ -98,7 +96,13 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     );
     if (time == null || !mounted) return;
     setState(() {
-      _measuredAt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _measuredAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
     });
   }
 
@@ -112,169 +116,174 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     required double min,
     required double max,
     String? hint,
-  }) =>
-      TextFormField(
-        controller: controller,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-        ],
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          suffixText: unit,
-          filled: true,
-          fillColor: Colors.white.withValues(alpha: .82),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE1EBE8)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _teal, width: 1.5),
-          ),
-        ),
-        validator: (text) {
-          if (text == null || text.trim().isEmpty) return 'Vui lòng nhập $label';
-          final value = double.tryParse(text.trim().replaceAll(',', '.'));
-          if (value == null || value < min || value > max) {
-            return 'Nhập giá trị từ $min đến $max $unit';
-          }
-          return null;
-        },
-      );
+  }) => TextFormField(
+    controller: controller,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+    decoration: InputDecoration(
+      labelText: label,
+      hintText: hint,
+      suffixText: unit,
+      filled: true,
+      fillColor: AppColors.surface,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _teal, width: 1.5),
+      ),
+    ),
+    validator: (text) {
+      if (text == null || text.trim().isEmpty) return 'Vui lòng nhập $label';
+      final value = double.tryParse(text.trim().replaceAll(',', '.'));
+      if (value == null || value < min || value > max) {
+        return 'Nhập giá trị từ $min đến $max $unit';
+      }
+      return null;
+    },
+  );
 
   List<Widget> _selectedFields() => switch (_selectedType) {
-        _MetricType.bloodPressure => [
-            Row(
-              children: [
-                Expanded(
-                  child: _numberField(
-                    controller: _systolicController,
-                    label: 'Tâm thu',
-                    unit: 'mmHg',
-                    min: 50,
-                    max: 260,
-                    hint: '120',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _numberField(
-                    controller: _diastolicController,
-                    label: 'Tâm trương',
-                    unit: 'mmHg',
-                    min: 30,
-                    max: 180,
-                    hint: '80',
-                  ),
-                ),
-              ],
+    _MetricType.bloodPressure => [
+      Row(
+        children: [
+          Expanded(
+            child: _numberField(
+              controller: _systolicController,
+              label: 'Tâm thu',
+              unit: 'mmHg',
+              min: 50,
+              max: 260,
+              hint: '120',
             ),
-            const SizedBox(height: 14),
-            _numberField(
-              controller: _heartRateController,
-              label: 'Nhịp tim',
-              unit: 'bpm',
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _numberField(
+              controller: _diastolicController,
+              label: 'Tâm trương',
+              unit: 'mmHg',
               min: 30,
-              max: 250,
-              hint: 'Ví dụ: 72',
+              max: 180,
+              hint: '80',
             ),
-          ],
-        _MetricType.heartRate => [
-            _numberField(
-              controller: _heartRateController,
-              label: 'Nhịp tim',
-              unit: 'bpm',
-              min: 30,
-              max: 250,
-              hint: 'Ví dụ: 72',
-            ),
-          ],
-        _MetricType.weight => [
-            _numberField(
-              controller: _weightController,
-              label: 'Cân nặng',
-              unit: 'kg',
-              min: 2,
-              max: 500,
-              hint: 'Ví dụ: 60.5',
-            ),
-          ],
-        _MetricType.glucose => [
-            _numberField(
-              controller: _glucoseController,
-              label: 'Đường huyết',
-              unit: 'mg/dL',
-              min: 10,
-              max: 1000,
-              hint: 'Ví dụ: 95',
-            ),
-          ],
-          _MetricType.sleep => [
-              _numberField(
-                controller: _sleepController,
-                label: 'Thời lượng ngủ',
-                unit: 'giờ',
-                min: 0,
-                max: 24,
-                hint: 'Ví dụ: 7.5',
-              ),
-            ],
-        _MetricType.temperature => [
-            _numberField(
-              controller: _temperatureController,
-              label: 'Thân nhiệt',
-              unit: '°C',
-              min: 25,
-              max: 45,
-              hint: 'Ví dụ: 36.5',
-            ),
-          ],
-        _MetricType.height => [
-            _numberField(
-              controller: _heightController,
-              label: 'Chiều cao',
-              unit: 'cm',
-              min: 30,
-              max: 280,
-              hint: 'Ví dụ: 165',
-            ),
-          ],
-      };
+          ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      _numberField(
+        controller: _heartRateController,
+        label: 'Nhịp tim',
+        unit: 'bpm',
+        min: 30,
+        max: 250,
+        hint: 'Ví dụ: 72',
+      ),
+    ],
+    _MetricType.heartRate => [
+      _numberField(
+        controller: _heartRateController,
+        label: 'Nhịp tim',
+        unit: 'bpm',
+        min: 30,
+        max: 250,
+        hint: 'Ví dụ: 72',
+      ),
+    ],
+    _MetricType.weight => [
+      _numberField(
+        controller: _weightController,
+        label: 'Cân nặng',
+        unit: 'kg',
+        min: 2,
+        max: 500,
+        hint: 'Ví dụ: 60.5',
+      ),
+    ],
+    _MetricType.glucose => [
+      _numberField(
+        controller: _glucoseController,
+        label: 'Đường huyết',
+        unit: 'mg/dL',
+        min: 10,
+        max: 1000,
+        hint: 'Ví dụ: 95',
+      ),
+    ],
+    _MetricType.sleep => [
+      _numberField(
+        controller: _sleepController,
+        label: 'Thời lượng ngủ',
+        unit: 'giờ',
+        min: 0,
+        max: 24,
+        hint: 'Ví dụ: 7.5',
+      ),
+    ],
+    _MetricType.temperature => [
+      _numberField(
+        controller: _temperatureController,
+        label: 'Thân nhiệt',
+        unit: '°C',
+        min: 25,
+        max: 45,
+        hint: 'Ví dụ: 36.5',
+      ),
+    ],
+    _MetricType.height => [
+      _numberField(
+        controller: _heightController,
+        label: 'Chiều cao',
+        unit: 'cm',
+        min: 30,
+        max: 280,
+        hint: 'Ví dụ: 165',
+      ),
+    ],
+  };
 
   Map<String, dynamic> _valuesForSelectedType() {
     String normalized(TextEditingController controller) =>
         controller.text.trim().replaceAll(',', '.');
     return switch (_selectedType) {
       _MetricType.bloodPressure => {
-          'systolic': double.parse(normalized(_systolicController)),
-          'diastolic': double.parse(normalized(_diastolicController)),
-          'heart_rate': double.parse(normalized(_heartRateController)),
-        },
+        'systolic': double.parse(normalized(_systolicController)),
+        'diastolic': double.parse(normalized(_diastolicController)),
+        'heart_rate': double.parse(normalized(_heartRateController)),
+      },
       _MetricType.heartRate => {
-          'heart_rate': double.parse(normalized(_heartRateController)),
-        },
-      _MetricType.weight => {'weight_kg': double.parse(normalized(_weightController))},
+        'heart_rate': double.parse(normalized(_heartRateController)),
+      },
+      _MetricType.weight => {
+        'weight_kg': double.parse(normalized(_weightController)),
+      },
       _MetricType.glucose => {
-          'glucose_mg_dl': double.parse(normalized(_glucoseController)),
-        },
+        'glucose_mg_dl': double.parse(normalized(_glucoseController)),
+      },
       _MetricType.sleep => {
-          'sleep_hours': double.parse(normalized(_sleepController)),
-        },
+        'sleep_hours': double.parse(normalized(_sleepController)),
+      },
       _MetricType.temperature => {
-          'temperature_c': double.parse(normalized(_temperatureController)),
-        },
-      _MetricType.height => {'height_cm': double.parse(normalized(_heightController))},
+        'temperature_c': double.parse(normalized(_temperatureController)),
+      },
+      _MetricType.height => {
+        'height_cm': double.parse(normalized(_heightController)),
+      },
     };
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedType == _MetricType.bloodPressure) {
-      final systolic = double.parse(_systolicController.text.replaceAll(',', '.'));
-      final diastolic = double.parse(_diastolicController.text.replaceAll(',', '.'));
+      final systolic = double.parse(
+        _systolicController.text.replaceAll(',', '.'),
+      );
+      final diastolic = double.parse(
+        _diastolicController.text.replaceAll(',', '.'),
+      );
       if (systolic <= diastolic) {
         _showMessage('Tâm thu phải lớn hơn tâm trương.');
         return;
@@ -298,9 +307,15 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
           'idempotency_key': '${key}_$type',
         });
       }
+
       switch (_selectedType) {
         case _MetricType.bloodPressure:
-          add('BLOOD_PRESSURE', values['systolic'] as num, 'mmHg', secondary: values['diastolic'] as num);
+          add(
+            'BLOOD_PRESSURE',
+            values['systolic'] as num,
+            'mmHg',
+            secondary: values['diastolic'] as num,
+          );
           add('HEART_RATE', values['heart_rate'] as num, 'bpm');
           break;
         case _MetricType.heartRate:
@@ -329,7 +344,13 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) _showMessage(error is ApiException ? error.message : 'Không thể lưu bản ghi. Vui lòng thử lại.');
+      if (mounted) {
+        _showMessage(
+          error is ApiException
+              ? error.message
+              : 'Không thể lưu bản ghi. Vui lòng thử lại.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -349,9 +370,9 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'Ghi nhận chỉ số',
-          style: TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
@@ -367,17 +388,17 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(
-                20,
-                10,
-                20,
-                24 + MediaQuery.of(context).viewInsets.bottom,
+                AppSpacing.x4,
+                AppSpacing.x2,
+                AppSpacing.x4,
+                AppSpacing.x6 + MediaQuery.of(context).viewInsets.bottom,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     'Chọn loại chỉ số',
-                    style: TextStyle(color: _ink, fontWeight: FontWeight.w800, fontSize: 16),
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
                   GridView.count(
@@ -388,35 +409,30 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
                     crossAxisSpacing: 9,
                     childAspectRatio: 1.08,
                     children: [
-                      for (final type in _MetricType.values)
-                        _metricTile(type),
+                      for (final type in _MetricType.values) _metricTile(type),
                     ],
                   ),
                   const SizedBox(height: 18),
-                  GlassCard(
-                    padding: const EdgeInsets.all(18),
+                  AppCard(
+                    padding: const EdgeInsets.all(AppSpacing.x4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(
                           children: [
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 'Thông tin đo',
-                                style: TextStyle(
-                                  color: _ink,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16,
-                                ),
+                                style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ),
                             Text(
                               _typeLabel(_selectedType),
-                              style: const TextStyle(
-                                color: _teal,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: _teal,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
                           ],
                         ),
@@ -428,8 +444,8 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _ink,
                             alignment: Alignment.centerLeft,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-                            side: const BorderSide(color: Color(0xFFE1EBE8)),
+                            padding: const EdgeInsets.all(AppSpacing.x3),
+                            side: const BorderSide(color: AppColors.border),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -447,7 +463,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
                             labelText: 'Ghi chú (không bắt buộc)',
                             alignLabelWithHint: true,
                             filled: true,
-                            fillColor: Colors.white.withValues(alpha: .82),
+                            fillColor: AppColors.surface,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -456,22 +472,22 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
                         const SizedBox(height: 6),
                         Text(
                           'Bản ghi được lưu an toàn trên thiết bị. Các chỉ số nhập tay chưa đồng bộ lên máy chủ.',
-                          style: TextStyle(
-                            color: Colors.blueGrey.shade600,
-                            fontSize: 11,
-                            height: 1.4,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 18),
                         Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: _isSaving ? null : () => Navigator.maybePop(context),
+                                onPressed: _isSaving
+                                    ? null
+                                    : () => Navigator.maybePop(context),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: _ink,
                                   minimumSize: const Size.fromHeight(48),
-                                  side: const BorderSide(color: Color(0xFFD7E3E0)),
+                                  side: const BorderSide(
+                                    color: AppColors.border,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -482,16 +498,12 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               flex: 2,
-                              child: GradientButton(
+                              child: PrimaryButton(
                                 label: 'Lưu dữ liệu',
                                 icon: Icons.save_outlined,
                                 onPressed: _isSaving ? null : _save,
                                 isLoading: _isSaving,
                                 height: 48,
-                                gradientColors: const [
-                                  Color(0xFF32A88D),
-                                  Color(0xFF168B83),
-                                ],
                               ),
                             ),
                           ],
@@ -515,31 +527,43 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.x1,
+          vertical: AppSpacing.x2,
+        ),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFE5F4F0) : Colors.white.withValues(alpha: .84),
+          color: selected ? AppColors.primarySoft : AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? _teal : const Color(0xFFE1EBE8),
+            color: selected ? _teal : AppColors.border,
             width: selected ? 1.5 : 1,
           ),
           boxShadow: selected
-              ? const [BoxShadow(color: Color(0x1A168B83), blurRadius: 10, offset: Offset(0, 3))]
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ]
               : const [],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(_typeIcon(type), color: selected ? _teal : const Color(0xFF72827F), size: 22),
-            const SizedBox(height: 7),
+            Icon(
+              _typeIcon(type),
+              color: selected ? _teal : AppColors.textSecondary,
+              size: 22,
+            ),
+            const SizedBox(height: AppSpacing.x2),
             Text(
               _typeLabel(type),
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 color: selected ? _teal : _ink,
-                fontSize: 10,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
               ),
             ),

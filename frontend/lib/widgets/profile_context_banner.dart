@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/theme/app_colors.dart';
 
 class ProfileContextBanner extends StatelessWidget {
   const ProfileContextBanner({super.key});
@@ -28,30 +29,56 @@ class ProfileContextBanner extends StatelessWidget {
     };
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFE7F5F2),
+        color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFB8DAD5)),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Đang xem hồ sơ của: $name · Quan hệ: $relation',
-            style: const TextStyle(
-              color: Color(0xFF18343A),
-              fontWeight: FontWeight.w600,
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(
+              Icons.person_outline,
+              color: AppColors.primary,
+              size: 20,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Đang xem với vai trò: $roleLabel · Quyền hạn: $permissions',
-            style: const TextStyle(
-              color: Color(0xFF18343A),
-              fontSize: 12,
-              height: 1.35,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Đang xem: $name · $relation',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$roleLabel · $permissions',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

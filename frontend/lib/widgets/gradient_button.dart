@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/widgets/primary_button.dart';
 
 /// Nút gradient bo tròn hình capsule, có hiệu ứng đổ bóng
 class GradientButton extends StatelessWidget {
@@ -25,65 +26,14 @@ class GradientButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors =
-        gradientColors ??
-        const [
-          Color(0xFF4CAF50),
-          Color(0xFF52B788),
-        ];
-
-    return Container(
+    return PrimaryButton(
+      label: label,
+      icon: icon,
+      onPressed: onPressed,
+      isLoading: isLoading,
       height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(height / 2),
-        gradient: onPressed != null && !isLoading
-            ? LinearGradient(colors: colors)
-            : LinearGradient(
-                colors: colors.map((c) => c.withValues(alpha: 0.5)).toList(),
-              ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(height / 2),
-          onTap: isLoading ? null : onPressed,
-          child: Center(
-            child: isLoading
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
-                    ),
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (icon != null) ...[
-                        Icon(icon, color: textColor ?? Colors.white, size: 22),
-                        const SizedBox(width: 10),
-                      ],
-                      Text(
-                        label,
-                        style: TextStyle(
-                          color: textColor ?? Colors.white,
-                          fontSize: fontSize,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
-      ),
+      fontSize: fontSize,
+      foregroundColor: textColor,
     );
   }
 }

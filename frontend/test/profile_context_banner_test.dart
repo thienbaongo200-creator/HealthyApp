@@ -28,15 +28,10 @@ void main() {
     );
 
     expect(
-      find.text(
-        'Đang xem với vai trò: Người chăm sóc · Quyền hạn: Xem chỉ số & Kết quả sàng lọc',
-      ),
+      find.text('Người chăm sóc · Xem chỉ số & Kết quả sàng lọc'),
       findsOneWidget,
     );
-    expect(
-      find.text('Đang xem hồ sơ của: Family member · Quan hệ: Bố'),
-      findsOneWidget,
-    );
+    expect(find.text('Đang xem: Family member · Bố'), findsOneWidget);
   });
 
   testWidgets('shows invited SELF profile household role, not owner relation', (
@@ -64,14 +59,9 @@ void main() {
       ),
     );
 
+    expect(find.text('Đang xem: member · Thành viên gia đình'), findsOneWidget);
     expect(
-      find.text('Đang xem hồ sơ của: member · Quan hệ: Thành viên gia đình'),
-      findsOneWidget,
-    );
-    expect(
-      find.text(
-        'Đang xem với vai trò: Thành viên · Quyền hạn: Chỉ xem dữ liệu được Owner chia sẻ',
-      ),
+      find.text('Thành viên · Chỉ xem dữ liệu được Owner chia sẻ'),
       findsOneWidget,
     );
   });
@@ -101,6 +91,6 @@ void main() {
       ),
     );
 
-    expect(find.text('Đang xem hồ sơ của: An · Quan hệ: Con'), findsOneWidget);
+    expect(find.text('Đang xem: An · Con'), findsOneWidget);
   });
 }

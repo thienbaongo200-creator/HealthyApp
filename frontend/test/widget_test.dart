@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/views/home/dashboard_screen.dart';
 import 'package:frontend/state/profile_selection.dart'; // Import state quản lý profile
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
   testWidgets('Health dashboard loads and shows metric cards', (
     WidgetTester tester,
   ) async {
@@ -11,20 +17,19 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: ProfileSelectionScope(
-          controller: ProfileSelectionController(), // Khởi tạo controller giả lập cho test
+          controller:
+              ProfileSelectionController(), // Khởi tạo controller giả lập cho test
           child: const DashboardScreen(),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Kiểm tra các thẻ chỉ số sức khỏe và icon hệ thống
+    // Verify the metrics currently displayed on the dashboard.
     expect(find.text('Nhịp tim'), findsOneWidget);
-    expect(find.text('Bước đi · bước'), findsOneWidget);
-    expect(find.text('Calo · kcal'), findsOneWidget);
+    expect(find.text('Giấc ngủ'), findsOneWidget);
 
     expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.directions_walk_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.bedtime_rounded), findsOneWidget);
   });
 }

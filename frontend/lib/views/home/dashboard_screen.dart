@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/services/mock_health_data_service.dart';
 import 'package:frontend/services/watch_service.dart';
-import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/services/wear_offline_queue.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:frontend/widgets/widgets.dart';
-import 'package:frontend/widgets/profile_context_banner.dart';
 
 import 'devices_screen.dart';
 import 'family_members_screen.dart';
@@ -33,23 +33,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const _canvas = Color(0xFFF5F9F8);
 
   int _heartRate = 0;
-  int _steps = 0;
-  double _calories = 0;
   String _bloodPressure = '—';
   double? _glucose;
   double? _weight;
   double? _height;
   double? _sleepHours;
+  bool _isRefreshing = false;
   bool _wearConnected = false;
   int _selectedTab = 0;
   String _member = 'Tôi';
   String? _profileId;
   List<Map<String, dynamic>> _profiles = [];
-  ProfileSelectionController? _profileSelection;
-  bool _profileReady = false;
-  int _refreshRequestId = 0;
+  Map<String, dynamic>? _latestAIInsight;
   final List<int> _heartRateHistory = [];
-  final List<_QueuedMeasurement> _pendingMeasurements = [];
+  final WearOfflineQueue _wearQueue = WearOfflineQueue.instance;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  int _pendingMeasurementCount = 0;
   late final StreamSubscription<Map<String, dynamic>> _wearSubscription;
   Timer? _batchFlushTimer;
   bool _isFlushingBatch = false;
@@ -63,210 +62,236 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     _wearSubscription = WatchService().wearDataStream.listen(
       (data) {
-        if (!mounted || !_profileReady) return;
-        // Bind destination at event arrival; retries never consult the later UI selection.
-        final capturedProfileId = _profileSelection?.selectedProfileId;
-        if (capturedProfileId == null) {
-          debugPrint('[Wear] No selected profile; sample was not queued.');
-          return;
-        }
+        if (!mounted) return;
         final heartRate =
             (data['heart_rate'] as num?)?.toInt() ??
             (data['heartRate'] as num?)?.toInt();
         final steps = (data['steps'] as num?)?.toInt();
         final calories = (data['calories'] as num?)?.toDouble();
         if (heartRate == null || steps == null || calories == null) {
-          debugPrint('[Phone] Wear message did not contain required fields.');
+          debugPrint('[Phone] Message Wear không đủ dữ liệu: $data');
           return;
         }
 
         setState(() {
           _wearConnected = true;
           _heartRate = heartRate;
-          _steps = steps;
-          _calories = calories;
           _heartRateHistory.add(heartRate);
           if (_heartRateHistory.length > 12) _heartRateHistory.removeAt(0);
         });
-
-        final measuredAt =
-            DateTime.tryParse(
-              (data['measured_at'] ?? data['timestamp'])?.toString() ?? '',
-            ) ??
-            DateTime.now().toUtc();
-        final measuredAtIso = measuredAt.toUtc().toIso8601String();
-        final intervalSeconds =
-            (data['interval_seconds'] as num?)?.toInt() ??
-            (data['activity_state'] == 'active' ? 5 : 60);
-        final endTime = measuredAt.toUtc();
-        final startTime = endTime.subtract(
-          Duration(seconds: intervalSeconds.clamp(1, 3600).toInt()),
-        );
-        final startTimeIso = startTime.toIso8601String();
-        final sampleKey =
-            data['idempotency_key']?.toString() ?? createIdempotencyKey();
-        _pendingMeasurements.addAll([
-          _QueuedMeasurement(capturedProfileId, {
-            'measurement_type': 'HEART_RATE',
-            'value': heartRate,
-            'unit': 'bpm',
-            'source': 'WEAR_OS',
-            'measured_at': measuredAtIso,
-            'idempotency_key': '${sampleKey}_heart_rate',
-          }),
-          _QueuedMeasurement(capturedProfileId, {
-            'measurement_type': 'STEPS',
-            'value': steps,
-            'unit': 'steps',
-            'start_time': startTimeIso,
-            'end_time': measuredAtIso,
-            'source': 'WEAR_OS',
-            'measured_at': measuredAtIso,
-            'idempotency_key': '${sampleKey}_steps',
-          }),
-          _QueuedMeasurement(capturedProfileId, {
-            'measurement_type': 'CALORIES',
-            'value': calories,
-            'unit': 'kcal',
-            'start_time': startTimeIso,
-            'end_time': measuredAtIso,
-            'source': 'WEAR_OS',
-            'measured_at': measuredAtIso,
-            'idempotency_key': '${sampleKey}_calories',
-          }),
-        ]);
-        if (_pendingMeasurements.length >= 10) unawaited(_flushMeasurements());
       },
       onError: (Object error) {
-        debugPrint('[Phone] Wear data processing failed.');
+        debugPrint('[Phone] Lỗi khi nhận dữ liệu từ Wear: $error');
       },
     );
 
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => unawaited(_initializeProfileContext()),
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final selection = ProfileSelectionScope.of(context);
-    if (identical(selection, _profileSelection)) return;
-    _profileSelection?.removeListener(_onProfileSelectionChanged);
-    _profileSelection = selection..addListener(_onProfileSelectionChanged);
-  }
-
-  void _onProfileSelectionChanged() {
-    if (!_profileReady || !mounted) return;
-    final profile = _profileSelection?.selectedProfile;
-    final profileId = profile?['id']?.toString();
-    final profiles =
-        _profileSelection?.profiles ?? const <Map<String, dynamic>>[];
-    if (profile == null || profileId == null) return;
-    if (profileId == _profileId) {
-      // Family management may have reloaded the global profile list without
-      // changing selection. Keep Dashboard's modal/dropdown list in sync too.
-      if (!identical(_profiles, profiles)) setState(() => _profiles = profiles);
-      return;
-    }
-    _clearDisplayedMeasurements();
-    setState(() {
-      _profiles = profiles;
-      _profileId = profileId;
-      _member = profileDisplayName(profile);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadProfilesAndRefresh().whenComplete(_initWatchListener));
+      _refreshPendingCount();
     });
-    unawaited(_refreshData());
-  }
-
-  void _clearDisplayedMeasurements() {
-    _heartRate = 0;
-    _steps = 0;
-    _calories = 0;
-    _bloodPressure = '\u2014';
-    _glucose = null;
-    _weight = null;
-    _height = null;
-    _sleepHours = null;
-    _heartRateHistory.clear();
-  }
-
-  Future<void> _initializeProfileContext() async {
-    await _loadProfilesAndRefresh();
-    // Start ingest only after the queue has an unambiguous destination profile.
-    if (mounted && _profileId != null) await _initWatchListener();
   }
 
   Future<void> _loadProfilesAndRefresh() async {
     try {
       final profiles = await ApiService.fetchProfiles();
-      final selfProfile = profiles.where(isCurrentUserProfile).firstOrNull;
+      final selfProfile = profiles
+          .where((profile) => profile['profile_type'] == 'SELF')
+          .firstOrNull;
       if (mounted) {
-        _profileReady = false;
-        _profileSelection!.setProfiles(profiles);
-        final selected = _profileSelection!.selectedProfile ?? selfProfile;
         setState(() {
           _profiles = profiles;
-          _profileId = selected?['id']?.toString();
-          _member = selected == null ? '' : profileDisplayName(selected);
+          _profileId = selfProfile?['id']?.toString();
         });
-        _profileReady = _profileId != null;
       }
+      await _loadLatestAIInsight();
     } catch (error) {
       if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
     }
     await _refreshData();
+    unawaited(_flushMeasurements());
+  }
+
+  Future<void> _loadLatestAIInsight() async {
+    final profileId = _profileId;
+    if (profileId == null) return;
+    try {
+      final insights = await ApiService.fetchAIInsights(profileId: profileId);
+      if (!mounted || profileId != _profileId) return;
+      setState(() => _latestAIInsight = insights.firstOrNull);
+    } catch (error) {
+      debugPrint('[Dashboard] Unable to load latest AI insight: $error');
+      if (mounted && profileId == _profileId) {
+        setState(() => _latestAIInsight = null);
+      }
+    }
+  }
+
+  Future<void> _enqueueWearSnapshot(
+    String profileId,
+    String sampleKey,
+    int heartRate,
+    int steps,
+    double calories,
+    String measuredAt,
+    String startTime,
+  ) async {
+    final deviceId = await _secureStorage.read(key: 'paired_device_$profileId');
+    for (final measurement in <Map<String, dynamic>>[
+      {
+        'measurement_type': 'HEART_RATE',
+        'value': heartRate,
+        'unit': 'bpm',
+        'measured_at': measuredAt,
+        'idempotency_key': '${sampleKey}_heart_rate',
+        if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+      },
+      {
+        'measurement_type': 'STEPS',
+        'value': steps,
+        'unit': 'steps',
+        'start_time': startTime,
+        'end_time': measuredAt,
+        'measured_at': measuredAt,
+        'idempotency_key': '${sampleKey}_steps',
+        if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+      },
+      {
+        'measurement_type': 'CALORIES',
+        'value': calories,
+        'unit': 'kcal',
+        'start_time': startTime,
+        'end_time': measuredAt,
+        'measured_at': measuredAt,
+        'idempotency_key': '${sampleKey}_calories',
+        if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+      },
+    ]) {
+      await _wearQueue.enqueue(profileId, measurement);
+    }
+    await _refreshPendingCount();
+    if (_pendingMeasurementCount >= 10) unawaited(_flushMeasurements());
+  }
+
+  Future<void> _persistWearData(Map<String, dynamic> data) async {
+    final heartRate =
+        (data['heart_rate'] as num?)?.toInt() ??
+        (data['heartRate'] as num?)?.toInt();
+    final steps = (data['steps'] as num?)?.toInt();
+    final calories = (data['calories'] as num?)?.toDouble();
+    if (heartRate == null || steps == null || calories == null) {
+      throw const FormatException(
+        'Wear payload is missing required measurements.',
+      );
+    }
+    final profileId = _profileId;
+    if (profileId == null) {
+      throw StateError(
+        'No active profile is ready to persist Wear measurements.',
+      );
+    }
+    final measuredAt =
+        DateTime.tryParse(
+          (data['measured_at'] ?? data['timestamp'])?.toString() ?? '',
+        ) ??
+        DateTime.now().toUtc();
+    final endTime = measuredAt.toUtc();
+    final intervalSeconds = (data['interval_seconds'] as num?)?.toInt() ?? 60;
+    final startTime = endTime.subtract(
+      Duration(seconds: intervalSeconds.clamp(1, 3600).toInt()),
+    );
+    await _enqueueWearSnapshot(
+      profileId,
+      data['idempotency_key']?.toString() ?? createIdempotencyKey(),
+      heartRate,
+      steps,
+      calories,
+      endTime.toIso8601String(),
+      startTime.toIso8601String(),
+    );
+  }
+
+  Future<void> _refreshPendingCount() async {
+    final count = await _wearQueue.pendingCount();
+    if (mounted) setState(() => _pendingMeasurementCount = count);
   }
 
   Future<void> _initWatchListener() async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
-      await WatchService().initPhoneListener(port: 8080);
-    } catch (_) {
-      debugPrint('[Phone] Could not initialize the watch listener.');
+      await WatchService().initPhoneListener(
+        port: 8080,
+        persistBeforeAcknowledgement: _persistWearData,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[Phone] Không thể khởi tạo Watch listener: $error\n$stackTrace',
+      );
     }
   }
 
   Future<void> _flushMeasurements() async {
-    if (_isFlushingBatch || _pendingMeasurements.isEmpty) return;
+    if (_isFlushingBatch) return;
     _isFlushingBatch = true;
     try {
-      while (_pendingMeasurements.isNotEmpty) {
-        final batchProfileId = _pendingMeasurements.first.profileId;
-        final queuedBatch = _pendingMeasurements
-            .where((item) => item.profileId == batchProfileId)
-            .take(100)
-            .toList(growable: false);
-        final result = await ApiService.sendHealthMeasurements(
-          queuedBatch.map((item) => item.measurement).toList(growable: false),
-          profileId: batchProfileId,
-        );
-        if (result == null) return;
-
-        final terminalKeys = {
-          ...result.acknowledgedKeys,
-          ...result.rejectedKeys,
-        };
-        if (terminalKeys.isNotEmpty) {
-          _pendingMeasurements.removeWhere(
-            (item) =>
-                item.profileId == batchProfileId &&
-                terminalKeys.contains(
-                  item.measurement['idempotency_key']?.toString(),
-                ),
+      while (true) {
+        final ready = await _wearQueue.ready(limit: 100);
+        if (ready.isEmpty) break;
+        String? profileId;
+        String? deviceId;
+        for (final item in ready) {
+          final candidate = await _secureStorage.read(
+            key: 'paired_device_${item.profileId}',
           );
+          if (candidate != null && candidate.isNotEmpty) {
+            profileId = item.profileId;
+            deviceId = candidate;
+            break;
+          }
         }
-
-        // Retryable records stay queued until the next connectivity/timer event.
-        if (result.retryKeys.isNotEmpty || terminalKeys.isEmpty) return;
+        if (profileId == null || deviceId == null) break;
+        final selectedProfileId = profileId;
+        final selectedDeviceId = deviceId;
+        final batch = ready
+            .where((item) => item.profileId == selectedProfileId)
+            .toList();
+        final payloads = <Map<String, dynamic>>[];
+        for (final item in batch) {
+          final payload = {...item.measurement, 'device_id': selectedDeviceId};
+          await _wearQueue.updateMeasurement(item, payload);
+          payloads.add(payload);
+        }
+        await _wearQueue.markSending(batch);
+        final result = await ApiService.sendHealthMeasurements(
+          payloads,
+          profileId: selectedProfileId,
+        );
+        if (result == null) {
+          for (final item in batch) {
+            await _wearQueue.scheduleRetry(item, 'Network or server error');
+          }
+          break;
+        }
+        for (final item in batch) {
+          if (result.acknowledgedKeys.contains(item.key)) {
+            await _wearQueue.markSynced(item.key);
+          } else if (result.rejectedKeys.contains(item.key)) {
+            await _wearQueue.markFailed(
+              item.key,
+              'Rejected by server validation',
+            );
+          } else {
+            await _wearQueue.scheduleRetry(item, 'Server requested retry');
+          }
+        }
       }
     } finally {
       _isFlushingBatch = false;
+      await _refreshPendingCount();
     }
   }
 
   @override
   void dispose() {
-    _profileSelection?.removeListener(_onProfileSelectionChanged);
     _batchFlushTimer?.cancel();
     _wearSubscription.cancel();
     super.dispose();
@@ -279,20 +304,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshData() async {
-    final requestedProfileId =
-        _profileSelection?.selectedProfileId ?? _profileId;
-    if (requestedProfileId == null) return;
-    final requestId = ++_refreshRequestId;
+    if (_isRefreshing) return;
+    _isRefreshing = true;
     try {
       final records = await ApiService.fetchHealthMeasurements(
-        profileId: requestedProfileId,
+        profileId: _profileId,
       );
-      if (!mounted ||
-          requestId != _refreshRequestId ||
-          requestedProfileId !=
-              (_profileSelection?.selectedProfileId ?? _profileId)) {
-        return;
-      }
+      if (!mounted) return;
       Map<String, dynamic>? latest(String type) {
         final record = records
             .where((r) => r['measurement_type'] == type)
@@ -308,12 +326,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final weight = numeric(latest('WEIGHT')?['value'])?.toDouble();
       final height = numeric(latest('HEIGHT')?['value'])?.toDouble();
       final sleep = latest('SLEEP');
-      final steps = numeric(latest('STEPS')?['value'])?.toInt();
-      final calories = numeric(latest('CALORIES')?['value'])?.toDouble();
       setState(() {
         if (heartRate != null) _heartRate = heartRate;
-        if (steps != null) _steps = steps;
-        if (calories != null) _calories = calories;
         if (bloodPressure != null) {
           final systolic = numeric(bloodPressure['value']);
           final diastolic = numeric(bloodPressure['value_secondary']);
@@ -334,16 +348,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       });
     } catch (error) {
-      if (mounted &&
-          requestId == _refreshRequestId &&
-          requestedProfileId ==
-              (_profileSelection?.selectedProfileId ?? _profileId)) {
+      if (mounted) {
         _showMessage(
           error is ApiException
               ? error.message
               : 'Không thể tải dữ liệu sức khỏe.',
         );
       }
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -401,16 +414,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 leading: CircleAvatar(
                   backgroundColor: const Color(0xFFE6F4F1),
                   child: Icon(
-                    isCurrentUserProfile(profile)
+                    profile['profile_type'] == 'SELF'
                         ? Icons.person
                         : Icons.family_restroom,
                     color: _teal,
                   ),
                 ),
-                title: Text(profileDisplayName(profile)),
-                subtitle: profileRoleLabel(profile) == null
-                    ? null
-                    : Text('[${profileRoleLabel(profile)}]'),
+                title: Text(
+                  profile['profile_type'] == 'SELF'
+                      ? 'Tôi'
+                      : profile['full_name']?.toString() ?? 'Thành viên',
+                ),
                 trailing: profile['id']?.toString() == _profileId
                     ? const Icon(Icons.check, color: _teal)
                     : null,
@@ -432,14 +446,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .where((item) => item['id']?.toString() == member)
           .firstOrNull;
       if (profile == null) return;
-      _profileReady = false;
-      _profileSelection?.selectProfileId(member);
-      _clearDisplayedMeasurements();
       setState(() {
         _profileId = member;
-        _member = profileDisplayName(profile);
+        _latestAIInsight = null;
+        _member = profile['profile_type'] == 'SELF'
+            ? 'Tôi'
+            : profile['full_name']?.toString() ?? 'Thành viên';
       });
-      _profileReady = true;
+      unawaited(_loadLatestAIInsight());
       await _refreshData();
     }
   }
@@ -471,7 +485,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
               children: [
-                const ProfileContextBanner(),
                 Row(
                   children: [
                     Expanded(
@@ -655,32 +668,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 23),
-                _sectionTitle('Hoạt động hôm nay', 'Từ các bản ghi gần nhất'),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _activityCard(
-                        Icons.directions_walk_rounded,
-                        'Bước đi',
-                        _steps > 0 ? _steps.toString() : '—',
-                        'bước',
-                        const Color(0xFF438ED8),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _activityCard(
-                        Icons.local_fire_department_rounded,
-                        'Calo',
-                        _calories > 0 ? _calories.toStringAsFixed(0) : '—',
-                        'kcal',
-                        const Color(0xFFE39A47),
-                      ),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: () => Navigator.of(context).push<void>(
@@ -751,6 +738,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     icon: const Icon(Icons.insights_outlined, size: 17),
                     label: const Text('Chi tiết thống kê'),
                     style: TextButton.styleFrom(foregroundColor: _teal),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _selectNavigationTab(2),
+                  child: _card(
+                    padding: const EdgeInsets.all(15),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF6F3),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome_outlined,
+                            color: _teal,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'Nháº­n Ä‘á»‹nh sá»©c khá»e gáº§n nháº¥t',
+                                      style: TextStyle(
+                                        color: _ink,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  if (_latestAIInsight?['risk_level'] is String)
+                                    Text(
+                                      _latestAIInsight!['risk_level'] as String,
+                                      style: const TextStyle(
+                                        color: _teal,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                _latestAIInsight?['summary']?.toString() ??
+                                    'ChÆ°a cĂ³ nháº­n Ä‘á»‹nh Ä‘Æ°á»£c lÆ°u. Cháº¡m Ä‘á»ƒ má»Ÿ phĂ¢n tĂ­ch AI.',
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF667572),
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Má»Ÿ Trá»£ lĂ½ sá»©c khá»e',
+                                style: TextStyle(
+                                  color: _teal,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -933,40 +997,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     color: const Color(0xFFEDF1F0),
   );
 
-  Widget _activityCard(
-    IconData icon,
-    String label,
-    String value,
-    String unit,
-    Color color,
-  ) => _card(
-    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(height: 11),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '$label · $unit',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Color(0xFF83918F), fontSize: 10),
-        ),
-      ],
-    ),
-  );
-
   Widget _emptyChart() => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
@@ -1001,7 +1031,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           _ => DevicesScreen(
             isWatchConnected: _wearConnected,
-            pendingMeasurements: _pendingMeasurements.length,
+            pendingMeasurements: _pendingMeasurementCount,
+            profileId: _profileId,
             onSync: _flushMeasurements,
           ),
         },
@@ -1009,13 +1040,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     if (mounted) setState(() => _selectedTab = 0);
   }
-}
-
-class _QueuedMeasurement {
-  const _QueuedMeasurement(this.profileId, this.measurement);
-
-  final String profileId;
-  final Map<String, dynamic> measurement;
 }
 
 class _HeartRateChart extends StatelessWidget {

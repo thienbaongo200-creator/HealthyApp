@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'main_navigation_wrapper.dart';
 import 'quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
+import 'package:frontend/services/api_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class DevicesScreen extends StatefulWidget {
   const DevicesScreen({
@@ -9,26 +13,39 @@ class DevicesScreen extends StatefulWidget {
     required this.isWatchConnected,
     required this.pendingMeasurements,
     required this.onSync,
+    this.profileId,
   });
 
   final bool isWatchConnected;
   final int pendingMeasurements;
   final Future<void> Function() onSync;
+  final String? profileId;
 
   @override
   State<DevicesScreen> createState() => _DevicesScreenState();
 }
 
 class _DevicesScreenState extends State<DevicesScreen> {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
+  static const _teal = AppColors.primary;
+  static const _ink = AppColors.textPrimary;
+  static const _storage = FlutterSecureStorage();
   bool _isSyncing = false;
+  String? _pairedDeviceId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPairedDevice();
+  }
+
+  Future<void> _loadPairedDevice() async {
+    final id = widget.profileId;
+    if (id == null) return;
+    final value = await _storage.read(key: 'paired_device_$id');
+    if (mounted) setState(() => _pairedDeviceId = value);
+  }
 
   Future<void> _syncNow() async {
-    if (!widget.isWatchConnected) {
-      _showMessage('Hãy kết nối đồng hồ trước khi đồng bộ.');
-      return;
-    }
     if (widget.pendingMeasurements == 0) {
       _showMessage('Không có dữ liệu đang chờ đồng bộ.');
       return;
@@ -38,7 +55,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
     try {
       await widget.onSync();
       if (mounted) {
-        _showMessage('Đã chạy đồng bộ. Dữ liệu chưa gửi được sẽ được giữ để thử lại.');
+        _showMessage(
+          'Đã chạy đồng bộ. Dữ liệu chưa gửi được sẽ được giữ để thử lại.',
+        );
       }
     } finally {
       if (mounted) setState(() => _isSyncing = false);
@@ -51,40 +70,71 @@ class _DevicesScreenState extends State<DevicesScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _pairDevice() {
-    showModalBottomSheet<void>(
+  Future<void> _pairDevice() async {
+    final profileId = widget.profileId;
+    if (profileId == null) {
+      _showMessage('Chọn hồ sơ trước khi ghép nối thiết bị.');
+      return;
+    }
+    final identifier = TextEditingController();
+    final name = TextEditingController(text: 'Wear OS');
+    final details = await showDialog<({String identifier, String name})>(
       context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Ghép nối thiết bị mới',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Để đồng hồ Wear OS gửi dữ liệu, hãy mở ứng dụng Healthy trên đồng hồ và kết nối điện thoại cùng mạng Wi-Fi.',
-                style: TextStyle(color: Color(0xFF687875), height: 1.45),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('Đã hiểu'),
-                ),
-              ),
-            ],
-          ),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ghép nối thiết bị'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: identifier,
+              decoration: const InputDecoration(labelText: 'Mã thiết bị'),
+            ),
+            TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'Tên thiết bị'),
+            ),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, (
+              identifier: identifier.text.trim(),
+              name: name.text.trim(),
+            )),
+            child: const Text('Ghép nối'),
+          ),
+        ],
       ),
     );
+    identifier.dispose();
+    name.dispose();
+    if (details == null || details.identifier.isEmpty) return;
+    try {
+      final device = await ApiService.pairDevice(
+        profileId: profileId,
+        identifier: details.identifier,
+        name: details.name,
+      );
+      final deviceId = device['id']?.toString();
+      if (deviceId == null || deviceId.isEmpty) {
+        throw const FormatException('Device API did not return an ID.');
+      }
+      await _storage.write(key: 'paired_device_$profileId', value: deviceId);
+      if (mounted) {
+        setState(() => _pairedDeviceId = deviceId);
+        _showMessage('Thiết bị đã ghép với hồ sơ.');
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage(
+          error is ApiException ? error.message : 'Ghép nối thất bại.',
+        );
+      }
+    }
   }
 
   Widget _deviceCard({
@@ -96,8 +146,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
     required List<Widget> details,
     Widget? footer,
   }) {
-    return GlassCard(
-      padding: const EdgeInsets.all(18),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.x4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -112,26 +162,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 ),
                 child: Icon(icon, color: iconColor, size: 25),
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: AppSpacing.x3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: _ink,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: AppSpacing.x1),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF7D8B88),
-                        fontSize: 12,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -140,12 +180,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
             ],
           ),
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Divider(height: 1, color: Color(0xFFE8EFED)),
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.x4),
+            child: Divider(height: 1, color: AppColors.border),
           ),
           ...details,
           if (footer != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.x4),
             footer,
           ],
         ],
@@ -154,68 +194,44 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   Widget _detailRow(IconData icon, String title, String value) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 17, color: const Color(0xFF82908D)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(color: Color(0xFF687875), fontSize: 12),
-              ),
-            ),
-            Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                color: _ink,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+    padding: const EdgeInsets.only(bottom: AppSpacing.x3),
+    child: Row(
+      children: [
+        Icon(icon, size: 17, color: AppColors.textSecondary),
+        const SizedBox(width: AppSpacing.x2),
+        Expanded(
+          child: Text(title, style: Theme.of(context).textTheme.bodySmall),
         ),
-      );
+        Text(
+          value,
+          textAlign: TextAlign.end,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
 
-  Widget _statusPill({required bool active, required String label}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFE7F5EF) : const Color(0xFFF0F3F2),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.circle,
-              size: 7,
-              color: active ? const Color(0xFF39A477) : const Color(0xFF9AA6A3),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? const Color(0xFF318461) : const Color(0xFF7D8987),
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
+  Widget _statusPill({required bool active, required String label}) =>
+      StatusBadge(
+        label: label,
+        tone: active ? StatusTone.success : StatusTone.neutral,
+        icon: Icons.circle,
       );
 
   @override
   Widget build(BuildContext context) {
     final connected = widget.isWatchConnected;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9F8),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'Thiết bị kết nối',
-          style: TextStyle(color: _ink, fontSize: 18, fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
@@ -227,24 +243,25 @@ class _DevicesScreenState extends State<DevicesScreen> {
         child: SafeArea(
           top: false,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.x4,
+              AppSpacing.x2,
+              AppSpacing.x4,
+              AppSpacing.x6,
+            ),
             children: [
-              GlassCard(
-                padding: const EdgeInsets.all(16),
+              AppCard(
+                padding: const EdgeInsets.all(AppSpacing.x4),
                 child: Row(
                   children: [
                     const Icon(Icons.health_and_safety_outlined, color: _teal),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: AppSpacing.x2),
                     Expanded(
                       child: Text(
                         connected
                             ? 'Đồng hồ đang gửi dữ liệu sức khỏe.'
                             : 'Kết nối đồng hồ để cập nhật dữ liệu sức khỏe.',
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
                   ],
@@ -253,12 +270,18 @@ class _DevicesScreenState extends State<DevicesScreen> {
               const SizedBox(height: 16),
               _deviceCard(
                 icon: Icons.watch_rounded,
-                iconColor: const Color(0xFF557AC4),
+                iconColor: AppColors.primary,
                 title: 'Galaxy Watch',
-                subtitle: 'Wear OS · Đồng hồ thông minh',
+                subtitle: _pairedDeviceId == null
+                    ? 'Wear OS · Chưa ghép với hồ sơ'
+                    : 'Wear OS · Đã ghép nối',
                 status: _statusPill(
                   active: connected,
-                  label: connected ? 'Đã kết nối' : 'Chưa kết nối',
+                  label: _pairedDeviceId != null
+                      ? 'Đã ghép nối'
+                      : connected
+                      ? 'Đã kết nối'
+                      : 'Chưa kết nối',
                 ),
                 details: [
                   _detailRow(
@@ -284,32 +307,43 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     icon: Icons.sync_rounded,
                     onPressed: _isSyncing ? null : _syncNow,
                     isLoading: _isSyncing,
-                    gradientColors: const [Color(0xFF32A88D), Color(0xFF168B83)],
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpacing.x3),
               _deviceCard(
                 icon: Icons.phone_iphone_rounded,
-                iconColor: const Color(0xFF4B9C7A),
+                iconColor: AppColors.primary,
                 title: 'Điện thoại chủ',
                 subtitle: 'Flutter Mobile App',
                 status: _statusPill(active: true, label: 'Thiết bị này'),
                 details: [
-                  _detailRow(Icons.verified_outlined, 'Ứng dụng', 'Healthy App'),
-                  _detailRow(Icons.sync_alt_rounded, 'Nhận dữ liệu từ đồng hồ', 'Cổng 8080'),
+                  _detailRow(
+                    Icons.verified_outlined,
+                    'Ứng dụng',
+                    'Healthy App',
+                  ),
+                  _detailRow(
+                    Icons.sync_alt_rounded,
+                    'Nhận dữ liệu từ đồng hồ',
+                    'Cổng 8080',
+                  ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: AppSpacing.x4),
               OutlinedButton.icon(
                 onPressed: _pairDevice,
                 icon: const Icon(Icons.add_link_rounded),
-                label: const Text('+ Ghép nối thiết bị mới'),
+                label: Text(
+                  _pairedDeviceId == null
+                      ? '+ Ghép nối thiết bị mới'
+                      : 'Ghép lại / đổi thiết bị',
+                ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _teal,
-                  backgroundColor: Colors.white.withValues(alpha: .75),
+                  backgroundColor: AppColors.surface,
                   minimumSize: const Size.fromHeight(52),
-                  side: const BorderSide(color: Color(0xFFB8DAD5)),
+                  side: const BorderSide(color: AppColors.border),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -322,8 +356,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
       bottomNavigationBar: MainNavigationWrapper(
         selectedIndex: 3,
         onSelected: (index) {
-          if (index == 0) Navigator.pop(context);
-          if (index == 1 || index == 2) _showMessage(index == 1 ? 'Nhật ký' : 'Tư vấn');
+          if (index == 0) {
+            Navigator.pop(context);
+          }
+          if (index == 1 || index == 2) {
+            _showMessage(index == 1 ? 'Nhật ký' : 'Tư vấn');
+          }
         },
         onQuickAdd: _openQuickAdd,
       ),
@@ -332,11 +370,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   Future<void> _openQuickAdd() async {
     await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => const QuickAddScreen(),
-      ),
+      MaterialPageRoute<bool>(builder: (_) => const QuickAddScreen()),
     );
   }
-
-
 }

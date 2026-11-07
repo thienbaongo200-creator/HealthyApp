@@ -1,8 +1,7 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
+import 'package:frontend/widgets/app_card.dart';
 
-/// Frosted glass surface designed to sit above decorative backgrounds.
+/// Backward-compatible card surface; glass effects are no longer applied.
 class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
@@ -11,8 +10,8 @@ class GlassCard extends StatelessWidget {
     this.margin,
     this.borderRadius = 20,
     this.blur = 10,
-    this.backgroundColor = const Color(0x75FFFFFF),
-    this.borderColor = const Color(0x8CFFFFFF),
+    this.backgroundColor = Colors.white,
+    this.borderColor = const Color(0xFFE7EFED),
     this.borderWidth = .5,
     this.shadowColor = const Color(0x1F244842),
     this.width,
@@ -33,38 +32,13 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(borderRadius);
-    return Container(
+    return AppCard(
       width: width,
       height: height,
       margin: margin,
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-            child: Container(
-              padding: padding,
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: radius,
-                border: Border.all(color: borderColor, width: borderWidth),
-              ),
-              child: child,
-            ),
-          ),
-        ),
-      ),
+      borderRadius: borderRadius,
+      padding: padding,
+      child: child,
     );
   }
 }
