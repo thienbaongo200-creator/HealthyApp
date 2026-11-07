@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/services/ai_service.dart';
 import 'package:frontend/state/profile_selection.dart';
+import 'package:frontend/theme/app_colors.dart';
+import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/views/home/quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
 
@@ -23,8 +25,8 @@ class AiAssistantScreen extends StatefulWidget {
 
 class _AiAssistantScreenState extends State<AiAssistantScreen>
     with SingleTickerProviderStateMixin {
-  static const _teal = Color(0xFF168B83);
-  static const _ink = Color(0xFF18343A);
+  static const _teal = AppColors.primary;
+  static const _ink = AppColors.textPrimary;
   static const _self = '(Tôi)';
   static const _quickQuestions = [
     'Tôi nên theo dõi chỉ số nào mỗi ngày?',
@@ -368,13 +370,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     _ => 'Chưa đủ dữ liệu',
   };
 
-  Color get _riskColor => switch (_riskLevel) {
-    'HIGH' => const Color(0xFFB64B4B),
-    'MEDIUM' => const Color(0xFF966A22),
-    'LOW' => const Color(0xFF348250),
-    _ => const Color(0xFF687875),
-  };
-
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -467,19 +462,15 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   Widget build(BuildContext context) {
     final isChatTab = _tabController.index == 1;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F9F8),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'Trợ lý AI & Đánh giá nguy cơ',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: _ink,
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-          ),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         leading: IconButton(
           onPressed: () => Navigator.maybePop(context),
@@ -492,7 +483,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.x4,
+                  0,
+                  AppSpacing.x4,
+                  AppSpacing.x2,
+                ),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: PopupMenuButton<String>(
@@ -504,13 +500,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 330),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 9,
+                        horizontal: AppSpacing.x3,
+                        vertical: AppSpacing.x2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .82),
+                        color: AppColors.surface.withValues(alpha: .82),
                         borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: const Color(0xFFE1EBE8)),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -520,20 +516,20 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                             color: _teal,
                             size: 18,
                           ),
-                          const SizedBox(width: 7),
+                          const SizedBox(width: AppSpacing.x2),
                           Flexible(
                             child: Text(
                               'Đang xem: $_selectedMember',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _ink,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: _ink,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                             ),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: AppSpacing.x1),
                           const Icon(
                             Icons.keyboard_arrow_down,
                             color: _ink,
@@ -548,13 +544,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
               TabBar(
                 controller: _tabController,
                 labelColor: _teal,
-                unselectedLabelColor: const Color(0xFF84918E),
+                unselectedLabelColor: AppColors.textSecondary,
                 indicatorColor: _teal,
                 indicatorWeight: 3,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
+                labelStyle: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
                 tabs: const [
                   Tab(
                     icon: Icon(Icons.health_and_safety_outlined, size: 18),
@@ -616,46 +611,42 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     color: _teal,
     onRefresh: _analyzeNow,
     child: ListView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.x4,
+        AppSpacing.x3,
+        AppSpacing.x4,
+        AppSpacing.x6,
+      ),
       children: [
         _riskOverviewCard(),
-        const SizedBox(height: 13),
+        const SizedBox(height: AppSpacing.x3),
         _systemWarningCard(),
-        const SizedBox(height: 13),
+        const SizedBox(height: AppSpacing.x3),
         _aiInsightCard(),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.x4),
         SizedBox(
           width: double.infinity,
-          child: GradientButton(
+          child: PrimaryButton(
             label: _isAnalyzing ? 'Đang phân tích...' : 'Phân tích ngay',
             icon: Icons.refresh_rounded,
             isLoading: _isAnalyzing,
             onPressed: _isAnalyzing ? null : _analyzeNow,
-            gradientColors: const [Color(0xFF32A88D), Color(0xFF168B83)],
-            height: 52,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.x2),
       ],
     ),
   );
 
-  Widget _riskOverviewCard() => GlassCard(
-    padding: const EdgeInsets.all(18),
+  Widget _riskOverviewCard() => AppCard(
+    padding: const EdgeInsets.all(AppSpacing.x4),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             const Expanded(
-              child: Text(
-                'TỔNG QUAN RỦI RO SỨC KHỎE',
-                style: TextStyle(
-                  color: _ink,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+              child: SectionHeader(title: 'Tổng quan rủi ro sức khỏe'),
             ),
             TextButton.icon(
               onPressed: _isAnalyzing ? null : _analyzeNow,
@@ -669,62 +660,35 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: switch (_riskLevel) {
-              'HIGH' => const Color(0xFFFCE8E8),
-              'MEDIUM' => const Color(0xFFFFF4DF),
-              'LOW' => const Color(0xFFE8F5EB),
-              'UNKNOWN' => const Color(0xFFFFF7E5),
-              _ => const Color(0xFFF0F3F2),
-            },
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                _riskLevel == 'HIGH'
-                    ? Icons.error_outline_rounded
-                    : _riskLevel == 'UNKNOWN'
-                    ? Icons.help_outline_rounded
-                    : Icons.check_circle_rounded,
-                color: _riskColor,
-                size: 19,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _analysisLoaded
-                      ? (_riskLevel == 'UNKNOWN'
-                            ? 'Chưa đủ dữ liệu sàng lọc'
-                            : 'MỨC SÀNG LỌC: ${_riskLabel.toUpperCase()}')
-                      : 'CHƯA CÓ ĐÁNH GIÁ',
-                  style: TextStyle(
-                    color: _riskColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        const SizedBox(height: AppSpacing.x4),
+        StatusBadge(
+          label: _analysisLoaded
+              ? (_riskLevel == 'UNKNOWN'
+                    ? 'Chưa đủ dữ liệu sàng lọc'
+                    : 'Mức sàng lọc: $_riskLabel')
+              : 'Chưa có đánh giá',
+          tone: switch (_riskLevel) {
+            'HIGH' => StatusTone.danger,
+            'MEDIUM' || 'UNKNOWN' => StatusTone.warning,
+            'LOW' => StatusTone.success,
+            _ => StatusTone.neutral,
+          },
+          icon: _riskLevel == 'HIGH'
+              ? Icons.error_outline_rounded
+              : _riskLevel == 'UNKNOWN'
+              ? Icons.help_outline_rounded
+              : Icons.check_circle_rounded,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.x3),
         if (_analysisLoaded && _riskLevel == 'UNKNOWN')
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Chưa đủ dữ liệu sàng lọc để áp dụng các quy tắc nguy cơ. Hãy bổ sung mẫu đo rồi phân tích lại.',
-                style: TextStyle(
-                  color: Color(0xFF687875),
-                  fontSize: 12,
-                  height: 1.45,
-                ),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.x2),
               for (final recommendation
                   in _riskRecommendations.isEmpty
                       ? const [
@@ -733,14 +697,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                         ]
                       : _riskRecommendations)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.x1),
                   child: Text(
                     '• $recommendation',
-                    style: const TextStyle(
-                      color: Color(0xFF687875),
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
             ],
@@ -748,35 +708,23 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         else if (_analysisLoaded)
           Text(
             'Căn cứ demo: nhịp tim >120 bpm (R01); 3 mẫu liên tiếp vượt ngưỡng tạo cảnh báo R02. Có ${_measurementsInPeriod ?? 0} mẫu nhịp tim trong 7 ngày, tổng ${_riskAnalyzedCount ?? 0} mẫu được quy tắc đánh giá.',
-            style: const TextStyle(
-              color: Color(0xFF687875),
-              fontSize: 12,
-              height: 1.45,
-            ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.x2),
         Text(
           _analysisLoaded
               ? 'Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất; ${_measurementsInPeriod ?? 0} lần đo nhịp tim trong 7 ngày.'
               : 'Chạy phân tích để tải đánh giá từ dữ liệu của hồ sơ đang chọn.',
-          style: const TextStyle(
-            color: Color(0xFF687875),
-            fontSize: 12,
-            height: 1.45,
-          ),
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         if (_riskWarnings.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.x2),
           for (final warning in _riskWarnings)
             Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(bottom: AppSpacing.x1),
               child: Text(
                 '• $warning',
-                style: const TextStyle(
-                  color: Color(0xFF687875),
-                  fontSize: 12,
-                  height: 1.4,
-                ),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
         ],
@@ -784,45 +732,32 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           const SizedBox(height: 4),
           Text(
             _riskRecommendation!,
-            style: const TextStyle(
-              color: Color(0xFF687875),
-              fontSize: 12,
-              height: 1.45,
-            ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
         if (_riskInterpretation != null) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.x2),
           Text(
             'Diễn giải AI: $_riskInterpretation',
-            style: const TextStyle(
-              color: Color(0xFF315A52),
-              fontSize: 12,
-              height: 1.45,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.textPrimary),
           ),
         ] else if (_riskGeneratedBy == 'RULE_ONLY') ...[
-          const SizedBox(height: 8),
-          const Text(
+          const SizedBox(height: AppSpacing.x2),
+          Text(
             'Kết quả này chỉ dựa trên các quy tắc sàng lọc.',
-            style: TextStyle(
-              color: Color(0xFF687875),
-              fontSize: 12,
-              height: 1.45,
-            ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
         if (_analysisError != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            _analysisError!,
-            style: const TextStyle(color: Color(0xFFB64B4B), fontSize: 11),
-          ),
+          const SizedBox(height: AppSpacing.x2),
+          ErrorState(message: _analysisError!),
         ],
-        const SizedBox(height: 10),
-        const Text(
+        const SizedBox(height: AppSpacing.x2),
+        Text(
           'Đây là sàng lọc theo ngưỡng quy tắc đơn giản, không phải chẩn đoán y khoa.',
-          style: TextStyle(color: Color(0xFF8A9693), fontSize: 10, height: 1.4),
+          style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
     ),
@@ -841,20 +776,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           ].join(' ')
         : 'Chọn “Phân tích” để yêu cầu backend đánh giá hồ sơ này.';
 
-    return GlassCard(
-      padding: const EdgeInsets.all(18),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.x4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'CẢNH BÁO TỪ HỆ THỐNG',
-            style: TextStyle(
-              color: _ink,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 13),
+          const SectionHeader(title: 'Cảnh báo từ hệ thống'),
+          const SizedBox(height: AppSpacing.x3),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -865,8 +793,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                     ? Icons.check_circle_outline_rounded
                     : Icons.info_outline_rounded,
                 color: _riskLevel == 'HIGH'
-                    ? const Color(0xFFD75858)
-                    : const Color(0xFF46916A),
+                    ? AppColors.danger
+                    : AppColors.success,
                 size: 21,
               ),
               const SizedBox(width: 9),
@@ -874,23 +802,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: _ink,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      detail,
-                      style: const TextStyle(
-                        color: Color(0xFF687875),
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: AppSpacing.x1),
+                    Text(detail, style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),
@@ -901,25 +815,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     );
   }
 
-  Widget _aiInsightCard() => GlassCard(
-    padding: const EdgeInsets.all(18),
+  Widget _aiInsightCard() => AppCard(
+    padding: const EdgeInsets.all(AppSpacing.x4),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'NHẬN ĐỊNH TỪ HỆ THỐNG',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 13),
+        const SectionHeader(title: 'Nhận định từ hệ thống'),
+        const SizedBox(height: AppSpacing.x3),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(AppSpacing.x3),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F8F6),
+            color: AppColors.primarySoft,
             borderRadius: BorderRadius.circular(14),
             border: const Border(left: BorderSide(color: _teal, width: 3)),
           ),
@@ -930,23 +837,19 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                             'Chưa có nhận định bổ sung từ hệ thống.'
                       : _riskWarnings.join(' '))
                 : 'Chưa có dữ liệu phân tích. Hãy tải đánh giá nguy cơ cho hồ sơ đang chọn.',
-            style: const TextStyle(color: _ink, fontSize: 12, height: 1.55),
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
-        const SizedBox(height: 10),
-        const Row(
+        const SizedBox(height: AppSpacing.x2),
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.info_outline, color: Color(0xFF8A9693), size: 15),
+            Icon(Icons.info_outline, color: AppColors.textSecondary, size: 15),
             SizedBox(width: 6),
             Expanded(
               child: Text(
                 'Đây là hệ thống quy tắc sàng lọc nội bộ, chưa kết nối mô hình AI tạo sinh. Thông tin chỉ tham khảo, không thay thế chẩn đoán y tế.',
-                style: TextStyle(
-                  color: Color(0xFF8A9693),
-                  fontSize: 10,
-                  height: 1.4,
-                ),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ],
@@ -960,10 +863,15 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       Expanded(
         child: ListView(
           controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.x4,
+            AppSpacing.x3,
+            AppSpacing.x4,
+            AppSpacing.x2,
+          ),
           children: [
-            GlassCard(
-              padding: const EdgeInsets.all(13),
+            AppCard(
+              padding: const EdgeInsets.all(AppSpacing.x3),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -978,18 +886,14 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                                     (_isLoadingConversations
                                         ? 'Đang tải hội thoại cũ...'
                                         : 'Tin nhắn sẽ được phân tích theo dữ liệu sức khỏe của hồ sơ đang chọn.')),
-                      style: TextStyle(
-                        color: Color(0xFF687875),
-                        fontSize: 11,
-                        height: 1.4,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
                 ],
               ),
             ),
             if (_conversations.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpacing.x2),
               DropdownButtonFormField<String>(
                 initialValue: _conversationId,
                 decoration: const InputDecoration(
@@ -997,7 +901,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                   isDense: true,
                   border: OutlineInputBorder(),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: AppColors.surface,
                 ),
                 items: [
                   for (final conversation in _conversations)
@@ -1022,11 +926,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                       },
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpacing.x3),
             for (final message in _messages) _messageBubble(message),
             if (_isSendingChat)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 12),
+              Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.x3),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: SizedBox(
@@ -1040,31 +944,25 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 ),
               ),
             if (_messages.length == 1) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(2, 8, 2, 8),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.x2),
                 child: Text(
                   'Gợi ý câu hỏi',
-                  style: TextStyle(
-                    color: Color(0xFF82908D),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(context).textTheme.labelMedium,
                 ),
               ),
               for (final question in _quickQuestions)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 7),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.x2),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: ActionChip(
                       onPressed: () => _sendMessage(question),
                       label: Text(question),
-                      labelStyle: const TextStyle(
-                        color: Color(0xFF327E76),
-                        fontSize: 11,
-                      ),
-                      side: const BorderSide(color: Color(0xFFD6E8E3)),
-                      backgroundColor: Colors.white.withValues(alpha: .8),
+                      labelStyle: Theme.of(context).textTheme.labelMedium
+                          ?.copyWith(color: AppColors.primary),
+                      side: const BorderSide(color: AppColors.border),
+                      backgroundColor: AppColors.surface.withValues(alpha: .8),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -1079,9 +977,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   );
 
   Widget _messageBubble(_ChatMessage message) {
-    final color = message.isUser ? _teal : Colors.white;
+    final color = message.isUser ? _teal : AppColors.surface;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: AppSpacing.x3),
       child: Row(
         mainAxisAlignment: message.isUser
             ? MainAxisAlignment.end
@@ -1091,15 +989,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           if (!message.isUser) ...[
             const CircleAvatar(
               radius: 15,
-              backgroundColor: Color(0xFFE5F4F0),
+              backgroundColor: AppColors.primarySoft,
               child: Icon(Icons.auto_awesome, color: _teal, size: 15),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.x2),
           ],
           Flexible(
             child: Container(
               constraints: const BoxConstraints(maxWidth: 320),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.x3,
+                vertical: AppSpacing.x3,
+              ),
               decoration: BoxDecoration(
                 color: color,
                 borderRadius: BorderRadius.only(
@@ -1110,29 +1011,26 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 ),
                 border: message.isUser
                     ? null
-                    : Border.all(color: const Color(0xFFE5ECEA)),
+                    : Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     message.text,
-                    style: TextStyle(
-                      color: message.isUser ? Colors.white : _ink,
-                      fontSize: 12,
-                      height: 1.45,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: message.isUser ? AppColors.surface : _ink,
                     ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: AppSpacing.x1),
                   Align(
                     alignment: Alignment.bottomRight,
                     child: Text(
                       _timeLabel(message.sentAt),
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: message.isUser
-                            ? Colors.white.withValues(alpha: .75)
-                            : const Color(0xFF94A09D),
-                        fontSize: 9,
+                            ? AppColors.surface.withValues(alpha: .82)
+                            : AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -1147,10 +1045,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   }
 
   Widget _messageComposer() => Container(
-    padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+    padding: const EdgeInsets.symmetric(
+      horizontal: AppSpacing.x3,
+      vertical: AppSpacing.x2,
+    ),
     decoration: const BoxDecoration(
-      color: Color(0xFFF8FBFA),
-      border: Border(top: BorderSide(color: Color(0xFFE4ECE9))),
+      color: AppColors.background,
+      border: Border(top: BorderSide(color: AppColors.border)),
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -1165,18 +1066,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             decoration: InputDecoration(
               hintText: 'Nhập câu hỏi sức khỏe...',
               filled: true,
-              fillColor: Colors.white,
+              fillColor: AppColors.surface,
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 15,
-                vertical: 11,
+                horizontal: AppSpacing.x4,
+                vertical: AppSpacing.x3,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(color: Color(0xFFE1EBE8)),
+                borderSide: const BorderSide(color: AppColors.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(color: Color(0xFFE1EBE8)),
+                borderSide: const BorderSide(color: AppColors.border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
@@ -1191,7 +1092,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           icon: const Icon(Icons.send_rounded, size: 19),
           style: IconButton.styleFrom(
             backgroundColor: _teal,
-            foregroundColor: Colors.white,
+            foregroundColor: AppColors.surface,
             minimumSize: const Size(46, 46),
           ),
           tooltip: 'Gửi câu hỏi',

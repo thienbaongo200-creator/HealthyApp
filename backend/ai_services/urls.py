@@ -3,7 +3,6 @@ from .views import (
     AiChatSessionView,
     AiConversationListView,
     AiConversationMessagesView,
-    HealthRiskAssessmentView,
 )
 
 urlpatterns = [
@@ -13,6 +12,5 @@ urlpatterns = [
         AiConversationMessagesView.as_view(),
         name='ai-conversation-messages',
     ),
-    path('assess-risk/<uuid:profile_id>/', HealthRiskAssessmentView.as_view(), name='ai-risk-assessment'),
     path('chat/<uuid:profile_id>/', AiChatSessionView.as_view(), name='ai-chat-session'),
 ]

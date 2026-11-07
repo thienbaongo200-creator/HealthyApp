@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from django.core.cache import cache
 from django.urls import reverse
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from accounts.models import Account
@@ -15,6 +16,7 @@ from ai_services.models import Conversation, Message, AIInsight
 from ai_services.providers.exceptions import ProviderError
 from ai_services.providers.local import LocalRuleProvider
 from ai_services.services.assistant import generate_reply
+from ai_services.services.consent import AIConsentService
 from households.models import Household, HouseholdMember, ProfileShare
 
 
@@ -96,9 +98,12 @@ class AiServiceModelTests(TestCase):
         )
         insight = AIInsight.objects.create(
             profile=self.profile,
-            category="HEALTH",
-            title="Summary",
-            content="A summary.",
+            period_start=timezone.now(),
+            period_end=timezone.now(),
+            risk_level="LOW",
+            summary="A summary.",
+            recommendation="Continue monitoring.",
+            generated_by="RULE_ONLY",
         )
 
         self.profile.delete()
@@ -118,23 +123,47 @@ class HealthRiskAssessmentApiTests(APITestCase):
         self.profile = PersonProfile.objects.create(
             account=self.account,
             profile_type="SELF",
-            full_name="AI Test User"
+            full_name="AI Test User",
         )
-        self.account.ai_consent = True
-        self.account.save(update_fields=["ai_consent"])
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=True,
+            version="test",
+        )
         self.client.force_authenticate(user=self.account)
-        self.url = reverse('ai-risk-assessment', kwargs={'profile_id': self.profile.id})
+        self.url = reverse("ai-insight-analyze")
+
+    def _assess_risk(self, profile=None):
+        target = profile or self.profile
+        return self.client.post(
+            self.url,
+            {"profile_id": str(target.pk)},
+            format="json",
+        )
 
     def test_risk_assessment_requires_ai_consent(self):
-        self.account.ai_consent = False
-        self.account.save(update_fields=["ai_consent"])
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+        for value in (72, 75, 74):
+            HealthMeasurement.objects.create(
+                profile=self.profile,
+                measurement_type="HEART_RATE",
+                value=value,
+                unit="bpm",
+                measured_at=timezone.now(),
+                source="MANUAL",
+            )
 
         with patch("ai_services.views.get_assistant_provider") as get_provider:
-            response = self.client.get(self.url)
+            response = self._assess_risk()
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["generated_by"], "RULE_ONLY")
-        self.assertIsNone(response.data["interpretation"])
         get_provider.assert_not_called()
 
     def test_unlinked_dependent_uses_creator_consent(self):
@@ -144,27 +173,44 @@ class HealthRiskAssessmentApiTests(APITestCase):
             profile_type="DEPENDENT",
             full_name="Unlinked Dependent",
         )
-        url = reverse("ai-risk-assessment", kwargs={"profile_id": dependent.id})
+        for value in (72, 75, 74):
+            HealthMeasurement.objects.create(
+                profile=dependent,
+                measurement_type="HEART_RATE",
+                value=value,
+                unit="bpm",
+                measured_at=timezone.now(),
+                source="MANUAL",
+            )
 
-        self.account.ai_consent = False
-        self.account.save(update_fields=["ai_consent"])
-        denied = self.client.get(url)
+        denied = self._assess_risk(dependent)
         self.assertEqual(denied.status_code, status.HTTP_200_OK)
         self.assertEqual(denied.data["generated_by"], "RULE_ONLY")
 
-        self.account.ai_consent = True
-        self.account.save(update_fields=["ai_consent"])
-        allowed = self.client.get(url)
-        self.assertEqual(allowed.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
-        self.assertEqual(allowed.data["risk_level"], "UNKNOWN")
-        self.assertGreater(len(allowed.data["recommendations"]), 0)
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=dependent,
+            granted=True,
+            version="test",
+        )
+        provider = SimpleNamespace(
+            name="gemini",
+            model_version="test",
+            generate_reply=Mock(return_value="A brief explanation."),
+        )
+        with patch("ai_services.views.get_assistant_provider", return_value=provider):
+            allowed = self._assess_risk(dependent)
+        self.assertEqual(allowed.status_code, status.HTTP_200_OK)
+        self.assertEqual(allowed.data["generated_by"], "RULE_AND_AI")
 
     def test_consent_ai_interprets_anonymous_rule_summary_without_history(self):
         events = []
         rule_result = {
             "risk_level": "MEDIUM",
             "analyzed_count": 3,
+            "triggered_rules": ["R01"],
             "warnings": ["R01: heart rate above threshold."],
+            "summary": "Rule-based screening summary.",
             "recommendation": "Monitor the measurement.",
             "recommendations": [],
         }
@@ -183,7 +229,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
             AIInsight.objects.count(),
         )
 
-        def assess(profile):
+        def assess(profile, **kwargs):
             events.append("rules")
             return rule_result
 
@@ -191,12 +237,12 @@ class HealthRiskAssessmentApiTests(APITestCase):
             patch("ai_services.views.RiskRuleEngine.assess", side_effect=assess),
             patch("ai_services.views.get_assistant_provider", return_value=provider),
         ):
-            response = self.client.get(self.url)
+            response = self._assess_risk()
 
         summary = json.loads(provider.generate_reply.call_args.kwargs["context"])
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["generated_by"], "RULE_AND_AI")
-        self.assertEqual(response.data["interpretation"], "A brief explanation.")
+        self.assertEqual(response.data["summary"], "A brief explanation.")
         self.assertEqual(events, ["rules", "ai"])
         self.assertNotIn(str(self.profile.id), summary.values())
         self.assertNotIn(self.profile.full_name, json.dumps(summary))
@@ -209,20 +255,17 @@ class HealthRiskAssessmentApiTests(APITestCase):
                 "recommendation": "Monitor the measurement.",
             },
         )
-        self.assertEqual(
-            (
-                Conversation.objects.count(),
-                Message.objects.count(),
-                AIInsight.objects.count(),
-            ),
-            history_counts_before,
-        )
+        self.assertEqual(Conversation.objects.count(), history_counts_before[0])
+        self.assertEqual(Message.objects.count(), history_counts_before[1])
+        self.assertEqual(AIInsight.objects.count(), history_counts_before[2] + 1)
 
     def test_ai_errors_timeouts_and_malformed_output_keep_rule_only_result(self):
         rule_result = {
             "risk_level": "LOW",
             "analyzed_count": 1,
+            "triggered_rules": [],
             "warnings": [],
+            "summary": "Rule-based screening summary.",
             "recommendation": "Continue monitoring.",
             "recommendations": [],
         }
@@ -252,15 +295,14 @@ class HealthRiskAssessmentApiTests(APITestCase):
                         return_value=provider,
                     ),
                 ):
-                    response = self.client.get(self.url)
+                    response = self._assess_risk()
 
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 self.assertEqual(response.data["generated_by"], "RULE_ONLY")
-                self.assertIsNone(response.data["interpretation"])
 
     def test_risk_assessment_no_data(self):
         """Kiểm tra khi profile chưa có bất kỳ chỉ số đo lường nào"""
-        response = self.client.get(self.url)
+        response = self._assess_risk()
         self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
         self.assertEqual(response.data["risk_level"], "UNKNOWN")
         self.assertEqual(response.data["analyzed_count"], 0)
@@ -276,30 +318,35 @@ class HealthRiskAssessmentApiTests(APITestCase):
                 measured_at=f"2026-10-14T10:{minute:02d}:00Z",
                 source="MANUAL",
             )
-        response = self.client.get(self.url)
+        response = self._assess_risk()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["risk_level"], "LOW")
         self.assertEqual(response.data["analyzed_count"], 3)
 
-    def test_risk_assessment_high_risk_blood_pressure(self):
-        """Kiểm tra đánh giá rủi ro ở mức cao khi huyết áp vượt ngưỡng nguy hiểm"""
-        HealthMeasurement.objects.create(
-            profile=self.profile,
-            measurement_type="BLOOD_PRESSURE",
-            value=145,
-            value_secondary=95,
-            unit="mmHg",
-            measured_at="2026-10-14T10:00:00Z",
-            source="MANUAL"
-        )
-        response = self.client.get(self.url)
+    def test_risk_assessment_high_risk_repeated_heart_rate(self):
+        """Verify repeated elevated heart-rate readings trigger R02."""
+        for minute, value in enumerate((130, 132, 135)):
+            HealthMeasurement.objects.create(
+                profile=self.profile,
+                measurement_type="HEART_RATE",
+                value=value,
+                unit="bpm",
+                measured_at=f"2026-10-14T10:{minute:02d}:00Z",
+                source="MANUAL",
+            )
+        response = self._assess_risk()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["risk_level"], "HIGH")
+        self.assertIn("R02", response.data["triggered_rules"])
         self.assertTrue(len(response.data["warnings"]) > 0)
 
     def test_chat_requires_ai_consent(self):
-        self.account.ai_consent = False
-        self.account.save(update_fields=["ai_consent"])
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
         url = reverse("ai-chat-session", kwargs={"profile_id": self.profile.id})
 
         response = self.client.post(
@@ -403,6 +450,12 @@ class HealthRiskAssessmentApiTests(APITestCase):
                 account=other_account,
                 profile_type="SELF",
                 full_name="Other Chat User",
+            )
+            AIConsentService.set_consent(
+                user=other_account,
+                profile=other_profile,
+                granted=True,
+                version="test",
             )
             self.client.force_authenticate(user=other_account)
             other_account_response = self.client.post(

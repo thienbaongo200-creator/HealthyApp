@@ -12,8 +12,12 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from ai_services.models import Conversation, Message
-from ai_services.serializers import ConversationSerializer, MessageSerializer
+from ai_services.models import AIInsight, Conversation, Message
+from ai_services.serializers import (
+    AIInsightSerializer,
+    ConversationSerializer,
+    MessageSerializer,
+)
 from ai_services.providers.exceptions import ProviderError
 from ai_services.providers.local import LocalRuleProvider
 from ai_services.services.assistant import (
@@ -22,8 +26,11 @@ from ai_services.services.assistant import (
     get_assistant_provider,
 )
 from ai_services.services.risk_engine import RiskRuleEngine
+from ai_services.services.consent import AIConsentService
 from core.permissions import PermissionService
 from profiles.models import PersonProfile
+from datetime import timedelta
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -80,33 +87,92 @@ def interpret_risk_result(result):
 class HealthRiskAssessmentView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, profile_id):
+    def post(self, request):
+        request_serializer = RiskAnalysisRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        data = request_serializer.validated_data
         profile = authorized_profile(
             request,
-            profile_id,
+            data["profile_id"],
             require_ai_consent=False,
         )
-        result = RiskRuleEngine().assess(profile)
-        has_consent = PermissionService.has_profile_ai_consent(profile)
-        response_data = {
-            "profile_id": str(profile.id),
-            **result,
-            "generated_by": "RULE_ONLY",
-            "interpretation": None,
-        }
+        period_end = data.get("period_end") or timezone.now()
+        period_start = data.get("period_start") or (period_end - timedelta(days=30))
+        result = RiskRuleEngine().assess(
+            profile,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        if result["risk_level"] == "UNKNOWN":
+            return Response(
+                {"profile_id": str(profile.pk), **result},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
+        has_consent = AIConsentService.has_consent(profile)
+        generated_by = "RULE_ONLY"
+        summary = result["summary"]
         if has_consent:
             interpretation = interpret_risk_result(result)
-            if interpretation is not None:
-                response_data["generated_by"] = "RULE_AND_AI"
-                response_data["interpretation"] = interpretation
+            if interpretation:
+                generated_by = "RULE_AND_AI"
+                summary = interpretation
 
-        code = (
-            status.HTTP_200_OK
-            if not has_consent or result["risk_level"] != "UNKNOWN"
-            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        insight = AIInsight.objects.create(
+            profile=profile,
+            period_start=period_start,
+            period_end=period_end,
+            risk_level=result["risk_level"],
+            triggered_rules=result["triggered_rules"],
+            summary=summary,
+            recommendation=result["recommendation"],
+            generated_by=generated_by,
         )
-        return Response(response_data, status=code)
+        return Response(
+            {
+                **AIInsightSerializer(insight).data,
+                "analyzed_count": result["analyzed_count"],
+                "warnings": result["warnings"],
+                "recommendations": result["recommendations"],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RiskAnalysisRequestSerializer(serializers.Serializer):
+    profile_id = serializers.UUIDField()
+    period_start = serializers.DateTimeField(required=False)
+    period_end = serializers.DateTimeField(required=False)
+    from_date = serializers.DateTimeField(required=False, source="from")
+    to_date = serializers.DateTimeField(required=False, source="to")
+
+    def validate(self, attrs):
+        from_value = attrs.pop("from", None)
+        to_value = attrs.pop("to", None)
+        attrs.setdefault("period_start", from_value)
+        attrs.setdefault("period_end", to_value)
+        start, end = attrs.get("period_start"), attrs.get("period_end")
+        if start and end and start > end:
+            raise serializers.ValidationError(
+                {"period_start": "Must be earlier than or equal to period_end."}
+            )
+        return attrs
+
+
+class AIInsightListView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = AIInsightSerializer
+
+    def get_queryset(self):
+        profile_id = self.request.query_params.get("profile_id")
+        if not profile_id:
+            raise ValidationError({"profile_id": "This query parameter is required."})
+        profile = authorized_profile(
+            self.request,
+            serializers.UUIDField().run_validation(profile_id),
+            require_ai_consent=False,
+        )
+        return AIInsight.objects.filter(profile=profile).order_by("-created_at")
 
 
 class AiChatSessionView(APIView):

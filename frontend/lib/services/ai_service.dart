@@ -64,7 +64,7 @@ class RiskAssessmentResult {
     final recommendation = json['recommendation'] ?? '';
     final profileId = json['profile_id'];
     final generatedBy = json['generated_by'] ?? 'RULE_ONLY';
-    final interpretation = json['interpretation'];
+    final interpretation = json['interpretation'] ?? json['summary'];
     if (recommendation is! String ||
         (profileId != null && profileId is! String) ||
         generatedBy is! String ||
@@ -93,12 +93,21 @@ class AiApiService {
   Future<RiskAssessmentResult> assessRisk({required String profileId}) async {
     final token = await _storage.read(key: 'access_token');
     final response = await _httpClient.request(
-      'GET',
-      Uri.parse('$apiBaseUrl/ai/assess-risk/$profileId/'),
+      'POST',
+      Uri.parse('$apiBaseUrl/ai-insights/analyze/'),
       headers: {
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
         if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       },
+      body: jsonEncode({
+        'profile_id': profileId,
+        'period_start': DateTime.now()
+            .toUtc()
+            .subtract(const Duration(days: 30))
+            .toIso8601String(),
+        'period_end': DateTime.now().toUtc().toIso8601String(),
+      }),
     );
     return parseRiskResponse(
       statusCode: response.statusCode,
@@ -117,7 +126,7 @@ class AiApiService {
     if (statusCode == 422 && body['risk_level'] == 'UNKNOWN') {
       return RiskAssessmentResult.fromJson(body);
     }
-    if (statusCode != 200) {
+    if (statusCode != 200 && statusCode != 201) {
       throw Exception('Không thể tải đánh giá nguy cơ (HTTP $statusCode).');
     }
     return RiskAssessmentResult.fromJson(body);

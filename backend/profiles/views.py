@@ -1,5 +1,7 @@
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
+from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -7,6 +9,9 @@ from rest_framework import generics
 from households.models import HouseholdMember, ProfileShare
 from .models import PersonProfile
 from .serializers import PersonProfileCreateSerializer, PersonProfileSerializer
+from ai_services.models import AIConsent
+from ai_services.serializers import AIConsentSerializer, AIConsentUpdateSerializer
+from ai_services.services.consent import AIConsentService
 
 
 def accessible_profiles_for(user):
@@ -119,3 +124,36 @@ class ProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
         profile.is_archived = True
         profile.save(update_fields=["is_archived", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProfileAIConsentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_profile(self, profile_id, user):
+        profile = get_object_or_404(
+            PersonProfile,
+            pk=profile_id,
+            is_archived=False,
+        )
+        if not AIConsentService.can_manage(user, profile):
+            raise PermissionDenied("Only the profile owner or guardian may manage consent.")
+        return profile
+
+    def get(self, request, profile_id):
+        profile = self.get_profile(profile_id, request.user)
+        record = AIConsent.objects.filter(profile=profile).first()
+        if record is None:
+            return Response({"profile_id": str(profile.pk), "consent": False})
+        return Response(AIConsentSerializer(record).data)
+
+    def put(self, request, profile_id):
+        profile = self.get_profile(profile_id, request.user)
+        serializer = AIConsentUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        record = AIConsentService.set_consent(
+            user=request.user,
+            profile=profile,
+            granted=serializer.validated_data["consent"],
+            version=serializer.validated_data["consent_version"],
+        )
+        return Response(AIConsentSerializer(record).data, status=status.HTTP_200_OK)
