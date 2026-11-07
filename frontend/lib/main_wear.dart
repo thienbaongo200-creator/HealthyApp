@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:frontend/theme/app_colors.dart';
 import 'services/mock_health_data_service.dart';
 import 'services/watch_sender_service.dart'; // ✅ Đổi sang service gửi HTTP mới
 
@@ -55,7 +56,7 @@ class _WearDashboardState extends State<WearDashboard> {
   Future<void> _initWearState() async {
     await _requestPermissions();
 
-    // ✅ Bắt đầu chu kỳ gửi dữ liệu HTTP
+    // Bắt đầu chu kỳ gửi dữ liệu HTTP
     _startMockDataAndSync();
   }
 
@@ -186,9 +187,9 @@ class _WearDashboardState extends State<WearDashboard> {
                   '${_isPermissionGranted ? ' • Permissions OK' : ' • Check permissions'}',
                   style: TextStyle(
                     color: _isPermissionGranted
-                        ? Colors.greenAccent
-                        : Colors.orangeAccent,
-                    fontSize: 10,
+                        ? AppColors.success
+                        : AppColors.warning,
+                    fontSize: 12,
                   ),
                 ),
               ],

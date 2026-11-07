@@ -146,9 +146,26 @@ class HealthMeasurementSerializer(HealthMeasurementFieldsSerializer):
 
 class HealthMeasurementBatchSerializer(serializers.Serializer):
     profile_id = serializers.UUIDField(required=False, write_only=True)
+    records = serializers.ListField(
+        child=serializers.JSONField(allow_null=True),
+        allow_empty=False,
+        min_length=1,
+        max_length=100,
+        required=False,
+    )
     measurements = serializers.ListField(
         child=serializers.JSONField(allow_null=True),
         allow_empty=False,
         min_length=1,
         max_length=100,
+        required=False,
+        write_only=True,
     )
+
+    def validate(self, attrs):
+        if ("records" in attrs) == ("measurements" in attrs):
+            raise serializers.ValidationError(
+                {"records": "Provide exactly one of records or legacy measurements."}
+            )
+        attrs["records"] = attrs.pop("measurements", attrs.get("records"))
+        return attrs

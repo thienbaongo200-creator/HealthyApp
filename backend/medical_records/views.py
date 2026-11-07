@@ -38,6 +38,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 
 from profiles.views import accessible_profiles_for
+from devices.models import Device
 
 class HealthMeasurementPagination(PageNumberPagination):
     page_size = 100
@@ -201,13 +202,35 @@ class HealthMeasurementBatchCreateView(APIView):
             profile = PersonProfile.objects.get(pk=profile_id)
 
         results = []
-        for index, item in enumerate(serializer.validated_data["measurements"]):
+        for index, item in enumerate(serializer.validated_data["records"]):
             result = {
                 "index": index,
                 "status": "BỊ_TỪ_CHỐI",
             }
             if not isinstance(item, dict):
                 result["errors"] = {"non_field_errors": ["Each item must be a JSON object."]}
+                results.append(result)
+                continue
+            result["idempotency_key"] = item.get("idempotency_key")
+
+            device_id = item.get("device_id")
+            if not device_id:
+                result["errors"] = {"device_id": ["A paired device is required."]}
+                results.append(result)
+                continue
+            device = Device.objects.filter(
+                pk=device_id,
+                profile=profile,
+                status="ACTIVE",
+            ).first()
+            if device is None:
+                result["errors"] = {
+                    "device_id": ["Device must be active and paired to this profile."]
+                }
+                results.append(result)
+                continue
+            if "source" in item:
+                result["errors"] = {"source": ["Source is assigned by the server."]}
                 results.append(result)
                 continue
 
@@ -242,12 +265,15 @@ class HealthMeasurementBatchCreateView(APIView):
 
             try:
                 with transaction.atomic():
-                    source = validated_item.pop("source", "MANUAL")
+                    validated_item.pop("source", None)
                     measurement = HealthMeasurement.objects.create(
                         profile=profile,
-                        source=source,
-                        device=None,
+                        source="WEAR_OS",
+                        device=device,
                         **validated_item,
+                    )
+                    Device.objects.filter(pk=device.pk).update(
+                        last_synced_at=measurement.measured_at
                     )
             except IntegrityError:
                 # Handles a concurrent retry that wins the unique constraint race.

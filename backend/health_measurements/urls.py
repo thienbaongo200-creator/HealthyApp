@@ -4,6 +4,7 @@ from medical_records.views import (
     HealthMeasurementBatchCreateView,
     HealthMeasurementViewSet,
 )
+from .views import MeasurementStatisticsView
 
 
 measurement_list = HealthMeasurementViewSet.as_view(
@@ -20,6 +21,7 @@ measurement_detail = HealthMeasurementViewSet.as_view(
 
 urlpatterns = [
     path("batch/", HealthMeasurementBatchCreateView.as_view(), name="measurement-batch"),
+    path("statistics/", MeasurementStatisticsView.as_view(), name="measurement-statistics"),
     path("", measurement_list, name="measurement-list"),
     path("<uuid:pk>/", measurement_detail, name="measurement-detail"),
 ]

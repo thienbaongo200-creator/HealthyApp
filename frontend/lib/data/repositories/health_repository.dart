@@ -19,10 +19,13 @@ class HealthRepository {
     }
   }
 
-  // Lấy kết quả đánh giá rủi ro sức khỏe từ AI Service
+  // Tạo và lưu nhận định rủi ro qua API AIInsight hiện hành.
   Future<Map<String, dynamic>?> fetchAiRiskAssessment(String profileId) async {
     try {
-      final response = await _apiClient.dio.get('ai/assess-risk/$profileId/');
+      final response = await _apiClient.dio.post(
+        'ai-insights/analyze/',
+        data: {'profile_id': profileId},
+      );
       if (response.statusCode == 200) {
         return response.data;
       }
