@@ -61,7 +61,6 @@ Các phiên bản dưới đây được đối chiếu với cấu hình dự �
 | `http` | Constraint `^1.2.0` | **1.6.0** trong `pubspec.lock` |
 | `dio` | Constraint `^5.11.1` | **5.11.1** |
 | `permission_handler` | Constraint `^12.0.3` | **12.0.3** |
-| `google_sign_in` | Constraint `^6.2.1` | **6.3.0** |
 | `flutter_secure_storage` | Constraint `^11.1.1` | **11.1.1** |
 | Android Gradle Plugin | `settings.gradle.kts` | **9.0.1** |
 | Kotlin Gradle Plugin | `settings.gradle.kts` | **2.3.20** |

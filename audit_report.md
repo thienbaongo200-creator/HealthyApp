@@ -1,6 +1,6 @@
 # HealthyApp Dynamic & Static Audit Report
 
-- Thời điểm tạo: 2026-10-22T17:25:58+07:00
+- Thời điểm tạo: 2026-11-06T23:39:44+07:00
 - Chế độ: static audit + runtime test; chỉ ghi đè `audit_report.md`, không sửa `CHECKLIST.md`.
 - Backend test sử dụng `--keepdb` để giữ nguyên database test đã có.
 
@@ -9,7 +9,7 @@
 | Trạng thái | Hạng mục | Kết quả / giới hạn | Bằng chứng |
 |---|---|---|---|
 | **PASS / FOUND** | PersonProfile relation_type | Model khai báo field relation_type. | `backend/profiles/models.py:31` |
-| **PASS / FOUND** | Profile serializer | Serializer có xử lý relation_type. | `backend/profiles/serializers.py:88` |
+| **PASS / FOUND** | Profile serializer | Serializer có xử lý relation_type. | `backend/profiles/serializers.py:90` |
 | **PASS / FOUND** | Backend permission service | Có cấu trúc permission dùng chung. | `backend/core/permissions.py:6` |
 | **PASS / FOUND** | Profile scoped CRUD | ViewSet hồ sơ y tế lọc theo profile. | `backend/medical_records/views.py:302` |
 | **PASS / FOUND** | Medical serializers | Có serializer cho các loại hồ sơ y tế. | `backend/medical_records/serializers.py:29` |
@@ -20,7 +20,7 @@
 | **PASS / FOUND** | AI consent check | Backend kiểm tra consent của hồ sơ. | `backend/ai_services/views.py:45` |
 | **PASS / FOUND** | AI history serializers | Có serializer cho hội thoại và tin nhắn. | `backend/ai_services/serializers.py:6` |
 | **PASS / FOUND** | AI API service | Service tích hợp API đánh giá nguy cơ và Chat. | `frontend/lib/services/ai_service.dart:89` |
-| **PASS / FOUND** | AI assistant screen | Màn hình AI Assistant có trong ứng dụng. | `frontend/lib/views/home/ai_assistant_screen.dart:10` |
+| **PASS / FOUND** | AI assistant screen | Màn hình AI Assistant có trong ứng dụng. | `frontend/lib/views/home/ai_assistant_screen.dart:12` |
 | **PASS** | Bearer token cho API lịch sử AI Chat | Không còn header Authorization hardcode dạng ******. | `frontend/lib/services/ai_service.dart` |
 | **WARNING** | Device API mount | Route devices đang bị comment trong core URL config; module Wear Sync chưa có Device API mount. | `backend/core/urls.py` |
 | **PASS / FOUND** | Báo cáo đồ án: DACN_Ngo_Quoc_Thien_Bao.docx | Tìm thấy báo cáo tại vị trí được hỗ trợ. | `docs/DACN_Ngo_Quoc_Thien_Bao.docx` |
@@ -31,25 +31,29 @@
 ### Bảng 3.x. Kết quả kiểm thử Backend
 
 Lệnh: `C:\Users\ASUS\AppData\Local\Programs\Python\Python313\python.exe manage.py test --keepdb --verbosity 2`  
-Kết quả tổng: **PASS**; thời gian: **279.10 giây**; tổng pass: **79**; tổng fail/error: **0**; skip: **0**.
+Kết quả tổng: **FAIL**; thời gian: **171.99 giây**; tổng pass: **79**; tổng fail/error: **1**; skip: **0**.
 
 | Module | Số test chạy | Pass | Fail/Error | Skip | Trạng thái |
 |---|---:|---:|---:|---:|---|
 | Authentication & Consent | 8 | 8 | 0 | 0 | **PASS** |
 | AI Insight & AI Chat | 18 | 18 | 0 | 0 | **PASS** |
-| Core / Integration | 17 | 17 | 0 | 0 | **PASS** |
+| Core / Integration | 17 | 16 | 1 | 0 | **FAIL** |
 | Wear Sync / Device | 2 | 2 | 0 | 0 | **PASS** |
 | Health Measurement | 2 | 2 | 0 | 0 | **PASS** |
 | Household / RBAC | 9 | 9 | 0 | 0 | **PASS** |
 | Medical Record | 19 | 19 | 0 | 0 | **PASS** |
-| Profile | 4 | 4 | 0 | 0 | **PASS** |
+| Profile | 5 | 5 | 0 | 0 | **PASS** |
+
+Các test lỗi (tối đa 20):
+
+- `core.tests.test_jwt_settings.JwtLifetimeSettingsTestCase.test_scoped_throttle_rates_use_test_overrides` — FAIL
 
 ### Bảng 3.y. Kiểm thử Frontend và phân tích tĩnh
 
 | Công cụ | Số test / lỗi | Trạng thái | Thời gian | Ghi chú |
 |---|---:|---|---:|---|
-| `flutter test` | 11 pass / 0 fail | **PASS** | 19.35s | Widget/unit test |
-| `flutter analyze` | 0 issue | **PASS** | 45.81s | Static analyzer |
+| `flutter test` | N/A pass / N/A fail | **FAIL** | 21.70s | Widget/unit test |
+| `flutter analyze` | 0 issue | **PASS** | 19.92s | Static analyzer |
 
 ### Bảng 3.z. Các API endpoint cốt lõi đã mount
 
@@ -59,6 +63,9 @@ Danh sách được lấy trực tiếp từ Django URL resolver sau khi nạp c
 |---|---|---|---|---|
 | POST | `/api/auth/register/` | RegisterView | auth-register | AllowAny |
 | POST | `/api/auth/login/` | LoginView | auth-login | AllowAny |
+| POST | `/api/auth/google/` | GoogleLoginView | auth-google | AllowAny |
+| POST | `/api/auth/forgot-password/` | ForgotPasswordView | auth-forgot-password | AllowAny |
+| POST | `/api/auth/reset-password/` | ResetPasswordView | auth-reset-password | AllowAny |
 | PATCH | `/api/auth/profile/` | ProfileView | auth-profile | IsAuthenticated |
 | GET, PATCH | `/api/auth/ai-consent/` | AiConsentView | auth-ai-consent | IsAuthenticated |
 | POST | `/api/auth/logout/` | LogoutView | auth-logout | IsAuthenticated |
