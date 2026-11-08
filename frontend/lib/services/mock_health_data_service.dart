@@ -1,6 +1,9 @@
 import 'dart:math';
 
+import 'watch_sync_config.dart';
+
 enum MockActivityState { resting, active }
+
 enum MockBmrSex { male, female }
 
 class MockHealthSample {
@@ -28,14 +31,14 @@ class MockHealthSample {
     'calories': calories,
     'activity_state': activityState.name,
     'measured_at': measuredAt.toUtc().toIso8601String(),
-    'device_id': deviceId,
+    'device_identifier': deviceId,
     'idempotency_key': idempotencyKey,
   };
 }
 
 class MockHealthDataService {
   MockHealthDataService({
-    this.deviceId = 'wear-os-mock',
+    this.deviceId = watchDeviceIdentifier,
     double? dailyBmrKcal,
     this.weightKg = 70,
     this.heightCm = 170,
@@ -60,7 +63,11 @@ class MockHealthDataService {
       10 * weightKg +
           6.25 * heightCm -
           5 * ageYears +
-          (sex == MockBmrSex.male ? 5 : sex == MockBmrSex.female ? -161 : -78);
+          (sex == MockBmrSex.male
+              ? 5
+              : sex == MockBmrSex.female
+              ? -161
+              : -78);
 
   DateTime _lastSampleAt;
   int _heartRate = 70;
@@ -72,13 +79,16 @@ class MockHealthDataService {
   MockHealthSample nextSample({DateTime? now}) {
     final measuredAt = now ?? DateTime.now();
     final elapsed = measuredAt.difference(_lastSampleAt);
-    final elapsedSeconds = elapsed.isNegative ? 0.0 : elapsed.inMilliseconds / 1000;
+    final elapsedSeconds = elapsed.isNegative
+        ? 0.0
+        : elapsed.inMilliseconds / 1000;
     _lastSampleAt = measuredAt;
 
     _updateHeartRate();
     _updateSteps(elapsedSeconds);
 
-    final basalCalories = dailyBmrKcal * elapsedSeconds / Duration.secondsPerDay;
+    final basalCalories =
+        dailyBmrKcal * elapsedSeconds / Duration.secondsPerDay;
     final activeCalories = activityState == MockActivityState.active
         ? _stepsAddedThisTick * 0.04
         : 0.0;
@@ -137,7 +147,9 @@ String createIdempotencyKey([Random? random]) {
   final bytes = List<int>.generate(16, (_) => source.nextInt(256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+  final hex = bytes
+      .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+      .join();
   return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
       '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }

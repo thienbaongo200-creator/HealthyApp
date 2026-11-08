@@ -12,7 +12,11 @@ class WatchSenderService {
 
   Future<bool> sendDataToPhone(Map<String, dynamic> healthData) async {
     if (watchSyncToken.length < 32) {
-      debugPrint('[Wear OS] WATCH_SYNC_TOKEN is not configured.');
+      // Mock/demo mode is intentionally usable offline. Keep samples queued;
+      // a real sync token can be supplied later without noisy console errors.
+      if (!useMockWearOs) {
+        debugPrint('[Wear OS] WATCH_SYNC_TOKEN is not configured.');
+      }
       return false;
     }
     try {

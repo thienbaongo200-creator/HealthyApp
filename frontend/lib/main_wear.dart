@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'services/mock_health_data_service.dart';
-import 'services/watch_sender_service.dart'; // ✅ Đổi sang service gửi HTTP mới
+import 'services/watch_pending_queue.dart';
+import 'services/watch_sender_service.dart';
+import 'services/watch_sync_config.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,11 +39,12 @@ class _WearDashboardState extends State<WearDashboard> {
   int _steps = 0;
   double _calories = 0;
   Timer? _timer;
-  bool _isPermissionGranted = false;
+  Timer? _retryTimer;
+  bool _isSyncing = false;
+  String _syncStatus = 'Đang khởi tạo';
   final MockHealthDataService _mockData = MockHealthDataService();
-
-  // ✅ Khởi tạo Sender Service chuẩn HTTP
   final WatchSenderService _senderService = WatchSenderService();
+  final WatchPendingQueue _pendingQueue = WatchPendingQueue.instance;
 
   @override
   void initState() {
@@ -54,26 +56,22 @@ class _WearDashboardState extends State<WearDashboard> {
   }
 
   Future<void> _initWearState() async {
-    await _requestPermissions();
-
-    // Bắt đầu chu kỳ gửi dữ liệu HTTP
-    _startMockDataAndSync();
-  }
-
-  Future<void> _requestPermissions() async {
-    final statuses = await [
-      Permission.sensors,
-      Permission.activityRecognition,
-    ].request();
-
-    final sensorsGranted = statuses[Permission.sensors]?.isGranted ?? false;
-    final activityGranted =
-        statuses[Permission.activityRecognition]?.isGranted ?? false;
-
     if (mounted) {
-      setState(() {
-        _isPermissionGranted = sensorsGranted && activityGranted;
-      });
+      if (useMockWearOs) {
+        debugPrint('[Wear OS] $wearMockArchitectureNote.');
+        setState(() => _syncStatus = 'Mock Mode • Offline Queue & Sync');
+        _startMockDataAndSync();
+        _retryTimer = Timer.periodic(
+          const Duration(seconds: 5),
+          (_) => unawaited(_flushPending()),
+        );
+      } else {
+        setState(() => _syncStatus = 'Real sensors chưa được cấu hình');
+        debugPrint(
+          '[Wear OS] USE_MOCK_WEAR_OS=false, but a real sensor adapter '
+          'is not configured. Mock samples are disabled.',
+        );
+      }
     }
   }
 
@@ -93,7 +91,7 @@ class _WearDashboardState extends State<WearDashboard> {
   }
 
   Future<void> _generateAndSync() async {
-    if (!mounted) return;
+    if (!mounted || !useMockWearOs) return;
 
     final sample = _mockData.nextSample();
     setState(() {
@@ -103,9 +101,39 @@ class _WearDashboardState extends State<WearDashboard> {
     });
 
     try {
-      await _senderService.sendDataToPhone(sample.toJson());
+      await _pendingQueue.enqueue(sample.toJson());
+      await _flushPending();
+    } catch (error, stackTrace) {
+      debugPrint('[Wear OS] Could not queue sample: $error\n$stackTrace');
+      if (mounted) setState(() => _syncStatus = 'Không lưu được mẫu mới');
     } finally {
       _scheduleNextSample();
+    }
+  }
+
+  Future<void> _flushPending() async {
+    if (!mounted || _isSyncing || !useMockWearOs) return;
+    _isSyncing = true;
+    try {
+      while (mounted) {
+        final item = await _pendingQueue.firstReady();
+        if (item == null) break;
+        final sent = await _senderService.sendDataToPhone(item.payload);
+        if (!sent) {
+          await _pendingQueue.scheduleRetry(item);
+          if (mounted) {
+            setState(() => _syncStatus = 'Đang chờ kết nối • sẽ thử lại');
+          }
+          break;
+        }
+        await _pendingQueue.acknowledge(item.idempotencyKey);
+        if (mounted) setState(() => _syncStatus = 'Đã đồng bộ');
+      }
+    } catch (error, stackTrace) {
+      debugPrint('[Wear OS] Queue sync failed: $error\n$stackTrace');
+      if (mounted) setState(() => _syncStatus = 'Lỗi đồng bộ • sẽ thử lại');
+    } finally {
+      _isSyncing = false;
     }
   }
 
@@ -121,6 +149,7 @@ class _WearDashboardState extends State<WearDashboard> {
   @override
   void dispose() {
     _timer?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 
@@ -182,16 +211,27 @@ class _WearDashboardState extends State<WearDashboard> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${_mockData.activityState == MockActivityState.active ? 'Active' : 'Resting'}'
+                  '${useMockWearOs ? 'MOCK' : 'REAL'}'
                   ' • ${_mockData.activityState == MockActivityState.active ? '5' : '60'}s'
-                  '${_isPermissionGranted ? ' • Permissions OK' : ' • Check permissions'}',
+                  ' • $_syncStatus',
                   style: TextStyle(
-                    color: _isPermissionGranted
+                    color: _syncStatus == 'Đã đồng bộ'
                         ? AppColors.success
                         : AppColors.warning,
                     fontSize: 12,
                   ),
                 ),
+                if (useMockWearOs) ...[
+                  const SizedBox(height: 8),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      wearMockArchitectureNote,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54, fontSize: 9),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
