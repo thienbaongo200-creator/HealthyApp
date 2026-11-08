@@ -174,7 +174,7 @@ class HouseholdMemberListCreateView(APIView):
         ).exists():
             return Response(
                 {"detail": "This account already has a household membership."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
         share_profile_id = invite_data.get("share_profile_id")
@@ -213,7 +213,7 @@ class HouseholdMemberListCreateView(APIView):
         except IntegrityError:
             return Response(
                 {"detail": "This account already has a household membership."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
         return Response(

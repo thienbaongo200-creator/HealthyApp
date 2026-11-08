@@ -225,6 +225,22 @@ class HouseholdAPITests(APITestCase):
             format="json",
         )
         self.assertEqual(invite.status_code, status.HTTP_201_CREATED)
+        duplicate_invite = self.client.post(
+            reverse(
+                "household-member-list",
+                kwargs={"household_id": household.pk},
+            ),
+            {
+                "email": self.invitee.email,
+                "role": "MEMBER",
+                "share_level": "VIEW_ONLY",
+            },
+            format="json",
+        )
+        self.assertEqual(
+            duplicate_invite.status_code,
+            status.HTTP_409_CONFLICT,
+        )
         membership = HouseholdMember.objects.get(pk=invite.data["id"])
         self.assertEqual(membership.status, "PENDING")
         self.assertTrue(

@@ -286,6 +286,50 @@ class AccountsAuthIntegrationTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("access", response.data)
 
+    def test_login_returns_profile_completion_status(self):
+        user = User.objects.create_user(
+            email="profile-status@example.com",
+            password="SecurePassword123!",
+        )
+        PersonProfile.objects.get_or_create(
+            account=user,
+            profile_type="SELF",
+            defaults={"full_name": "Profile Status"},
+        )
+
+        incomplete_response = self.client.post(
+            self.login_url,
+            {"email": user.email, "password": "SecurePassword123!"},
+            format="json",
+        )
+        self.assertFalse(incomplete_response.data["is_profile_completed"])
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {incomplete_response.data['access']}"
+        )
+        setup_response = self.client.patch(
+            reverse("auth-profile"),
+            {
+                "gender": "female",
+                "date_of_birth": "1995-05-10",
+                "height": 165,
+                "weight": 60,
+            },
+            format="json",
+        )
+        self.assertEqual(setup_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(setup_response.data["is_profile_completed"])
+
+        complete_response = self.client.post(
+            self.login_url,
+            {"email": user.email, "password": "SecurePassword123!"},
+            format="json",
+        )
+        self.assertTrue(complete_response.data["is_profile_completed"])
+        self.assertTrue(
+            complete_response.data["user"]["is_profile_completed"]
+        )
+
     def test_login_throttle_is_limited_per_ip(self):
         cache.clear()
         payload = {"email": "unknown@example.com", "password": "WrongPassword"}

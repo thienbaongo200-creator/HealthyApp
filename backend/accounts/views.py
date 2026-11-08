@@ -40,6 +40,19 @@ def get_or_create_self_profile(account):
     )
 
 
+def is_profile_complete(profile):
+    gender = (profile.gender or "").strip()
+    return bool(
+        gender
+        and profile.date_of_birth
+        and profile.date_of_birth <= timezone.localdate()
+        and profile.height_cm
+        and profile.height_cm > 0
+        and profile.weight_kg
+        and profile.weight_kg > 0
+    )
+
+
 class RegisterView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -87,7 +100,12 @@ class RegisterView(APIView):
         return Response(
             {
                 "message": "Đăng ký thành công.",
-                "user": {"id": account.pk, "email": account.email},
+                "user": {
+                    "id": account.pk,
+                    "email": account.email,
+                    "is_profile_completed": False,
+                },
+                "is_profile_completed": False,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -117,7 +135,21 @@ class ProfileView(APIView):
         )
         profile.save()
         return Response(
-            {"message": "Cập nhật hồ sơ thành công."},
+            {
+                "message": "Cập nhật hồ sơ thành công.",
+                "is_profile_completed": is_profile_complete(profile),
+                "profile": {
+                    "id": str(profile.pk),
+                    "gender": profile.gender,
+                    "date_of_birth": (
+                        profile.date_of_birth.isoformat()
+                        if profile.date_of_birth
+                        else None
+                    ),
+                    "height_cm": profile.height_cm,
+                    "weight_kg": profile.weight_kg,
+                },
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -185,12 +217,19 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        profile, _ = get_or_create_self_profile(account)
+        profile_completed = is_profile_complete(profile)
         refresh = RefreshToken.for_user(account)
         return Response(
             {
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
-                "user": {"id": account.pk, "email": account.email},
+                "user": {
+                    "id": account.pk,
+                    "email": account.email,
+                    "is_profile_completed": profile_completed,
+                },
+                "is_profile_completed": profile_completed,
             },
             status=status.HTTP_200_OK,
         )
