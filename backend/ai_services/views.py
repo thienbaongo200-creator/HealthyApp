@@ -21,6 +21,7 @@ from ai_services.serializers import (
 from ai_services.providers.exceptions import ProviderError
 from ai_services.providers.local import LocalRuleProvider
 from ai_services.services.assistant import (
+    CONVERSATION_CONTEXT_LIMIT,
     build_health_context,
     generate_reply,
     get_assistant_provider,
@@ -197,7 +198,18 @@ class AiChatSessionView(APIView):
         else:
             title = message_text[:30] + ("..." if len(message_text) > 30 else "")
 
-        context = build_health_context(profile)
+        recent_messages = []
+        if conversation is not None:
+            recent_messages = list(
+                conversation.messages.order_by("-created_at", "-pk")[
+                    :CONVERSATION_CONTEXT_LIMIT
+                ]
+            )
+            recent_messages.reverse()
+        context = build_health_context(
+            profile,
+            conversation_messages=recent_messages,
+        )
         reply, provider, is_fallback = generate_reply(
             message=message_text,
             context=context,

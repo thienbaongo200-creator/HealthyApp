@@ -156,7 +156,7 @@
 ### Công việc
 
 - [~] Tạo Rule Engine đánh giá sinh trắc học R01–R04: `HealthRiskAssessmentView` đã triển khai tính ngưỡng nhịp tim, huyết áp bằng NumPy, nhưng chưa tách thành service RuleEngine độc lập.
-- [ ] Tạo `AIProviderService` gọi external LLM (OpenAI/Gemini/v.v.) có timeout, error handling và log bảo mật PHI.
+- [ ] Tạo `AIProviderService` cho External AI Provider có timeout, error handling và log bảo mật PHI.
 - [ ] Tạo `InsightService`: kiểm tra profile permission → nạp dữ liệu → chạy Rule → kiểm tra BR10 consent → gọi Provider → lưu `AIInsight`.
 - [~] Thực hiện BR10 ở backend trước mỗi lời gọi AI:
   - [x] Kiểm tra `ai_consent` trên Account của profile SELF (`HealthRiskAssessmentView` đã chặn 403 nếu `ai_consent=False`).

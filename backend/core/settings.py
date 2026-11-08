@@ -50,12 +50,6 @@ if MAIL_BACKEND == 'django.core.mail.backends.smtp.EmailBackend':
     }
 }
 
-# Optional chat generation provider. Rule based risk screening is always local.
-GEMINI_ENABLED = os.getenv('GEMINI_ENABLED', 'False').strip().lower() in {'true', '1', 'yes'}
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
-GEMINI_TIMEOUT_MS = int(os.getenv('GEMINI_TIMEOUT_MS', '30000'))
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 

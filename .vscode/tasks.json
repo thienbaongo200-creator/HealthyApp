@@ -2,10 +2,13 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Check Git Diff với Chương 2",
+      "label": "Run Backend AI Tests",
       "type": "shell",
       "command": "python",
-      "args": ["check_task.py"],
+      "args": ["manage.py", "test", "ai_services", "--keepdb"],
+      "options": {
+        "cwd": "${workspaceFolder}\\backend"
+      },
       "group": {
         "kind": "test",
         "isDefault": true

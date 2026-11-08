@@ -9,4 +9,3 @@ python-dotenv==1.1.1
 sqlparse==0.5.5
 tzdata==2026.3
 numpy>=1.26,<3
-google-genai>=1.0,<2

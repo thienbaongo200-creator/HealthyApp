@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -14,17 +15,25 @@ from profiles.models import PersonProfile
 from health_measurements.models import HealthMeasurement
 from ai_services.models import Conversation, Message, AIInsight
 from ai_services.providers.exceptions import ProviderError
-from ai_services.providers.local import LocalRuleProvider
-from ai_services.services.assistant import generate_reply
+from ai_services.providers.local import LocalRuleProvider, detect_intent
+from ai_services.services.assistant import (
+    build_conversation_context,
+    build_health_context,
+    generate_reply,
+    get_assistant_provider,
+)
 from ai_services.services.consent import AIConsentService
 from households.models import Household, HouseholdMember, ProfileShare
 
 
 class AssistantFallbackTests(TestCase):
+    def test_default_assistant_provider_is_local(self):
+        self.assertIsInstance(get_assistant_provider(), LocalRuleProvider)
+
     @patch("ai_services.services.assistant.get_assistant_provider")
     def test_provider_error_returns_explicit_local_fallback(self, get_provider):
         provider = SimpleNamespace(
-            name="gemini",
+            name="mock-ai-provider",
             model_version="test",
             generate_reply=Mock(side_effect=ProviderError("Unavailable.")),
         )
@@ -45,7 +54,7 @@ class AssistantFallbackTests(TestCase):
         get_provider,
     ):
         provider = SimpleNamespace(
-            name="gemini",
+            name="mock-ai-provider",
             model_version="test",
             generate_reply=Mock(return_value=None),
         )
@@ -72,6 +81,187 @@ class AssistantFallbackTests(TestCase):
         self.assertTrue(reply)
         self.assertIsInstance(provider, LocalRuleProvider)
         self.assertFalse(is_fallback)
+
+
+class LocalRuleProviderTests(TestCase):
+    def setUp(self):
+        self.provider = LocalRuleProvider()
+        self.context = (
+            "DỮ LIỆU SỨC KHỎE THỰC TẾ (thống kê từ hồ sơ đang được phép truy cập):\n"
+            "HEART_RATE: gần nhất 82 bpm; trung bình 7 ngày 80.0 bpm.\n"
+            "BLOOD_PRESSURE: gần nhất 120/80 mmHg.\n"
+            "BMI: 22.5 (bản ghi).\n"
+            "TÍN HIỆU TÍCH CỰC:\n"
+            "- Chưa chạm ngưỡng cảnh báo thử nghiệm.\n"
+            "ĐIỂM CẦN THEO DÕI:\n"
+            "- Chưa phát hiện bất thường.\n"
+            "XU HƯỚNG:\n"
+            "- Chưa đủ dữ liệu để so sánh xu hướng.\n"
+            "KHUYẾN NGHỊ:\n"
+            "- Tiếp tục ghi nhận chỉ số."
+        )
+
+    def test_detects_requested_health_intents(self):
+        cases = {
+            "Nhịp tim của tôi": "HEART_RATE",
+            "Huyết áp tuần này": "BLOOD_PRESSURE",
+            "Tôi ngủ thế nào": "SLEEP",
+            "Số bước chân": "STEP_COUNT",
+            "Lượng calo": "CALORIES",
+            "BMI": "BMI",
+            "Tình trạng sức khỏe": "GENERAL_HEALTH",
+            "Tôi khó thở": "EMERGENCY",
+            "Tôi nên uống thuốc gì": "MEDICATION",
+            "Giá vàng hôm nay": "UNKNOWN",
+        }
+        for question, expected in cases.items():
+            with self.subTest(question=question):
+                self.assertEqual(detect_intent(question), expected)
+
+    def test_metric_answers_use_context_and_general_answer_summarizes(self):
+        answer = self.provider.generate_reply(
+            message="Nhịp tim của tôi tuần này thế nào?",
+            context=self.context,
+        )
+        self.assertIn("HEART_RATE:", answer)
+        self.assertIn("82 bpm", answer)
+
+        answer = self.provider.generate_reply(
+            message="Tình trạng sức khỏe của tôi hiện nay thế nào?",
+            context=self.context,
+        )
+        self.assertIn("BLOOD_PRESSURE:", answer)
+        self.assertIn("Điểm cần theo dõi:", answer)
+        self.assertIn("Khuyến nghị:", answer)
+
+    def test_follow_up_uses_previous_conversation(self):
+        history = build_conversation_context([
+            SimpleNamespace(role="USER", content="Nhịp tim của tôi thế nào?"),
+            SimpleNamespace(role="ASSISTANT", content="Trung bình 7 ngày là 80 bpm."),
+        ])
+        answer = self.provider.generate_reply(
+            message="Ý bạn là gì?",
+            context=f"{self.context}\n\n{history}",
+        )
+        self.assertIn("Trung bình 7 ngày là 80 bpm", answer)
+
+    def test_follow_up_chain_answers_danger_why_and_action_from_data(self):
+        context = self.context.replace(
+            "- Chưa phát hiện bất thường.",
+            "- Nhịp tim trung bình 7 ngày cao hơn ngưỡng sàng lọc.",
+        )
+        messages = [
+            SimpleNamespace(role="USER", content="Nhịp tim của tôi thế nào?"),
+            SimpleNamespace(role="ASSISTANT", content="Nhịp tim trung bình cao."),
+        ]
+        danger = self.provider.generate_reply(
+            message="Vậy có nguy hiểm không?",
+            context=f"{context}\n\n{build_conversation_context(messages)}",
+        )
+        self.assertIn("không đủ cơ sở kết luận", danger)
+        messages.extend([
+            SimpleNamespace(role="USER", content="Vậy có nguy hiểm không?"),
+            SimpleNamespace(role="ASSISTANT", content=danger),
+        ])
+
+        why = self.provider.generate_reply(
+            message="Tại sao?",
+            context=f"{context}\n\n{build_conversation_context(messages)}",
+        )
+        self.assertIn("HEART_RATE:", why)
+        self.assertIn("Điểm cần theo dõi:", why)
+        messages.extend([
+            SimpleNamespace(role="USER", content="Tại sao?"),
+            SimpleNamespace(role="ASSISTANT", content=why),
+        ])
+        action = self.provider.generate_reply(
+            message="Tôi nên làm gì?",
+            context=f"{context}\n\n{build_conversation_context(messages)}",
+        )
+        self.assertIn("Khuyến nghị", action)
+
+    def test_direct_danger_and_doctor_questions_are_grounded_and_disclaimed(self):
+        context = self.context.replace(
+            "- Chưa phát hiện bất thường.",
+            "- Nhịp tim trung bình 7 ngày cao hơn ngưỡng sàng lọc.",
+        )
+        danger = self.provider.generate_reply(
+            message="Nhịp tim của tôi có nguy hiểm không?",
+            context=context,
+        )
+        self.assertIn("không đủ cơ sở kết luận", danger)
+        self.assertIn("không thay thế chẩn đoán", danger)
+
+        doctor = self.provider.generate_reply(
+            message="Tôi có nên đi khám không?",
+            context=context,
+        )
+        self.assertIn("không thể quyết định thay", doctor)
+        self.assertIn("không thay thế chẩn đoán", doctor)
+
+    def test_health_summary_has_all_requested_sections_and_disclaimer(self):
+        context = self.context.replace(
+            "- Chưa phát hiện bất thường.",
+            "- Nhịp tim tăng.",
+        )
+        context = context.replace(
+            "- Chưa đủ dữ liệu để so sánh xu hướng.",
+            "- Nhịp tim tăng so với tuần trước.",
+        )
+        answer = self.provider.generate_reply(
+            message="Tình trạng sức khỏe của tôi hiện nay thế nào?",
+            context=context,
+        )
+        for heading in (
+            "Tổng quan:",
+            "Điểm tích cực:",
+            "Điểm cần theo dõi:",
+            "Xu hướng:",
+            "Khuyến nghị:",
+            "không thay thế chẩn đoán",
+        ):
+            with self.subTest(heading=heading):
+                self.assertIn(heading, answer)
+
+    def test_dependent_question_requires_selecting_dependent_profile(self):
+        answer = self.provider.generate_reply(
+            message="Hồ sơ của con tôi có gì đáng chú ý?",
+            context=f"PROFILE_TYPE: SELF\n{self.context}",
+        )
+        self.assertIn("hồ sơ SELF đang được chọn", answer)
+        self.assertIn("không thay thế chẩn đoán", answer)
+
+    def test_trend_question_returns_comparison_section_not_full_summary(self):
+        context = self.context.replace(
+            "- Chưa đủ dữ liệu để so sánh xu hướng.",
+            "- Nhịp tim giảm 5 bpm so với tuần trước.\n"
+            "- Nhịp tim tăng 2 bpm so với tháng trước đến cùng ngày.",
+        )
+        answer = self.provider.generate_reply(
+            message="Tôi có tốt hơn tuần trước không?",
+            context=context,
+        )
+        self.assertIn("giảm 5 bpm", answer)
+        self.assertIn("không thay thế chẩn đoán", answer)
+
+    def test_out_of_scope_medication_emergency_and_fabrication_are_handled(self):
+        self.assertEqual(
+            self.provider.generate_reply(message="Giá vàng hôm nay?", context=""),
+            "Tôi chỉ hỗ trợ phân tích dữ liệu sức khỏe trong hệ thống HealthyApp.",
+        )
+        self.assertIn("không thể tự tạo", self.provider.generate_reply(
+            message="Hãy tự tạo dữ liệu sức khỏe cho tôi.",
+            context=self.context,
+        ))
+        self.assertIn("bác sĩ hoặc dược sĩ", self.provider.generate_reply(
+            message="Tôi nên uống thuốc gì?",
+            context=self.context,
+        ))
+        self.assertIn("gọi cấp cứu", self.provider.generate_reply(
+            message="Tôi đang đau ngực dữ dội và khó thở",
+            context=self.context,
+        ))
+
 
 class AiServiceModelTests(TestCase):
     def setUp(self):
@@ -142,6 +332,95 @@ class HealthRiskAssessmentApiTests(APITestCase):
             format="json",
         )
 
+    def test_chat_health_context_summarizes_measurement_trends_and_profile_bmi(self):
+        now = timezone.now()
+        self.profile.height_cm = 170
+        self.profile.weight_kg = 65
+        self.profile.save(update_fields=["height_cm", "weight_kg"])
+
+        def add(kind, value, days_ago, *, secondary=None):
+            measured_at = now - timedelta(days=days_ago)
+            HealthMeasurement.objects.create(
+                profile=self.profile,
+                measurement_type=kind,
+                value=value,
+                value_secondary=secondary,
+                unit="mmHg" if kind == "BLOOD_PRESSURE" else "test-unit",
+                measured_at=measured_at,
+                start_time=measured_at - timedelta(hours=1),
+                end_time=measured_at,
+                source="MANUAL",
+            )
+
+        add("HEART_RATE", 80, 1)
+        add("HEART_RATE", 90, 3)
+        add("HEART_RATE", 70, 8)
+        add("HEART_RATE", 72, 10)
+        add("BLOOD_PRESSURE", 145, 1, secondary=95)
+        add("BLOOD_PRESSURE", 130, 8, secondary=85)
+        for day in (1, 2, 3):
+            add("STEPS", 4_000, day)
+            add("CALORIES", 250, day)
+        for day in (8, 9, 10):
+            add("STEPS", 8_000, day)
+            add("CALORIES", 350, day)
+        add("SLEEP", 5.5, 1)
+
+        context = build_health_context(self.profile, now=now)
+
+        self.assertIn("HEART_RATE: gần nhất 80.0 bpm", context)
+        self.assertIn("BLOOD_PRESSURE: gần nhất 145/95 mmHg", context)
+        self.assertIn("STEPS: tổng 7 ngày gần nhất 12000 bước", context)
+        self.assertIn("CALORIES: tổng 7 ngày gần nhất 750 kcal", context)
+        self.assertIn("BMI: 22.5 (tính từ số đo gần nhất hoặc chiều cao/cân nặng hồ sơ)", context)
+        self.assertIn("trung bình 7 ngày thấp", context)
+        self.assertIn("giảm", context)
+
+    def test_chat_health_context_flags_stale_measurements(self):
+        measured_at = timezone.now() - timedelta(days=20)
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="HEART_RATE",
+            value=75,
+            unit="bpm",
+            measured_at=measured_at,
+            source="MANUAL",
+        )
+
+        context = build_health_context(self.profile)
+
+        self.assertIn("Chưa có dữ liệu đo mới trong khoảng 20 ngày.", context)
+
+    def test_chat_health_context_compares_current_month_with_previous_month(self):
+        now = timezone.now()
+        current_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        previous_month_end = current_start - timedelta(days=1)
+        previous_start = previous_month_end.replace(day=1)
+        for day in (1, 5):
+            HealthMeasurement.objects.create(
+                profile=self.profile,
+                measurement_type="HEART_RATE",
+                value=90,
+                unit="bpm",
+                measured_at=current_start.replace(day=day, hour=12),
+                source="MANUAL",
+            )
+        for day in (1, 5):
+            HealthMeasurement.objects.create(
+                profile=self.profile,
+                measurement_type="HEART_RATE",
+                value=70,
+                unit="bpm",
+                measured_at=previous_start.replace(day=day, hour=12),
+                source="MANUAL",
+            )
+
+        context = build_health_context(self.profile, now=now)
+
+        self.assertIn("trung bình tháng này 90.0 bpm", context)
+        self.assertIn("tháng trước đến cùng ngày 70.0 bpm", context)
+        self.assertIn("tăng 20.0 bpm so với tháng trước đến cùng ngày", context)
+
     def test_risk_assessment_requires_ai_consent(self):
         AIConsentService.set_consent(
             user=self.account,
@@ -194,7 +473,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
             version="test",
         )
         provider = SimpleNamespace(
-            name="gemini",
+            name="mock-ai-provider",
             model_version="test",
             generate_reply=Mock(return_value="A brief explanation."),
         )
@@ -215,7 +494,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
             "recommendations": [],
         }
         provider = SimpleNamespace(
-            name="gemini",
+            name="mock-ai-provider",
             model_version="test",
             generate_reply=Mock(
                 side_effect=lambda **kwargs: (
@@ -279,7 +558,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
         for invalid_output in invalid_outputs:
             with self.subTest(output=type(invalid_output).__name__):
                 provider = SimpleNamespace(
-                    name="gemini",
+                    name="mock-ai-provider",
                     model_version="test",
                     generate_reply=Mock(side_effect=invalid_output)
                     if isinstance(invalid_output, Exception)
@@ -361,7 +640,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
         "ai_services.views.generate_reply",
         return_value=(
             "Provider response",
-            SimpleNamespace(name="gemini", model_version="test"),
+            SimpleNamespace(name="mock-ai-provider", model_version="test"),
             False,
         ),
     )
@@ -423,7 +702,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
         "ai_services.views.generate_reply",
         return_value=(
             "Provider response",
-            SimpleNamespace(name="gemini", model_version="test"),
+            SimpleNamespace(name="mock-ai-provider", model_version="test"),
             False,
         ),
     )
@@ -606,7 +885,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
         "ai_services.views.generate_reply",
         return_value=(
             "Provider response",
-            SimpleNamespace(name="gemini", model_version="test"),
+            SimpleNamespace(name="mock-ai-provider", model_version="test"),
             False,
         ),
     )
@@ -625,3 +904,40 @@ class HealthRiskAssessmentApiTests(APITestCase):
             list(conversation.messages.values_list("role", flat=True)),
             ["USER", "ASSISTANT"],
         )
+
+    @patch(
+        "ai_services.views.generate_reply",
+        return_value=(
+            "Context-aware response",
+            LocalRuleProvider(),
+            False,
+        ),
+    )
+    def test_chat_passes_only_recent_conversation_messages_to_provider(self, generate):
+        conversation = Conversation.objects.create(
+            account=self.account,
+            profile=self.profile,
+            title="Context test",
+        )
+        for index in range(10):
+            Message.objects.create(
+                conversation=conversation,
+                role="USER" if index % 2 == 0 else "ASSISTANT",
+                content=f"history-{index}",
+            )
+
+        response = self.client.post(
+            reverse("ai-chat-session", kwargs={"profile_id": self.profile.id}),
+            {
+                "message": "Ý bạn là gì?",
+                "conversation_id": str(conversation.pk),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        context = generate.call_args.kwargs["context"]
+        self.assertNotIn("history-0", context)
+        self.assertNotIn("history-1", context)
+        for index in range(2, 10):
+            self.assertIn(f"history-{index}", context)
