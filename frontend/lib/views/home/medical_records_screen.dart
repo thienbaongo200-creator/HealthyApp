@@ -27,6 +27,8 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   bool _isLoading = true;
   bool _isUploading = false;
   String? _error;
+  int _loadRequestId = 0;
+  ProfileSelectionController? _profileSelection;
 
   @override
   void initState() {
@@ -34,34 +36,60 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     _loadData();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final selection = ProfileSelectionScope.of(context);
+    if (identical(selection, _profileSelection)) return;
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _profileSelection = selection;
+    selection.addListener(_onProfileSelectionChanged);
+  }
+
+  void _onProfileSelectionChanged() {
+    final selectedProfileId = _profileSelection?.selectedProfileId;
+    if (!mounted ||
+        selectedProfileId == null ||
+        selectedProfileId == _profileId) {
+      return;
+    }
+    setState(() {
+      _profileId = selectedProfileId;
+      _documents = [];
+    });
+    _loadData();
+  }
+
   Future<void> _loadData() async {
+    final requestId = ++_loadRequestId;
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
       final profiles = await ApiService.fetchProfiles();
-      if (!mounted) return;
-      ProfileSelectionScope.of(context).setProfiles(profiles);
-      final globalProfileId = ProfileSelectionScope.of(
-        context,
-      ).selectedProfileId;
+      if (!mounted || requestId != _loadRequestId) return;
+      final selection = ProfileSelectionScope.of(context);
+      selection.setProfiles(profiles);
+      final currentProfileId = selection.selectedProfileId;
       final selectedProfileId =
-          profiles.any((profile) => profile['id']?.toString() == _profileId)
-          ? _profileId
-          : profiles.any(
-              (profile) => profile['id']?.toString() == globalProfileId,
-            )
-          ? globalProfileId
+          profiles.any(
+            (profile) => profile['id']?.toString() == currentProfileId,
+          )
+          ? currentProfileId
           : (profiles.where(isCurrentUserProfile).firstOrNull ??
                     profiles.firstOrNull)?['id']
                 ?.toString();
       final documents = await ApiService.fetchMedicalDocuments(
         profileId: selectedProfileId,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          requestId != _loadRequestId ||
+          selectedProfileId != selection.selectedProfileId) {
+        return;
+      }
       if (selectedProfileId != null) {
-        ProfileSelectionScope.of(context).selectProfileId(selectedProfileId);
+        selection.selectProfileId(selectedProfileId);
       }
       setState(() {
         _profiles = profiles;
@@ -70,7 +98,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         _isLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestId != _loadRequestId) return;
       setState(() {
         _error = error is ApiException ? error.message : error.toString();
         _isLoading = false;
@@ -81,8 +109,12 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   Future<void> _selectProfile(String? id) async {
     if (id == null || id == _profileId) return;
     ProfileSelectionScope.of(context).selectProfileId(id);
-    setState(() => _profileId = id);
-    await _loadData();
+  }
+
+  @override
+  void dispose() {
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    super.dispose();
   }
 
   Future<void> _uploadDocument() async {
@@ -381,13 +413,27 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                             for (final profile in _profiles)
                               DropdownMenuItem(
                                 value: profile['id'].toString(),
-                                child: Text(
-                                  profileRoleLabel(profile) == null
-                                      ? profileDisplayName(profile)
-                                      : '${profileDisplayName(profile)} '
-                                            '[${profileRoleLabel(profile)}]',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      profileRoleLabel(profile) == null
+                                          ? profileDisplayName(profile)
+                                          : '${profileDisplayName(profile)} '
+                                                '[${profileRoleLabel(profile)}]',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      profileDemographicSubtitle(profile),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ],
                                 ),
                               ),
                           ],

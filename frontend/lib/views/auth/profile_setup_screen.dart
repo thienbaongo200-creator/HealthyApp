@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/theme/app_colors.dart';
 import '../../services/api_service.dart';
+import '../../state/profile_selection.dart';
 import '../../widgets/widgets.dart';
 import '../home/dashboard_screen.dart';
 
@@ -15,8 +16,8 @@ class ProfileSetupScreen extends StatefulWidget {
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _formKey = GlobalKey<FormState>();
-  String _selectedGender = 'Nam';
-  bool _genderSelected = true;
+  String _selectedGender = '';
+  bool _genderSelected = false;
   bool _isLoading = false;
   DateTime? _selectedDate;
   final TextEditingController _dobController = TextEditingController();
@@ -78,11 +79,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
-
     // Chuyển đổi gender sang tiếng Anh cho API
     final genderMap = {'Nam': 'male', 'Nữ': 'female'};
-    final gender = genderMap[_selectedGender] ?? 'male';
+    final gender = genderMap[_selectedGender];
+    if (gender == null) {
+      _showSnackBar('Vui lòng chọn giới tính', Colors.redAccent);
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     // Format dob thành YYYY-MM-DD cho API
     final dob = _selectedDate != null
@@ -93,26 +98,46 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final height = double.tryParse(_heightController.text.trim()) ?? 0.0;
     final weight = double.tryParse(_weightController.text.trim()) ?? 0.0;
 
-    final result = await ApiService.instance.updateProfile(
-      gender: gender,
-      dob: dob,
-      height: height,
-      weight: weight,
-    );
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    if (result['success']) {
-      _showSnackBar(result['message'], AppColors.success);
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+    try {
+      final result = await ApiService.instance.updateProfile(
+        gender: gender,
+        dob: dob,
+        height: height,
+        weight: weight,
+      );
+      if (!mounted) return;
+      if (result['success'] != true) {
+        _showSnackBar(
+          result['message']?.toString() ?? 'Không thể cập nhật hồ sơ.',
+          Colors.redAccent,
         );
+        return;
       }
-    } else {
-      _showSnackBar(result['message'], Colors.redAccent);
+
+      final isComplete = await ApiService.isCurrentProfileComplete();
+      if (!mounted) return;
+      if (!isComplete) {
+        _showSnackBar(
+          'Máy chủ chưa xác nhận hồ sơ đã đầy đủ. Vui lòng kiểm tra lại.',
+          Colors.redAccent,
+        );
+        return;
+      }
+
+      final profiles = await ApiService.fetchProfiles();
+      if (!mounted) return;
+      ProfileSelectionScope.of(context).setProfiles(profiles);
+      _showSnackBar('Cập nhật hồ sơ thành công.', AppColors.success);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const DashboardScreen()),
+      );
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('Không thể xác nhận hồ sơ: $error', Colors.redAccent);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

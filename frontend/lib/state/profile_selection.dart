@@ -3,6 +3,86 @@ import 'package:flutter/material.dart';
 bool isCurrentUserProfile(Map<String, dynamic> profile) =>
     profile['is_current_user'] == true;
 
+String? profileGenderLabel(dynamic value) {
+  final gender = value?.toString().trim() ?? '';
+  if (gender.isEmpty) return null;
+  switch (gender.toLowerCase()) {
+    case 'male':
+    case 'm':
+      return 'Nam';
+    case 'female':
+    case 'f':
+      return 'Nữ';
+    case 'khác':
+    case 'other':
+    case 'unknown':
+      return 'Khác';
+    default:
+      return gender;
+  }
+}
+
+String? profileDemographicSummary(
+  Map<String, dynamic> profile, {
+  DateTime? today,
+}) {
+  final details = <String>[];
+  final gender = profileGenderLabel(profile['gender']);
+  if (gender != null) details.add(gender);
+
+  final birthDate = DateTime.tryParse(
+    profile['date_of_birth']?.toString() ?? '',
+  );
+  if (birthDate != null) {
+    final currentDate = today ?? DateTime.now();
+    var age = currentDate.year - birthDate.year;
+    if (currentDate.month < birthDate.month ||
+        (currentDate.month == birthDate.month &&
+            currentDate.day < birthDate.day)) {
+      age--;
+    }
+    if (age >= 0) details.add('$age tuổi');
+  }
+  return details.isEmpty ? null : details.join(' • ');
+}
+
+String profileDemographicSubtitle(
+  Map<String, dynamic> profile, {
+  DateTime? today,
+}) {
+  final gender = profileGenderLabel(profile['gender']) ?? 'Chưa rõ giới tính';
+  final birthDate = DateTime.tryParse(
+    profile['date_of_birth']?.toString() ?? '',
+  );
+  var ageLabel = 'Chưa cập nhật tuổi';
+  if (birthDate != null) {
+    final currentDate = today ?? DateTime.now();
+    var age = currentDate.year - birthDate.year;
+    if (currentDate.month < birthDate.month ||
+        (currentDate.month == birthDate.month &&
+            currentDate.day < birthDate.day)) {
+      age--;
+    }
+    if (age >= 0) ageLabel = '$age tuổi';
+  }
+  return '$gender • $ageLabel';
+}
+
+List<Map<String, dynamic>> normalizeProfiles(
+  List<Map<String, dynamic>> profiles,
+) {
+  final result = <Map<String, dynamic>>[];
+  var hasCurrentSelf = false;
+  for (final profile in profiles) {
+    if (isCurrentUserProfile(profile)) {
+      if (hasCurrentSelf) continue;
+      hasCurrentSelf = true;
+    }
+    result.add(profile);
+  }
+  return result;
+}
+
 String profileDisplayName(Map<String, dynamic> profile) {
   if (isCurrentUserProfile(profile)) return 'Tôi';
   final name = profile['full_name']?.toString().trim() ?? '';
@@ -65,7 +145,7 @@ class ProfileSelectionController extends ChangeNotifier {
   }
 
   void setProfiles(List<Map<String, dynamic>> profiles) {
-    _profiles = List.unmodifiable(profiles);
+    _profiles = List.unmodifiable(normalizeProfiles(profiles));
     final currentIsValid = _profiles.any(
       (profile) => profile['id']?.toString() == _selectedProfileId,
     );

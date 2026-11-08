@@ -54,6 +54,7 @@ class ApiService {
   );
 
   static String? _token;
+  static bool? _profileCompletedFromAuth;
   static final ApiService instance = ApiService();
 
   static Future<Map<String, String>> _authHeaders() async {
@@ -118,9 +119,16 @@ class ApiService {
         }),
       );
       final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final profileCompleted = data['is_profile_completed'];
+        _profileCompletedFromAuth = profileCompleted is bool
+            ? profileCompleted
+            : null;
+      }
       return {
         'success': response.statusCode >= 200 && response.statusCode < 300,
         'message': data['detail'] ?? data['message'] ?? 'Cập nhật thất bại.',
+        'is_profile_completed': data['is_profile_completed'],
       };
     } catch (_) {
       return {
@@ -179,6 +187,14 @@ class ApiService {
     }
     await TokenStorage.saveAccessToken(accessToken);
     _token = accessToken;
+    final profileCompleted =
+        decoded['is_profile_completed'] ??
+        (decoded['user'] is Map<String, dynamic>
+            ? (decoded['user'] as Map<String, dynamic>)['is_profile_completed']
+            : null);
+    _profileCompletedFromAuth = profileCompleted is bool
+        ? profileCompleted
+        : null;
     return accessToken;
   }
 
@@ -258,6 +274,7 @@ class ApiService {
       }
     } finally {
       _token = null;
+      _profileCompletedFromAuth = null;
       await TokenStorage.clearTokens();
     }
   }
@@ -483,6 +500,30 @@ class ApiService {
     return profiles.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
+  static Future<bool> isCurrentProfileComplete() async {
+    final authStatus = _profileCompletedFromAuth;
+    if (authStatus != null) return authStatus;
+
+    final profiles = await fetchProfiles();
+    Map<String, dynamic>? self;
+    for (final profile in profiles) {
+      if (profile['profile_type'] == 'SELF' &&
+          profile['is_current_user'] == true) {
+        self = profile;
+        break;
+      }
+    }
+    if (self == null) return false;
+    final height = double.tryParse(self['height_cm']?.toString() ?? '');
+    final weight = double.tryParse(self['weight_kg']?.toString() ?? '');
+    return self['date_of_birth']?.toString().isNotEmpty == true &&
+        self['gender']?.toString().trim().isNotEmpty == true &&
+        height != null &&
+        height > 0 &&
+        weight != null &&
+        weight > 0;
+  }
+
   static Future<List<Map<String, dynamic>>> fetchAIInsights({
     required String profileId,
   }) async {
@@ -494,10 +535,7 @@ class ApiService {
       headers: await _authHeaders(),
     );
     if (response.statusCode != 200) {
-      throw ApiException(
-        response.statusCode,
-        'KhĂ´ng thá»ƒ táº£i nháº­n Ä‘á»‹nh AI.',
-      );
+      throw ApiException(response.statusCode, 'Không thể tải nhận định AI.');
     }
     final payload = jsonDecode(response.body);
     final insights = payload is List
@@ -675,6 +713,7 @@ class ApiService {
   static Future<Map<String, dynamic>> createDependentProfile({
     required String fullName,
     required String relationType,
+    required String gender,
     String householdRole = 'MEMBER',
     String? dateOfBirth,
   }) async {
@@ -686,6 +725,7 @@ class ApiService {
         'profile_type': 'DEPENDENT',
         'full_name': fullName,
         'relation_type': relationType,
+        'gender': gender,
         'household_role': householdRole,
         'date_of_birth': ?dateOfBirth,
       }),
@@ -703,6 +743,7 @@ class ApiService {
     required String profileId,
     required String fullName,
     required String relationType,
+    required String gender,
     String? householdRole,
     String? dateOfBirth,
   }) async {
@@ -713,6 +754,7 @@ class ApiService {
       body: jsonEncode({
         'full_name': fullName,
         'relation_type': relationType,
+        'gender': gender,
         ...?(householdRole == null ? null : {'household_role': householdRole}),
         'date_of_birth': dateOfBirth,
       }),

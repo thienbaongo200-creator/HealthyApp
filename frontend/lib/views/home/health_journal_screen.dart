@@ -34,6 +34,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   String? _error;
   int _loadRequestId = 0;
   List<Map<String, dynamic>> _measurements = [];
+  ProfileSelectionController? _profileSelection;
 
   @override
   void initState() {
@@ -42,7 +43,48 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
     _selectedDate = DateTime(now.year, now.month, now.day);
     _selectedMember = widget.initialMember;
     _profileId = widget.initialProfileId;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMeasurements());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final selection = ProfileSelectionScope.of(context);
+    if (identical(selection, _profileSelection)) return;
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _profileSelection = selection;
+    final selectedProfile = selection.selectedProfile;
+    final selectedProfileId = selection.selectedProfileId;
+    if (selectedProfileId != null) {
+      _profileId = selectedProfileId;
+      if (selectedProfile != null) {
+        _selectedMember = profileDisplayName(selectedProfile);
+      }
+    }
+    selection.addListener(_onProfileSelectionChanged);
+  }
+
+  void _onProfileSelectionChanged() {
+    final selection = _profileSelection;
+    final selectedProfileId = selection?.selectedProfileId;
+    if (!mounted ||
+        selectedProfileId == null ||
+        selectedProfileId == _profileId) {
+      return;
+    }
+    final profile = selection?.selectedProfile;
+    setState(() {
+      _profileId = selectedProfileId;
+      if (profile != null) _selectedMember = profileDisplayName(profile);
+      _measurements = [];
+    });
     _loadMeasurements();
+  }
+
+  @override
+  void dispose() {
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    super.dispose();
   }
 
   Future<void> _loadMeasurements() async {
@@ -157,9 +199,11 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   }
 
   Future<void> _chooseMember() async {
+    final selection = ProfileSelectionScope.of(context);
     if (_profiles.isEmpty) {
       try {
         _profiles = await ApiService.fetchProfiles();
+        selection.setProfiles(_profiles);
       } catch (error) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -182,9 +226,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
               ListTile(
                 leading: const Icon(Icons.person_outline),
                 title: Text(profileDisplayName(profile)),
-                subtitle: profileRoleLabel(profile) == null
-                    ? null
-                    : Text('[${profileRoleLabel(profile)}]'),
+                subtitle: Text(profileDemographicSubtitle(profile)),
                 trailing: profile['id']?.toString() == _profileId
                     ? const Icon(Icons.check, color: _teal)
                     : null,
@@ -201,12 +243,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
           .where((item) => item['id']?.toString() == profileId)
           .firstOrNull;
       if (profile == null) return;
-      setState(() {
-        _profileId = profileId;
-        _selectedMember = profileDisplayName(profile);
-      });
       ProfileSelectionScope.of(context).selectProfileId(profileId);
-      await _loadMeasurements();
     }
   }
 

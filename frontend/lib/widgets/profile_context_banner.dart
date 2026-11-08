@@ -9,7 +9,7 @@ class ProfileContextBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final profile = ProfileSelectionScope.of(context).selectedProfile;
     if (profile == null) return const SizedBox.shrink();
-    final name = profile['full_name']?.toString() ?? 'Hồ sơ';
+    final name = profileDisplayName(profile);
     final relation = profileRelationshipLabel(profile);
     final roleLabel = profileRoleLabel(profile) ?? 'Chủ sở hữu';
     final role = switch (roleLabel) {
@@ -65,6 +65,16 @@ class ProfileContextBanner extends StatelessWidget {
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  profileDemographicSubtitle(profile),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 3),

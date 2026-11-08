@@ -27,7 +27,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     with SingleTickerProviderStateMixin {
   static const _teal = AppColors.primary;
   static const _ink = AppColors.textPrimary;
-  static const _self = '(Tôi)';
   static const _quickQuestions = [
     'Tôi nên theo dõi chỉ số nào mỗi ngày?',
     'Làm sao để ngủ tốt hơn?',
@@ -76,9 +75,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   @override
   void initState() {
     super.initState();
-    _selectedMember = widget.initialMember == 'Tôi'
-        ? _self
-        : widget.initialMember;
+    _selectedMember = widget.initialMember;
     _tabController = TabController(length: 2, vsync: this)
       ..addListener(_onTabChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadChatProfile());
@@ -99,7 +96,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   }
 
   Future<void> _analyzeNow() async {
-    if (_chatProfileId == null) {
+    final requestProfileId = _chatProfileId;
+    if (requestProfileId == null) {
       _showMessage('Hồ sơ đang xem chưa sẵn sàng.');
       return;
     }
@@ -108,9 +106,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       _analysisError = null;
     });
     try {
-      final risk = await _aiApiService.assessRisk(profileId: _chatProfileId!);
+      final risk = await _aiApiService.assessRisk(profileId: requestProfileId);
       final allMeasurements = await ApiService.fetchHealthMeasurements(
-        profileId: _chatProfileId,
+        profileId: requestProfileId,
       );
       final cutoff = DateTime.now().subtract(const Duration(days: 7));
       final recent = <({DateTime measuredAt, int heartRate})>[];
@@ -132,7 +130,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         recent.add((measuredAt: measuredAt, heartRate: heartRate));
       }
       recent.sort((a, b) => b.heartRate.compareTo(a.heartRate));
-      if (!mounted) return;
+      if (!mounted || requestProfileId != _chatProfileId) return;
       setState(() {
         _analysisLoaded = true;
         _measurementsInPeriod = recent.length;
@@ -149,7 +147,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       });
       _showMessage('Đã phân tích ${_riskAnalyzedCount ?? 0} chỉ số gần nhất.');
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestProfileId != _chatProfileId) return;
       setState(() {
         _analysisError = error.toString().contains('403')
             ? 'Bạn không có quyền xem đánh giá của hồ sơ này.'
@@ -159,22 +157,23 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     }
   }
 
-  Future<void> _selectMember(String member) async {
+  Future<void> _selectMember(String profileId) async {
+    final selection = ProfileSelectionScope.of(context);
+    final profile = selection.profiles
+        .where((item) => item['id']?.toString() == profileId)
+        .firstOrNull;
+    if (profile == null || profileId == _chatProfileId) return;
+
     _profileSelectionChanged = true;
     _conversationLoadRequest++;
     setState(() {
-      _selectedMember = member;
+      _selectedMember = profileDisplayName(profile);
       _chatProfileId = null;
       _conversationId = null;
       _conversations = [];
       _chatHistoryError = null;
-      _messages
-        ..clear()
-        ..add(_welcomeMessage());
-    });
-    await _loadChatProfile();
-    setState(() {
       _analysisLoaded = false;
+      _analysisError = null;
       _measurementsInPeriod = null;
       _peakHeartRate = null;
       _peakHeartRateAt = null;
@@ -185,7 +184,14 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       _riskInterpretation = null;
       _riskGeneratedBy = null;
       _riskAnalyzedCount = null;
+      _isSendingChat = false;
+      _isAnalyzing = false;
+      _messages
+        ..clear()
+        ..add(_welcomeMessage());
     });
+    selection.selectProfileId(profileId);
+    await _loadChatProfile();
   }
 
   Future<void> _loadChatProfile() async {
@@ -197,34 +203,27 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     try {
       final profiles = await _aiApiService.fetchProfiles();
       if (!mounted || requestId != _profileLoadRequest) return;
-      final initialProfileId =
-          !_profileSelectionChanged && widget.initialProfileId != null
-          ? widget.initialProfileId
-          : null;
-      final profile = initialProfileId != null
-          ? profiles
-                .where((item) => item['id']?.toString() == initialProfileId)
-                .firstOrNull
-          : _selectedMember == _self
-          ? profiles.where(isCurrentUserProfile).firstOrNull
-          : profiles
-                .where(
-                  (item) =>
-                      item['full_name']?.toString().trim().toLowerCase() ==
-                      _selectedMember.trim().toLowerCase(),
-                )
-                .firstOrNull;
+      final selection = ProfileSelectionScope.of(context);
+      selection.setProfiles(profiles);
+      final requestedProfileId = !_profileSelectionChanged
+          ? widget.initialProfileId ?? selection.selectedProfileId
+          : selection.selectedProfileId;
+      final profile =
+          profiles
+              .where((item) => item['id']?.toString() == requestedProfileId)
+              .firstOrNull ??
+          profiles.where(isCurrentUserProfile).firstOrNull;
       if (profile == null || profile['id'] == null) {
         throw Exception(
-          'Không tìm thấy hồ sơ "$_selectedMember". Vui lòng chọn thành viên có hồ sơ đã tạo.',
+          'Không tìm thấy hồ sơ đang chọn. Vui lòng tải lại danh sách hồ sơ.',
         );
       }
       if (!mounted || requestId != _profileLoadRequest) return;
-      setState(() => _chatProfileId = profile['id'].toString());
-      ProfileSelectionScope.of(
-        context,
-      ).selectProfileId(profile['id'].toString());
-      await _loadConversationHistory(profile['id'].toString());
+      final selectedProfileId = profile['id'].toString();
+      selection.selectProfileId(selectedProfileId);
+      _selectedMember = profileDisplayName(profile);
+      setState(() => _chatProfileId = selectedProfileId);
+      await _loadConversationHistory(selectedProfileId);
     } catch (error) {
       if (!mounted || requestId != _profileLoadRequest) return;
       setState(
@@ -272,7 +271,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       }
 
       setState(() {
-        _conversations = conversations;
+        _conversations = List.of(conversations);
         _conversationId = conversationId;
         _messages
           ..clear()
@@ -391,6 +390,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
       );
       return;
     }
+    final requestProfileId = _chatProfileId!;
+    final requestConversationId = _conversationId;
     HapticFeedback.selectionClick();
     setState(() {
       _messages.add(
@@ -402,11 +403,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     _scrollToBottom();
     try {
       final response = await _aiApiService.sendMessage(
-        profileId: _chatProfileId!,
+        profileId: requestProfileId,
         message: text,
-        conversationId: _conversationId,
+        conversationId: requestConversationId,
       );
-      if (!mounted) return;
+      if (!mounted || _chatProfileId != requestProfileId) return;
       setState(() {
         _conversationId = response['conversation_id']?.toString();
         final conversationId = _conversationId;
@@ -431,7 +432,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         );
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || _chatProfileId != requestProfileId) return;
       final message = error is AiFallbackException
           ? 'Phản hồi dự phòng (chưa được lưu): ${error.fallbackReply}\n\n${error.message}'
           : 'Không gửi được tin nhắn. $error';
@@ -494,8 +495,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                   child: PopupMenuButton<String>(
                     onSelected: _selectMember,
                     itemBuilder: (context) => [
-                      for (final member in [_self, 'Bố', 'Mẹ'])
-                        PopupMenuItem(value: member, child: Text(member)),
+                      for (final profile in ProfileSelectionScope.of(
+                        context,
+                      ).profiles)
+                        PopupMenuItem(
+                          value: profile['id']?.toString() ?? '',
+                          child: Text(profileDisplayName(profile)),
+                        ),
                     ],
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 330),

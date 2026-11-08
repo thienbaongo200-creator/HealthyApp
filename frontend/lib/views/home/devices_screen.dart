@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
 import 'main_navigation_wrapper.dart';
 import 'quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/watch_sync_config.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class DevicesScreen extends StatefulWidget {
@@ -14,12 +16,14 @@ class DevicesScreen extends StatefulWidget {
     required this.pendingMeasurements,
     required this.onSync,
     this.profileId,
+    this.member = 'Tôi',
   });
 
   final bool isWatchConnected;
   final int pendingMeasurements;
   final Future<void> Function() onSync;
   final String? profileId;
+  final String member;
 
   @override
   State<DevicesScreen> createState() => _DevicesScreenState();
@@ -31,17 +35,63 @@ class _DevicesScreenState extends State<DevicesScreen> {
   static const _storage = FlutterSecureStorage();
   bool _isSyncing = false;
   String? _pairedDeviceId;
+  String? _profileId;
+  int _deviceRequestId = 0;
+  ProfileSelectionController? _profileSelection;
 
   @override
   void initState() {
     super.initState();
+    _profileId = widget.profileId;
     _loadPairedDevice();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final selection = ProfileSelectionScope.of(context);
+    if (identical(selection, _profileSelection)) return;
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _profileSelection = selection;
+    final selectedProfileId = selection.selectedProfileId;
+    if (selectedProfileId != null && selectedProfileId != _profileId) {
+      _profileId = selectedProfileId;
+      _pairedDeviceId = null;
+      _loadPairedDevice();
+    }
+    selection.addListener(_onProfileSelectionChanged);
+  }
+
+  String get _member {
+    final profile = _profileSelection?.selectedProfile;
+    return profile == null ? widget.member : profileDisplayName(profile);
+  }
+
+  void _onProfileSelectionChanged() {
+    final profileId = _profileSelection?.selectedProfileId;
+    if (!mounted || profileId == null || profileId == _profileId) return;
+    setState(() {
+      _profileId = profileId;
+      _pairedDeviceId = null;
+    });
+    _loadPairedDevice();
+  }
+
+  @override
+  void dispose() {
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    super.dispose();
+  }
+
   Future<void> _loadPairedDevice() async {
-    final id = widget.profileId;
-    if (id == null) return;
+    final requestId = ++_deviceRequestId;
+    final id = _profileId;
+    if (id == null) {
+      if (mounted) setState(() => _pairedDeviceId = null);
+      return;
+    }
     final value = await _storage.read(key: 'paired_device_$id');
+    if (!mounted || requestId != _deviceRequestId || id != _profileId) return;
     if (mounted) setState(() => _pairedDeviceId = value);
   }
 
@@ -71,12 +121,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   Future<void> _pairDevice() async {
-    final profileId = widget.profileId;
+    final profileId = _profileId;
     if (profileId == null) {
       _showMessage('Chọn hồ sơ trước khi ghép nối thiết bị.');
       return;
     }
-    final identifier = TextEditingController();
+    final identifier = TextEditingController(text: watchDeviceIdentifier);
     final name = TextEditingController(text: 'Wear OS');
     final details = await showDialog<({String identifier, String name})>(
       context: context,
@@ -87,7 +137,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
           children: [
             TextField(
               controller: identifier,
-              decoration: const InputDecoration(labelText: 'Mã thiết bị'),
+              decoration: const InputDecoration(
+                labelText: 'Mã thiết bị',
+                helperText: 'Phải trùng WATCH_DEVICE_IDENTIFIER của Wear OS.',
+              ),
             ),
             TextField(
               controller: name,
@@ -124,7 +177,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
         throw const FormatException('Device API did not return an ID.');
       }
       await _storage.write(key: 'paired_device_$profileId', value: deviceId);
-      if (mounted) {
+      await _storage.write(
+        key: 'paired_device_identifier_$profileId',
+        value: details.identifier,
+      );
+      if (mounted && profileId == _profileId) {
         setState(() => _pairedDeviceId = deviceId);
         _showMessage('Thiết bị đã ghép với hồ sơ.');
       }
@@ -370,7 +427,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   Future<void> _openQuickAdd() async {
     await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => const QuickAddScreen()),
+      MaterialPageRoute<bool>(
+        builder: (_) => QuickAddScreen(member: _member, profileId: _profileId),
+      ),
     );
   }
 }

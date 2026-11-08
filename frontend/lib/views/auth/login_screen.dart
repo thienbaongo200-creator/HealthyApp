@@ -11,6 +11,7 @@ import '../../widgets/widgets.dart';
 import 'profile_setup_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
+import '../home/dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -49,10 +50,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final token = await _apiService.login(inputAccount, password);
       await _apiService.setToken(token);
       _showSnackBar('Đăng nhập thành công!', AppColors.success);
+      final profileComplete = await ApiService.isCurrentProfileComplete();
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
+          MaterialPageRoute(
+            builder: (context) => profileComplete
+                ? const DashboardScreen()
+                : const ProfileSetupScreen(),
+          ),
         );
       }
     } on ApiException catch (e, stackTrace) {

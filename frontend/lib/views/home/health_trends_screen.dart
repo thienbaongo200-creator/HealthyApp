@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
 import 'package:frontend/widgets/widgets.dart';
@@ -33,26 +34,65 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
   bool _isLoading = true;
   String? _error;
   List<_TrendPoint> _points = [];
+  String? _profileId;
+  int _loadRequestId = 0;
+  ProfileSelectionController? _profileSelection;
 
   @override
   void initState() {
     super.initState();
+    _profileId = widget.profileId;
     _loadRecords();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final selection = ProfileSelectionScope.of(context);
+    if (identical(selection, _profileSelection)) return;
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _profileSelection = selection;
+    final selectedProfileId = selection.selectedProfileId;
+    if (selectedProfileId != null && selectedProfileId != _profileId) {
+      _profileId = selectedProfileId;
+      _loadRecords();
+    }
+    selection.addListener(_onProfileSelectionChanged);
+  }
+
+  String get _member {
+    final profile = _profileSelection?.selectedProfile;
+    return profile == null ? widget.member : profileDisplayName(profile);
+  }
+
+  void _onProfileSelectionChanged() {
+    final profileId = _profileSelection?.selectedProfileId;
+    if (!mounted || profileId == null || profileId == _profileId) return;
+    _profileId = profileId;
+    _loadRecords();
+  }
+
+  @override
+  void dispose() {
+    _profileSelection?.removeListener(_onProfileSelectionChanged);
+    super.dispose();
+  }
+
   Future<void> _loadRecords() async {
+    final requestId = ++_loadRequestId;
+    final requestProfileId = _profileId;
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      if (widget.member != 'Tôi' && widget.profileId == null) {
+      if (_member != 'Tôi' && requestProfileId == null) {
         throw const FormatException(
           'Chưa có UUID hồ sơ gia đình để truy vấn xu hướng.',
         );
       }
       final records = await ApiService.fetchHealthMeasurements(
-        profileId: widget.profileId,
+        profileId: requestProfileId,
       );
       final start = DateTime.now().subtract(Duration(days: _periodDays));
       final grouped = <DateTime, List<_TrendPoint>>{};
@@ -89,13 +129,21 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
                     secondaryValues.length,
         );
       }).toList()..sort((a, b) => a.date.compareTo(b.date));
-      if (!mounted) return;
+      if (!mounted ||
+          requestId != _loadRequestId ||
+          requestProfileId != _profileId) {
+        return;
+      }
       setState(() {
         _points = points;
         _isLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted ||
+          requestId != _loadRequestId ||
+          requestProfileId != _profileId) {
+        return;
+      }
       setState(() {
         _points = [];
         _error = error is ApiException
@@ -248,8 +296,7 @@ class _HealthTrendsScreenState extends State<HealthTrendsScreen> {
   Future<void> _openQuickAdd() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) =>
-            QuickAddScreen(member: widget.member, profileId: widget.profileId),
+        builder: (_) => QuickAddScreen(member: _member, profileId: _profileId),
       ),
     );
     if (saved == true && mounted) await _loadRecords();

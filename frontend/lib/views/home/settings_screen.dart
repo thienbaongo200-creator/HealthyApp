@@ -203,7 +203,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             final id = profile['id']?.toString() ?? '';
                             return DropdownMenuItem<String>(
                               value: id,
-                              child: Text(profileDisplayName(profile)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(profileDisplayName(profile)),
+                                  Text(
+                                    profileDemographicSubtitle(profile),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
                             );
                           })
                           .toList(growable: false),

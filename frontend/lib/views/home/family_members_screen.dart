@@ -45,7 +45,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       _error = null;
     });
     try {
-      final profiles = await ApiService.fetchProfiles();
+      final profiles = normalizeProfiles(await ApiService.fetchProfiles());
       if (!mounted) return;
       final households = await ApiService.fetchHouseholds();
       if (!mounted) return;
@@ -85,6 +85,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
           relationType: result.relation,
           householdRole: result.role,
           dateOfBirth: result.dateOfBirth,
+          gender: result.gender,
         );
       } else {
         await ApiService.updateProfileDetails(
@@ -93,6 +94,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
           relationType: result.relation,
           householdRole: result.role,
           dateOfBirth: result.dateOfBirth,
+          gender: result.gender,
         );
       }
       await _load();
@@ -355,6 +357,9 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
         profile['id']?.toString();
     final canEdit =
         profile['profile_type'] != 'SELF' && _viewerRoleOf(profile) == 'OWNER';
+    final demographicSummary = profileDemographicSubtitle(profile);
+    final height = _profileNumber(profile['height_cm']);
+    final weight = _profileNumber(profile['weight_kg']);
     return AppCard(
       margin: const EdgeInsets.only(bottom: AppSpacing.x2),
       padding: const EdgeInsets.all(AppSpacing.x3),
@@ -381,11 +386,24 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                 ),
                 const SizedBox(height: AppSpacing.x1),
                 Text(
-                  profile['profile_type'] == 'SELF'
-                      ? 'Hồ sơ chính'
-                      : (_relations[profile['relation_type']] ?? 'Khác'),
+                  _relationshipLabel(profile),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                const SizedBox(height: AppSpacing.x1),
+                Text(
+                  demographicSummary,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (height != null || weight != null) ...[
+                  const SizedBox(height: AppSpacing.x1),
+                  Text(
+                    [
+                      if (height != null) '${_formatProfileNumber(height)} cm',
+                      if (weight != null) '${_formatProfileNumber(weight)} kg',
+                    ].join(' • '),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.x1),
                 StatusBadge(
                   label:
@@ -413,6 +431,26 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     );
   }
 
+  String _relationshipLabel(Map<String, dynamic> profile) {
+    if (profile['profile_type'] == 'SELF') return 'Hồ sơ chính';
+    if (profile['relation_type'] == 'CHILD') {
+      return switch (profileGenderLabel(profile['gender'])) {
+        'Nam' => 'Con trai',
+        'Nữ' => 'Con gái',
+        _ => 'Con',
+      };
+    }
+    return _relations[profile['relation_type']] ?? 'Khác';
+  }
+
+  double? _profileNumber(dynamic value) => value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString() ?? '');
+
+  String _formatProfileNumber(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
+
   String _roleOf(Map<String, dynamic> profile) {
     final viewerRole = profile['viewer_role']?.toString();
     if (viewerRole != null && viewerRole != 'OWNER') return viewerRole;
@@ -425,9 +463,10 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
 }
 
 class _ProfileDraft {
-  const _ProfileDraft(this.name, this.relation, this.role, this.dateOfBirth);
+  const _ProfileDraft(this.name, this.relation, this.role, this.dateOfBirth, this.gender);
   final String name, relation, role;
   final String? dateOfBirth;
+  final String gender;
 }
 
 class _InvitationDraft {
@@ -538,6 +577,12 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   late String _role = widget.profile?['household_role'] == 'CAREGIVER'
       ? 'CAREGIVER'
       : 'MEMBER';
+  late String _gender = switch (profileGenderLabel(widget.profile?['gender'])) {
+    'Nam' => 'Nam',
+    'Nữ' => 'Nữ',
+    'Khác' => 'Khác',
+    _ => 'Khác',
+  };
   final _form = GlobalKey<FormState>();
   @override
   void dispose() {
@@ -571,6 +616,18 @@ class _ProfileEditorState extends State<_ProfileEditor> {
             ],
             onChanged: (v) {
               if (v != null) setState(() => _relation = v);
+            },
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: _gender,
+            decoration: const InputDecoration(labelText: 'Giới tính'),
+            items: const [
+              DropdownMenuItem(value: 'Nam', child: Text('Nam')),
+              DropdownMenuItem(value: 'Nữ', child: Text('Nữ')),
+              DropdownMenuItem(value: 'Khác', child: Text('Khác')),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _gender = value);
             },
           ),
           const SizedBox(height: 12),
@@ -616,6 +673,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
               _relation,
               _role,
               year.isEmpty ? null : '$year-01-01',
+              _gender,
             ),
           );
         },
