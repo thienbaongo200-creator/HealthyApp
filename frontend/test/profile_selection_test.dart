@@ -57,4 +57,50 @@ void main() {
     expect(profileDisplayName(controller.selectedProfile!), 'Tôi');
     controller.dispose();
   });
+
+  test('clear removes cached profiles and selection between auth sessions', () {
+    final controller = ProfileSelectionController()
+      ..setProfiles([
+        {
+          'id': 'old-account-profile',
+          'profile_type': 'SELF',
+          'is_current_user': true,
+        },
+      ]);
+
+    controller.clear();
+
+    expect(controller.profiles, isEmpty);
+    expect(controller.selectedProfileId, isNull);
+    expect(controller.selectedProfile, isNull);
+    controller.dispose();
+  });
+
+  test(
+    'demographic subtitle keeps gender and age format when data is missing',
+    () {
+      final today = DateTime(2026, 11, 7);
+      expect(
+        profileDemographicSubtitle({
+          'gender': 'male',
+          'date_of_birth': '2005-11-07',
+        }, today: today),
+        'Nam • 21 tuổi',
+      );
+      expect(
+        profileDemographicSubtitle({'gender': 'female'}, today: today),
+        'Nữ • Chưa cập nhật tuổi',
+      );
+      expect(
+        profileDemographicSubtitle({
+          'date_of_birth': '1984-01-01',
+        }, today: today),
+        'Chưa rõ giới tính • 42 tuổi',
+      );
+      expect(
+        profileDemographicSubtitle({}, today: today),
+        'Chưa rõ giới tính • Chưa cập nhật tuổi',
+      );
+    },
+  );
 }

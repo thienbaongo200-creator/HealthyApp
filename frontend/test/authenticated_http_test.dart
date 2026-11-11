@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -137,6 +138,46 @@ void main() {
       expect(response.statusCode, 401);
       expect(resourceAttempts, 2);
       expect(refreshAttempts, 1);
+    });
+
+    test('does not restore an old token after the session is cleared', () async {
+      var accessToken = 'expired-access';
+      var refreshToken = 'old-refresh';
+      final refreshStarted = Completer<void>();
+      final refreshResponse = Completer<http.Response>();
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/auth/token/refresh/')) {
+          refreshStarted.complete();
+          return refreshResponse.future;
+        }
+        return http.Response('', 401);
+      });
+      final api = AuthenticatedHttpClient(
+        client: client,
+        readAccessToken: () async => accessToken,
+        readRefreshToken: () async => refreshToken,
+        saveAccessToken: (value) async => accessToken = value,
+        saveRefreshToken: (value) async => refreshToken = value,
+        clearTokens: () async {
+          accessToken = '';
+          refreshToken = '';
+        },
+      );
+
+      final pendingRequest = api.request(
+        'GET',
+        Uri.parse('https://example.test/api/resource/'),
+      );
+      await refreshStarted.future;
+      await api.clearSession();
+      refreshResponse.complete(
+        http.Response(jsonEncode({'access': 'stale-new-access'}), 200),
+      );
+
+      final response = await pendingRequest;
+      expect(response.statusCode, 401);
+      expect(accessToken, isEmpty);
+      expect(refreshToken, isEmpty);
     });
   });
 }

@@ -28,8 +28,15 @@ void main() {
     // Verify the metrics currently displayed on the dashboard.
     expect(find.text('Nhịp tim'), findsOneWidget);
     expect(find.text('Giấc ngủ'), findsOneWidget);
-
     expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bedtime_rounded), findsOneWidget);
+
+    final latestInsightTitle = find.text('Nhận định sức khỏe gần nhất');
+    await tester.scrollUntilVisible(
+      latestInsightTitle,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(latestInsightTitle, findsOneWidget);
   });
 }

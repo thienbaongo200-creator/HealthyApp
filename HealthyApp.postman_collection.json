@@ -1,0 +1,6091 @@
+{
+  "info": {
+    "_postman_id": "a96e02d8-7ca8-4db7-9a93-healthyapp-api",
+    "name": "HealthyApp Django REST API",
+    "description": "Endpoints derived from backend/core/urls.py and mounted app URLConfs. Base URLs and tokens can be changed in collection variables. Collection includes compatibility aliases mounted by the project.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "profile_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "household_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "member_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "device_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "measurement_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "record_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "document_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversation_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"qa.user@example.test\",\n  \"password\": \"DemoPass#2026\",\n  \"password_confirm\": \"DemoPass#2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": [],
+          "description": "??ng k?; backend t?o h? s? SELF. Password ph?i ??p ?ng validators c?a Django."
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"qa.user@example.test\",\n  \"password\": \"DemoPass#2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/login/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": [],
+          "description": "Tr? access v? refresh JWT."
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"qa.user@example.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/forgot-password/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "forgot-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"qa.user@example.test\",\n  \"otp\": \"123456\",\n  \"new_password\": \"NewDemoPass#2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/reset-password/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "reset-password"
+              ]
+            }
+          },
+          "response": [],
+          "description": "OTP m?u; thay b?ng OTP nh?n qua email."
+        },
+        {
+          "name": "Refresh JWT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/refresh/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh JWT (compatibility alias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/token/refresh/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "token",
+                "refresh"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtain token pair (SimpleJWT alias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"qa.user@example.test\",\n  \"password\": \"DemoPass#2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/token/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/logout/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get own account consent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/ai-consent/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "ai-consent"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set own account consent",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ai_consent\": true,\n  \"consent_version\": \"1.0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/ai-consent/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "ai-consent"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Patch own profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gender\": \"OTHER\",\n  \"date_of_birth\": \"1995-01-20\",\n  \"height_cm\": \"170.00\",\n  \"weight_kg\": \"65.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/auth/profile/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "profile"
+              ]
+            }
+          },
+          "response": [],
+          "description": "C?c field ???c x? l? tr?c ti?p trong ProfileView."
+        }
+      ]
+    },
+    {
+      "name": "02 Profiles",
+      "item": [
+        {
+          "name": "Profiles list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles create dependent profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_type\": \"DEPENDENT\",\n  \"relation_type\": \"CHILD\",\n  \"household_role\": \"MEMBER\",\n  \"full_name\": \"Demo Dependent\",\n  \"date_of_birth\": \"2015-05-01\",\n  \"gender\": \"OTHER\",\n  \"height_cm\": \"140.00\",\n  \"weight_kg\": \"38.00\",\n  \"blood_type\": \"O\",\n  \"emergency_contact\": \"0900000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles"
+              ]
+            }
+          },
+          "response": [],
+          "description": "ListCreate API n?y t?o profile DEPENDENT g?n v?i t?i kho?n hi?n t?i."
+        },
+        {
+          "name": "Profiles retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles update (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Demo Profile\",\n  \"date_of_birth\": \"1990-01-01\",\n  \"gender\": \"OTHER\",\n  \"height_cm\": \"170.00\",\n  \"weight_kg\": \"65.00\",\n  \"blood_type\": \"O\",\n  \"emergency_contact\": \"0900000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight_kg\": \"66.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles archive (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": [],
+          "description": "DELETE archive m?m; h? s? SELF b? t? ch?i."
+        },
+        {
+          "name": "Profiles get AI consent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/{{profile_id}}/ai-consent/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles",
+                "{{profile_id}}",
+                "ai-consent"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles set AI consent",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent\": true,\n  \"consent_version\": \"1.0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/profiles/{{profile_id}}/ai-consent/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "profiles",
+                "{{profile_id}}",
+                "ai-consent"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles (legacy root alias) list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles (legacy root alias) create dependent profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_type\": \"DEPENDENT\",\n  \"relation_type\": \"CHILD\",\n  \"household_role\": \"MEMBER\",\n  \"full_name\": \"Demo Dependent\",\n  \"date_of_birth\": \"2015-05-01\",\n  \"gender\": \"OTHER\",\n  \"height_cm\": \"140.00\",\n  \"weight_kg\": \"38.00\",\n  \"blood_type\": \"O\",\n  \"emergency_contact\": \"0900000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api"
+              ]
+            }
+          },
+          "response": [],
+          "description": "ListCreate API n?y t?o profile DEPENDENT g?n v?i t?i kho?n hi?n t?i."
+        },
+        {
+          "name": "Profiles (legacy root alias) retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles (legacy root alias) update (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Demo Profile\",\n  \"date_of_birth\": \"1990-01-01\",\n  \"gender\": \"OTHER\",\n  \"height_cm\": \"170.00\",\n  \"weight_kg\": \"65.00\",\n  \"blood_type\": \"O\",\n  \"emergency_contact\": \"0900000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles (legacy root alias) partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"weight_kg\": \"66.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles (legacy root alias) archive (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": [],
+          "description": "DELETE archive m?m; h? s? SELF b? t? ch?i."
+        },
+        {
+          "name": "Profiles (legacy root alias) get AI consent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/{{profile_id}}/ai-consent/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "{{profile_id}}",
+                "ai-consent"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Profiles (legacy root alias) set AI consent",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent\": true,\n  \"consent_version\": \"1.0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/{{profile_id}}/ai-consent/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "{{profile_id}}",
+                "ai-consent"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 Devices",
+      "item": [
+        {
+          "name": "List devices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/devices/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "devices"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional; omitted defaults to own profiles."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pair device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"device_identifier\": \"wear-os-demo-device\",\n  \"device_name\": \"Wear OS Demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/devices/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "devices"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke device",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/devices/{{device_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "devices",
+                "{{device_id}}"
+              ]
+            }
+          },
+          "response": [],
+          "description": "PATCH route currently revokes the device; body is ignored."
+        }
+      ]
+    },
+    {
+      "name": "04 Households",
+      "item": [
+        {
+          "name": "List households",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create household",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"HealthyApp QA Household\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get household",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/{{household_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "{{household_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Leave household",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/{{household_id}}/leave/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "{{household_id}}",
+                "leave"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List household members",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/{{household_id}}/members/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "{{household_id}}",
+                "members"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invite member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"member@example.test\",\n  \"role\": \"MEMBER\",\n  \"share_level\": \"VIEW_ONLY\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/{{household_id}}/members/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "{{household_id}}",
+                "members"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update member role/share",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"CAREGIVER\",\n  \"share_level\": \"VIEW_AND_LOG\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/{{household_id}}/members/{{member_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "{{household_id}}",
+                "members",
+                "{{member_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove member",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/{{household_id}}/members/{{member_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "{{household_id}}",
+                "members",
+                "{{member_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List my invitations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/invitations/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "invitations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Respond to invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"accept\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/households/invitations/{{member_id}}/respond/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "households",
+                "invitations",
+                "{{member_id}}",
+                "respond"
+              ]
+            }
+          },
+          "response": [],
+          "description": "action: accept ho?c decline."
+        }
+      ]
+    },
+    {
+      "name": "05 Health measurements",
+      "item": [
+        {
+          "name": "Health measurements list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/?profile_id={{profile_id}}&page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Optional DRF page number; page size is 100."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health measurements create manual record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"measurement_type\": \"HEART_RATE\",\n  \"value\": \"78.00\",\n  \"value_secondary\": null,\n  \"unit\": \"bpm\",\n  \"measured_at\": \"2026-11-09T10:00:00+07:00\",\n  \"start_time\": null,\n  \"end_time\": null,\n  \"idempotency_key\": \"manual-qa-hr-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements"
+              ]
+            }
+          },
+          "response": [],
+          "description": "source do server g?n MANUAL; c?c tr??ng blood pressure c?n value_secondary."
+        },
+        {
+          "name": "Health measurements retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health measurements replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"measurement_type\": \"HEART_RATE\",\n  \"value\": \"80.00\",\n  \"unit\": \"bpm\",\n  \"measured_at\": \"2026-11-09T10:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health measurements partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"80.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health measurements delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health measurements batch sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"records\": [\n    {\n      \"device_id\": \"{{device_id}}\",\n      \"measurement_type\": \"HEART_RATE\",\n      \"value\": \"75.00\",\n      \"value_secondary\": null,\n      \"unit\": \"bpm\",\n      \"measured_at\": \"2026-11-09T10:00:00+07:00\",\n      \"idempotency_key\": \"wear-qa-hr-001\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/batch/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements",
+                "batch"
+              ]
+            }
+          },
+          "response": [],
+          "description": "G?i records ho?c measurements (ch? m?t field), t?i ?a 100 item; c?n device_id ACTIVE; server g?n WEAR_OS."
+        },
+        {
+          "name": "Measurements via medical-records alias list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/?profile_id={{profile_id}}&page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Optional DRF page number; page size is 100."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical-records alias create manual record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"measurement_type\": \"HEART_RATE\",\n  \"value\": \"78.00\",\n  \"value_secondary\": null,\n  \"unit\": \"bpm\",\n  \"measured_at\": \"2026-11-09T10:00:00+07:00\",\n  \"start_time\": null,\n  \"end_time\": null,\n  \"idempotency_key\": \"manual-qa-hr-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements"
+              ]
+            }
+          },
+          "response": [],
+          "description": "source do server g?n MANUAL; c?c tr??ng blood pressure c?n value_secondary."
+        },
+        {
+          "name": "Measurements via medical-records alias retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical-records alias replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"measurement_type\": \"HEART_RATE\",\n  \"value\": \"80.00\",\n  \"unit\": \"bpm\",\n  \"measured_at\": \"2026-11-09T10:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical-records alias partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"80.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical-records alias delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical-records alias batch sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"records\": [\n    {\n      \"device_id\": \"{{device_id}}\",\n      \"measurement_type\": \"HEART_RATE\",\n      \"value\": \"75.00\",\n      \"value_secondary\": null,\n      \"unit\": \"bpm\",\n      \"measured_at\": \"2026-11-09T10:00:00+07:00\",\n      \"idempotency_key\": \"wear-qa-hr-001\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/batch/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements",
+                "batch"
+              ]
+            }
+          },
+          "response": [],
+          "description": "G?i records ho?c measurements (ch? m?t field), t?i ?a 100 item; c?n device_id ACTIVE; server g?n WEAR_OS."
+        },
+        {
+          "name": "Measurements via medical alias list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/?profile_id={{profile_id}}&page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Optional DRF page number; page size is 100."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical alias create manual record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"measurement_type\": \"HEART_RATE\",\n  \"value\": \"78.00\",\n  \"value_secondary\": null,\n  \"unit\": \"bpm\",\n  \"measured_at\": \"2026-11-09T10:00:00+07:00\",\n  \"start_time\": null,\n  \"end_time\": null,\n  \"idempotency_key\": \"manual-qa-hr-001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements"
+              ]
+            }
+          },
+          "response": [],
+          "description": "source do server g?n MANUAL; c?c tr??ng blood pressure c?n value_secondary."
+        },
+        {
+          "name": "Measurements via medical alias retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical alias replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"measurement_type\": \"HEART_RATE\",\n  \"value\": \"80.00\",\n  \"unit\": \"bpm\",\n  \"measured_at\": \"2026-11-09T10:00:00+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical alias partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"80.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical alias delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/{{measurement_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements",
+                "{{measurement_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Measurements via medical alias batch sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"records\": [\n    {\n      \"device_id\": \"{{device_id}}\",\n      \"measurement_type\": \"HEART_RATE\",\n      \"value\": \"75.00\",\n      \"value_secondary\": null,\n      \"unit\": \"bpm\",\n      \"measured_at\": \"2026-11-09T10:00:00+07:00\",\n      \"idempotency_key\": \"wear-qa-hr-001\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/batch/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements",
+                "batch"
+              ]
+            }
+          },
+          "response": [],
+          "description": "G?i records ho?c measurements (ch? m?t field), t?i ?a 100 item; c?n device_id ACTIVE; server g?n WEAR_OS."
+        },
+        {
+          "name": "Measurement statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/health-measurements/statistics/?profile_id={{profile_id}}&measurement_type=HEART_RATE&from=2026-11-01T00:00:00+07:00&to=2026-11-09T23:59:59+07:00&group_by=day",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health-measurements",
+                "statistics"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Required UUID."
+                },
+                {
+                  "key": "measurement_type",
+                  "value": "HEART_RATE",
+                  "description": "Required choice, e.g. HEART_RATE/BLOOD_PRESSURE/SLEEP."
+                },
+                {
+                  "key": "from",
+                  "value": "2026-11-01T00:00:00+07:00",
+                  "description": "Optional lower timestamp; from_date also accepted."
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-09T23:59:59+07:00",
+                  "description": "Optional upper timestamp; to_date also accepted."
+                },
+                {
+                  "key": "group_by",
+                  "value": "day",
+                  "description": "day or week."
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06 Medical records",
+      "item": [
+        {
+          "name": "Medical records API root",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records"
+              ]
+            }
+          },
+          "response": [],
+          "description": "DRF router API root."
+        },
+        {
+          "name": "Medical records histories list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/histories/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "histories"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records histories create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"condition\": \"Asthma\",\n  \"description\": \"Demo history\",\n  \"diagnosed_at\": \"2020-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/histories/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "histories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records histories retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records histories replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"condition\": \"Asthma\",\n  \"description\": \"Demo history\",\n  \"diagnosed_at\": \"2020-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records histories partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"condition\": \"Asthma\",\n  \"description\": \"Demo history\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records histories delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records allergies list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/allergies/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "allergies"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records allergies create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"allergen\": \"Peanuts\",\n  \"reaction\": \"Rash\",\n  \"severity\": \"MODERATE\",\n  \"notes\": \"Demo\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/allergies/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "allergies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records allergies retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records allergies replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"allergen\": \"Peanuts\",\n  \"reaction\": \"Rash\",\n  \"severity\": \"MODERATE\",\n  \"notes\": \"Demo\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records allergies partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"severity\": \"MODERATE\",\n  \"notes\": \"Demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records allergies delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records visits list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/visits/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "visits"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records visits create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"provider_name\": \"Demo Clinic\",\n  \"facility_name\": \"Demo Hospital\",\n  \"visited_at\": \"2026-11-09T09:00:00+07:00\",\n  \"reason\": \"Routine check\",\n  \"diagnosis\": \"\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/visits/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "visits"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records visits retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records visits replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"provider_name\": \"Demo Clinic\",\n  \"facility_name\": \"Demo Hospital\",\n  \"visited_at\": \"2026-11-09T09:00:00+07:00\",\n  \"reason\": \"Routine check\",\n  \"diagnosis\": \"\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records visits partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records visits delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records medications list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/medications/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "medications"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records medications create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"name\": \"Demo medication\",\n  \"dosage\": \"1 tablet\",\n  \"frequency\": \"Once daily\",\n  \"start_date\": \"2026-11-09\",\n  \"end_date\": null,\n  \"instructions\": \"Demo only\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/medications/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "medications"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records medications retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records medications replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"name\": \"Demo medication\",\n  \"dosage\": \"1 tablet\",\n  \"frequency\": \"Once daily\",\n  \"start_date\": \"2026-11-09\",\n  \"end_date\": null,\n  \"instructions\": \"Demo only\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records medications partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo medication\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records medications delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records lab-results list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/lab-results/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "lab-results"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records lab-results create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"test_name\": \"CBC\",\n  \"result\": \"Normal\",\n  \"unit\": \"\",\n  \"reference_range\": \"\",\n  \"tested_at\": \"2026-11-09T09:00:00+07:00\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/lab-results/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "lab-results"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records lab-results retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records lab-results replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"test_name\": \"CBC\",\n  \"result\": \"Normal\",\n  \"unit\": \"\",\n  \"reference_range\": \"\",\n  \"tested_at\": \"2026-11-09T09:00:00+07:00\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records lab-results partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records lab-results delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records documents list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/documents/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records document upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "Demo report",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "OTHER",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "QA upload",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/documents/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "documents"
+              ]
+            }
+          },
+          "response": [],
+          "description": "multipart/form-data; ch?n file PDF/JPEG/PNG t?i ?a 10 MB. Do not set Content-Type manually."
+        },
+        {
+          "name": "Medical records document retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/documents/{{document_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "documents",
+                "{{document_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records document download",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/documents/{{document_id}}/download/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "documents",
+                "{{document_id}}",
+                "download"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records document delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/documents/{{document_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "documents",
+                "{{document_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical records measurements batch alias",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"records\": [\n    {\n      \"device_id\": \"{{device_id}}\",\n      \"measurement_type\": \"STEPS\",\n      \"value\": \"5000\",\n      \"unit\": \"steps\",\n      \"measured_at\": \"2026-11-09T23:00:00+07:00\",\n      \"start_time\": \"2026-11-09T00:00:00+07:00\",\n      \"end_time\": \"2026-11-09T23:00:00+07:00\",\n      \"idempotency_key\": \"wear-qa-steps-001\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical-records/measurements/batch/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical-records",
+                "measurements",
+                "batch"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) API root",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical"
+              ]
+            }
+          },
+          "response": [],
+          "description": "DRF router API root."
+        },
+        {
+          "name": "Medical (legacy alias) histories list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/histories/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "histories"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) histories create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"condition\": \"Asthma\",\n  \"description\": \"Demo history\",\n  \"diagnosed_at\": \"2020-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/histories/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "histories"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) histories retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) histories replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"condition\": \"Asthma\",\n  \"description\": \"Demo history\",\n  \"diagnosed_at\": \"2020-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) histories partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"condition\": \"Asthma\",\n  \"description\": \"Demo history\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) histories delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/histories/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "histories",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) allergies list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/allergies/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "allergies"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) allergies create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"allergen\": \"Peanuts\",\n  \"reaction\": \"Rash\",\n  \"severity\": \"MODERATE\",\n  \"notes\": \"Demo\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/allergies/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "allergies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) allergies retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) allergies replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"allergen\": \"Peanuts\",\n  \"reaction\": \"Rash\",\n  \"severity\": \"MODERATE\",\n  \"notes\": \"Demo\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) allergies partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"severity\": \"MODERATE\",\n  \"notes\": \"Demo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) allergies delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/allergies/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "allergies",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) visits list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/visits/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "visits"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) visits create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"provider_name\": \"Demo Clinic\",\n  \"facility_name\": \"Demo Hospital\",\n  \"visited_at\": \"2026-11-09T09:00:00+07:00\",\n  \"reason\": \"Routine check\",\n  \"diagnosis\": \"\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/visits/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "visits"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) visits retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) visits replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"provider_name\": \"Demo Clinic\",\n  \"facility_name\": \"Demo Hospital\",\n  \"visited_at\": \"2026-11-09T09:00:00+07:00\",\n  \"reason\": \"Routine check\",\n  \"diagnosis\": \"\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) visits partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) visits delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/visits/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "visits",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) medications list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/medications/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "medications"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) medications create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"name\": \"Demo medication\",\n  \"dosage\": \"1 tablet\",\n  \"frequency\": \"Once daily\",\n  \"start_date\": \"2026-11-09\",\n  \"end_date\": null,\n  \"instructions\": \"Demo only\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/medications/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "medications"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) medications retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) medications replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"name\": \"Demo medication\",\n  \"dosage\": \"1 tablet\",\n  \"frequency\": \"Once daily\",\n  \"start_date\": \"2026-11-09\",\n  \"end_date\": null,\n  \"instructions\": \"Demo only\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) medications partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo medication\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) medications delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/medications/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "medications",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) lab-results list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/lab-results/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "lab-results"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) lab-results create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"test_name\": \"CBC\",\n  \"result\": \"Normal\",\n  \"unit\": \"\",\n  \"reference_range\": \"\",\n  \"tested_at\": \"2026-11-09T09:00:00+07:00\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/lab-results/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "lab-results"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) lab-results retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) lab-results replace (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"visit\": null,\n  \"test_name\": \"CBC\",\n  \"result\": \"Normal\",\n  \"unit\": \"\",\n  \"reference_range\": \"\",\n  \"tested_at\": \"2026-11-09T09:00:00+07:00\",\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) lab-results partial update (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) lab-results delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/lab-results/{{record_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "lab-results",
+                "{{record_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) documents list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/documents/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Optional profile filter."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) document upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "Demo report",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "OTHER",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "QA upload",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/documents/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "documents"
+              ]
+            }
+          },
+          "response": [],
+          "description": "multipart/form-data; ch?n file PDF/JPEG/PNG t?i ?a 10 MB. Do not set Content-Type manually."
+        },
+        {
+          "name": "Medical (legacy alias) document retrieve",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/documents/{{document_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "documents",
+                "{{document_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) document download",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/documents/{{document_id}}/download/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "documents",
+                "{{document_id}}",
+                "download"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) document delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/documents/{{document_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "documents",
+                "{{document_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Medical (legacy alias) measurements batch alias",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"records\": [\n    {\n      \"device_id\": \"{{device_id}}\",\n      \"measurement_type\": \"STEPS\",\n      \"value\": \"5000\",\n      \"unit\": \"steps\",\n      \"measured_at\": \"2026-11-09T23:00:00+07:00\",\n      \"start_time\": \"2026-11-09T00:00:00+07:00\",\n      \"end_time\": \"2026-11-09T23:00:00+07:00\",\n      \"idempotency_key\": \"wear-qa-steps-001\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/medical/measurements/batch/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "medical",
+                "measurements",
+                "batch"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07 AI insights",
+      "item": [
+        {
+          "name": "Analyze risk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"period_start\": \"2026-11-02T00:00:00+07:00\",\n  \"period_end\": \"2026-11-09T23:59:59+07:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/ai-insights/analyze/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ai-insights",
+                "analyze"
+              ]
+            }
+          },
+          "response": [],
+          "description": "period_start/end optional; from_date/to_date aliases are accepted. No AI consent means rules-only analysis."
+        },
+        {
+          "name": "List insights",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/ai-insights/?profile_id={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ai-insights"
+              ],
+              "query": [
+                {
+                  "key": "profile_id",
+                  "value": "{{profile_id}}",
+                  "description": "Required UUID."
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07 AI chat",
+      "item": [
+        {
+          "name": "List conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/ai/conversations/?profile={{profile_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ai",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "profile",
+                  "value": "{{profile_id}}",
+                  "description": "Required profile UUID."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List conversation messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/ai/conversations/{{conversation_id}}/messages/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ai",
+                "conversations",
+                "{{conversation_id}}",
+                "messages"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Send chat message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"T?m t?t c?c ch? s? s?c kh?e g?n ??y c?a t?i.\",\n  \"conversation_id\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://{{base_url}}/api/ai/chat/{{profile_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ai",
+                "chat",
+                "{{profile_id}}"
+              ]
+            }
+          },
+          "response": [],
+          "description": "conversation_id optional; requires profile access and AI consent."
+        }
+      ]
+    }
+  ]
+}

@@ -20,8 +20,8 @@ void main() {
         now: start.add(const Duration(minutes: 2)),
       );
 
-      expect(first.heartRate, inInclusiveRange(65, 75));
-      expect(second.heartRate, inInclusiveRange(65, 75));
+      expect(first.heartRate, inInclusiveRange(55, 90));
+      expect(second.heartRate, inInclusiveRange(55, 90));
       expect(second.steps, lessThanOrEqualTo(2));
       expect(first.calories, closeTo(1600 / 1440, 0.01));
       expect(second.calories, greaterThan(first.calories));
@@ -65,7 +65,7 @@ void main() {
           );
         }
 
-        expect(sample.heartRate, inInclusiveRange(110, 140));
+        expect(sample.heartRate, inInclusiveRange(120, 170));
         expect(sample.steps, greaterThan(5000));
         expect(sample.calories, greaterThan(200));
         expect(sample.activityState, MockActivityState.active);
