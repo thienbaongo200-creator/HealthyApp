@@ -139,6 +139,10 @@ class ApiService {
   }
 
   Future<String> login(String account, String password) async {
+    // A new login starts a new identity boundary. Clear both token slots first
+    // so a response without a rotated refresh token cannot inherit another
+    // account's refresh credential.
+    await clearLocalSession();
     final uri = Uri.parse('$baseUrl/auth/login/');
     developer.log('Login request to $uri', name: 'ApiService');
 
@@ -247,9 +251,17 @@ class ApiService {
     await TokenStorage.saveAccessToken(token);
   }
 
+  /// Clears all in-memory and secure credentials without contacting the API.
+  /// Useful when registration succeeds but the user must authenticate first.
+  static Future<void> clearLocalSession() async {
+    _token = null;
+    _profileCompletedFromAuth = null;
+    await _httpClient.clearSession();
+  }
+
   static Future<void> logout() async {
-    final refreshToken = await TokenStorage.getRefreshToken();
     try {
+      final refreshToken = await TokenStorage.getRefreshToken();
       if (refreshToken != null && refreshToken.isNotEmpty) {
         final response = await _httpClient.send((accessToken) async {
           final currentRefreshToken = await TokenStorage.getRefreshToken();
@@ -273,9 +285,7 @@ class ApiService {
         }
       }
     } finally {
-      _token = null;
-      _profileCompletedFromAuth = null;
-      await TokenStorage.clearTokens();
+      await clearLocalSession();
     }
   }
 

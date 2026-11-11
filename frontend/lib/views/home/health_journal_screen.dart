@@ -67,18 +67,23 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   void _onProfileSelectionChanged() {
     final selection = _profileSelection;
     final selectedProfileId = selection?.selectedProfileId;
-    if (!mounted ||
-        selectedProfileId == null ||
-        selectedProfileId == _profileId) {
+    if (!mounted || selectedProfileId == _profileId) {
       return;
     }
     final profile = selection?.selectedProfile;
+    if (selectedProfileId == null) _loadRequestId++;
     setState(() {
       _profileId = selectedProfileId;
-      if (profile != null) _selectedMember = profileDisplayName(profile);
+      _selectedMember = profile == null
+          ? widget.initialMember
+          : profileDisplayName(profile);
       _measurements = [];
+      _isLoading = selectedProfileId != null;
+      _error = null;
     });
-    _loadMeasurements();
+    if (selectedProfileId != null) {
+      _loadMeasurements();
+    }
   }
 
   @override
@@ -139,44 +144,70 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
       num? number(dynamic raw) =>
           raw is num ? raw : num.tryParse(raw?.toString() ?? '');
       final value = number(record['value']);
-      final heartRate = number(
-        record['heart_rate'] ?? (type == 'HEART_RATE' ? value : null),
-      )?.toInt();
-      final steps = number(
-        record['steps'] ?? (type == 'STEPS' ? value : null),
-      )?.toInt();
-      final calories = number(
-        record['calories'] ?? (type == 'CALORIES' ? value : null),
-      )?.toDouble();
-      final detail = switch (type) {
-        'HEART_RATE' => 'Nhịp tim ${value?.toStringAsFixed(0) ?? '—'} bpm',
-        'BLOOD_PRESSURE' =>
-          'Huyết áp ${value?.toStringAsFixed(0) ?? '—'}/${number(record['value_secondary'])?.toStringAsFixed(0) ?? '—'} mmHg',
-        'BLOOD_GLUCOSE' =>
-          'Đường huyết ${value ?? '—'} ${record['unit'] ?? ''}',
-        'WEIGHT' => 'Cân nặng ${value ?? '—'} ${record['unit'] ?? ''}',
-        'HEIGHT' => 'Chiều cao ${value ?? '—'} ${record['unit'] ?? ''}',
-        'TEMPERATURE' => 'Thân nhiệt ${value ?? '—'} ${record['unit'] ?? ''}',
-        'SLEEP' => 'Giấc ngủ ${value?.toStringAsFixed(1) ?? '—'} giờ',
-        'STEPS' => 'Hoạt động ${value?.toStringAsFixed(0) ?? '—'} bước',
-        'CALORIES' => 'Năng lượng ${value?.toStringAsFixed(0) ?? '—'} kcal',
+      final secondary = number(record['value_secondary']);
+      String formatNumber(num? number) {
+        if (number == null) return '—';
+        return number == number.roundToDouble()
+            ? number.toStringAsFixed(0)
+            : number.toString();
+      }
+
+      final label = switch (type) {
+        'HEART_RATE' => 'Nhịp tim',
+        'BLOOD_PRESSURE' => 'Huyết áp',
+        'BLOOD_GLUCOSE' => 'Đường huyết',
+        'BMI' => 'Chỉ số BMI',
+        'WEIGHT' => 'Cân nặng',
+        'HEIGHT' => 'Chiều cao',
+        'TEMPERATURE' => 'Thân nhiệt',
+        'SLEEP' => 'Giấc ngủ',
+        'STEPS' => 'Số bước chân',
+        'CALORIES' => 'Năng lượng',
         _ => null,
       };
-      if (heartRate == null &&
-          steps == null &&
-          calories == null &&
-          detail == null) {
-        continue;
-      }
+      if (label == null) continue;
+      final displayValue = type == 'BLOOD_PRESSURE'
+          ? '${formatNumber(value)}/${formatNumber(secondary)}'
+          : formatNumber(value);
+      final defaultUnit = switch (type) {
+        'HEART_RATE' => 'bpm',
+        'BLOOD_PRESSURE' => 'mmHg',
+        'BLOOD_GLUCOSE' => 'mg/dL',
+        'BMI' => 'kg/m²',
+        'WEIGHT' => 'kg',
+        'HEIGHT' => 'cm',
+        'TEMPERATURE' => '°C',
+        'SLEEP' => 'giờ',
+        'STEPS' => 'bước',
+        'CALORIES' => 'kcal',
+        _ => '',
+      };
+      final unit = record['unit']?.toString().trim();
+      final source = record['source']?.toString();
       entries.add(
         _JournalEntry(
           measuredAt: measuredAt,
-          heartRate: heartRate,
-          steps: steps,
-          calories: calories,
-          device: record['device_id']?.toString() ?? 'Thiết bị sức khỏe',
-          activityState: record['activity_state']?.toString(),
-          detail: detail,
+          label: label,
+          icon: switch (type) {
+            'HEART_RATE' => Icons.favorite_rounded,
+            'BLOOD_PRESSURE' => Icons.monitor_heart_outlined,
+            'BLOOD_GLUCOSE' => Icons.water_drop_outlined,
+            'BMI' => Icons.accessibility_new_rounded,
+            'WEIGHT' => Icons.monitor_weight_outlined,
+            'HEIGHT' => Icons.height_rounded,
+            'TEMPERATURE' => Icons.thermostat_rounded,
+            'SLEEP' => Icons.bedtime_outlined,
+            'STEPS' => Icons.directions_walk_rounded,
+            'CALORIES' => Icons.local_fire_department_outlined,
+            _ => Icons.monitor_heart_outlined,
+          },
+          value: displayValue,
+          unit: unit == null || unit.isEmpty ? defaultUnit : unit,
+          source: switch (source) {
+            'MANUAL' => 'Nhập thủ công',
+            'WEAR_OS' => 'Thiết bị Wear OS',
+            _ => 'Nguồn dữ liệu không xác định',
+          },
         ),
       );
     }
@@ -218,23 +249,28 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(title: Text('Chọn thành viên')),
-            for (final profile in _profiles)
-              ListTile(
-                leading: const Icon(Icons.person_outline),
-                title: Text(profileDisplayName(profile)),
-                subtitle: Text(profileDemographicSubtitle(profile)),
-                trailing: profile['id']?.toString() == _profileId
-                    ? const Icon(Icons.check, color: _teal)
-                    : null,
-                onTap: () =>
-                    Navigator.pop(sheetContext, profile['id']?.toString()),
-              ),
-            const SizedBox(height: 10),
-          ],
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .7,
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const ListTile(title: Text('Chọn thành viên')),
+              for (final profile in _profiles)
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(profileDisplayName(profile)),
+                  subtitle: Text(profileDemographicSubtitle(profile)),
+                  trailing: profile['id']?.toString() == _profileId
+                      ? const Icon(Icons.check, color: _teal)
+                      : null,
+                  onTap: () =>
+                      Navigator.pop(sheetContext, profile['id']?.toString()),
+                ),
+              const SizedBox(height: 10),
+            ],
+          ),
         ),
       ),
     );
@@ -342,6 +378,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                       value: 'BLOOD_GLUCOSE',
                       child: Text('Đường huyết'),
                     ),
+                    DropdownMenuItem(value: 'BMI', child: Text('Chỉ số BMI')),
                     DropdownMenuItem(value: 'SLEEP', child: Text('Giấc ngủ')),
                     DropdownMenuItem(value: 'WEIGHT', child: Text('Cân nặng')),
                     DropdownMenuItem(value: 'HEIGHT', child: Text('Chiều cao')),
@@ -369,9 +406,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                       const SizedBox(width: 9),
                       Expanded(
                         child: Text(
-                          _selectedMember == 'Tôi'
-                              ? 'Nguồn hiện tại lưu nhịp tim và hoạt động từ đồng hồ. Huyết áp chưa có dữ liệu trong API.'
-                              : 'Nhật ký hiện chỉ tải dữ liệu của tài khoản đang đăng nhập; dữ liệu thành viên gia đình chưa được liên kết riêng.',
+                          'Nhật ký kết hợp các chỉ số nhập thủ công và dữ liệu từ thiết bị. Thời gian được hiển thị theo múi giờ địa phương.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
@@ -401,9 +436,8 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
                   EmptyState(
                     icon: Icons.event_note_outlined,
                     title: 'Chưa có bản ghi trong ngày này',
-                    message: _selectedMember == 'Tôi'
-                        ? 'Khi đồng hồ gửi dữ liệu, các mốc đo sẽ xuất hiện ở đây.'
-                        : 'Chưa có dữ liệu riêng cho thành viên này.',
+                    message:
+                        'Thêm chỉ số thủ công hoặc đồng bộ thiết bị để xem dữ liệu của ngày này.',
                     action: PrimaryButton(
                       label: 'Thêm chỉ số',
                       icon: Icons.add,
@@ -453,158 +487,127 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
 
   Widget _timelineEntry(_JournalEntry entry, {required bool isLast}) => Padding(
     padding: const EdgeInsets.only(bottom: AppSpacing.x3),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 28,
-          child: Column(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                margin: const EdgeInsets.only(top: AppSpacing.x6),
-                decoration: BoxDecoration(
-                  color: _teal,
-                  border: Border.all(color: AppColors.surface, width: 2),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      blurRadius: 5,
-                    ),
-                  ],
-                ),
-              ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    margin: const EdgeInsets.symmetric(vertical: AppSpacing.x1),
-                    color: AppColors.border,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: AppCard(
-            padding: const EdgeInsets.all(AppSpacing.x4),
+    // The timeline sits in a scrolling ListView. IntrinsicHeight gives the
+    // connector column a finite height so its Expanded line can be laid out.
+    child: IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 28,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      _timeLabel(entry.measuredAt),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const Spacer(),
-                    Flexible(
-                      child: Text(
-                        entry.device,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.end,
-                        style: Theme.of(context).textTheme.bodySmall,
+                Container(
+                  width: 12,
+                  height: 12,
+                  margin: const EdgeInsets.only(top: AppSpacing.x6),
+                  decoration: BoxDecoration(
+                    color: _teal,
+                    border: Border.all(color: AppColors.surface, width: 2),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        blurRadius: 5,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.x3),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (entry.heartRate != null)
-                      _measureChip(
-                        Icons.favorite_rounded,
-                        'Nhịp tim',
-                        '${entry.heartRate} bpm',
-                        AppColors.danger,
-                      ),
-                    if (entry.steps != null)
-                      _measureChip(
-                        Icons.directions_walk_rounded,
-                        'Bước đi',
-                        '${entry.steps} bước',
-                        AppColors.primary,
-                      ),
-                    if (entry.calories != null)
-                      _measureChip(
-                        Icons.local_fire_department_rounded,
-                        'Năng lượng',
-                        '${entry.calories!.toStringAsFixed(0)} kcal',
-                        AppColors.warning,
-                      ),
-                  ],
-                ),
-                if (entry.activityState != null) ...[
-                  const SizedBox(height: AppSpacing.x2),
-                  Text(
-                    entry.activityState == 'active'
-                        ? 'Đang vận động'
-                        : 'Trạng thái nghỉ',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    ],
                   ),
-                ],
-                if (entry.detail != null) ...[
-                  const SizedBox(height: AppSpacing.x2),
-                  Text(
-                    entry.detail!,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.x1,
+                      ),
+                      color: AppColors.border,
+                    ),
                   ),
-                ],
               ],
             ),
           ),
-        ),
-      ],
+          Expanded(
+            child: AppCard(
+              padding: const EdgeInsets.all(AppSpacing.x4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        _timeLabel(entry.measuredAt),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Spacer(),
+                      Flexible(
+                        child: Text(
+                          entry.source,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.x2),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(entry.icon, color: _teal, size: 20),
+                      const SizedBox(width: AppSpacing.x2),
+                      Expanded(
+                        child: Text(
+                          entry.label,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.x2),
+                      Flexible(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: entry.value,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              TextSpan(text: ' ${entry.unit}'),
+                            ],
+                          ),
+                          maxLines: 2,
+                          textAlign: TextAlign.end,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
-  Widget _measureChip(IconData icon, String label, String value, Color color) =>
-      Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.x3,
-          vertical: AppSpacing.x2,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: .09),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: color),
-            const SizedBox(width: 6),
-            Text(
-              '$label · $value',
-              style: Theme.of(
-                context,
-              ).textTheme.labelMedium?.copyWith(color: AppColors.textPrimary),
-            ),
-          ],
-        ),
-      );
 }
 
 class _JournalEntry {
   const _JournalEntry({
     required this.measuredAt,
-    required this.heartRate,
-    required this.steps,
-    required this.calories,
-    required this.device,
-    required this.activityState,
-    this.detail,
+    required this.label,
+    required this.icon,
+    required this.value,
+    required this.unit,
+    required this.source,
   });
 
   final DateTime measuredAt;
-  final int? heartRate;
-  final int? steps;
-  final double? calories;
-  final String device;
-  final String? activityState;
-  final String? detail;
+  final String label;
+  final IconData icon;
+  final String value;
+  final String unit;
+  final String source;
 }

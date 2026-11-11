@@ -11,7 +11,15 @@ class WatchSenderService {
   );
 
   Future<bool> sendDataToPhone(Map<String, dynamic> healthData) async {
+    if (kDebugMode) {
+      debugPrint('SYNC URL = $_syncUrl');
+      debugPrint('TOKEN LENGTH = ${watchSyncToken.length}');
+      debugPrint('PAYLOAD = ${jsonEncode(healthData)}');
+    }
     if (watchSyncToken.length < 32) {
+      if (kDebugMode) {
+        debugPrint('Request blocked: WATCH_SYNC_TOKEN must be at least 32 characters.');
+      }
       // Mock/demo mode is intentionally usable offline. Keep samples queued;
       // a real sync token can be supplied later without noisy console errors.
       if (!useMockWearOs) {
@@ -20,6 +28,9 @@ class WatchSenderService {
       return false;
     }
     try {
+      if (kDebugMode) {
+        debugPrint('Sending request...');
+      }
       final response = await http
           .post(
             Uri.parse(_syncUrl),
@@ -31,12 +42,16 @@ class WatchSenderService {
           )
           .timeout(const Duration(seconds: 3));
 
+      if (kDebugMode) {
+        debugPrint('Response status = ${response.statusCode}');
+        debugPrint('Response body = ${response.body}');
+      }
       if (response.statusCode == 200) {
         return true;
       }
       return false;
-    } on Exception {
-      debugPrint('[Wear OS] Data sync failed.');
+    } on Exception catch (error) {
+      debugPrint('[Wear OS] Data sync failed: $error');
       return false;
     }
   }

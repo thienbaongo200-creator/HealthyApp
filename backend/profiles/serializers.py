@@ -81,6 +81,11 @@ class PersonProfileSerializer(serializers.ModelSerializer):
     share_level = serializers.SerializerMethodField()
     is_current_user = serializers.SerializerMethodField()
 
+    def validate_height_cm(self, value):
+        if value is not None and not 30 <= value <= 300:
+            raise serializers.ValidationError("Height must be between 30 and 300 cm.")
+        return value
+
     class Meta:
         model = PersonProfile
         fields = [
@@ -201,6 +206,11 @@ class PersonProfileSerializer(serializers.ModelSerializer):
 
 class PersonProfileCreateSerializer(serializers.ModelSerializer):
     household_role = HouseholdRoleField(required=False, default="MEMBER")
+
+    def validate_height_cm(self, value):
+        if value is not None and not 30 <= value <= 300:
+            raise serializers.ValidationError("Height must be between 30 and 300 cm.")
+        return value
 
     class Meta:
         model = PersonProfile

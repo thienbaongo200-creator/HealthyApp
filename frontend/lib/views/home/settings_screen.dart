@@ -58,6 +58,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return isCurrentUserProfile(profile) ||
                 profile['viewer_role'] == 'OWNER';
           })
+          .where((profile) {
+            final id = profile['id']?.toString();
+            return id != null && id.isNotEmpty;
+          })
           .toList(growable: false);
       final selected =
           manageable.where(isCurrentUserProfile).firstOrNull ??
@@ -118,6 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _logout() async {
     if (_isLoggingOut) return;
     setState(() => _isLoggingOut = true);
+    ProfileSelectionScope.of(context).clear();
     String? errorMessage;
     try {
       await ApiService.logout();
@@ -195,9 +200,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: AppSpacing.x2),
                     DropdownButtonFormField<String>(
                       initialValue: _consentProfileId,
+                      isExpanded: true,
+                      itemHeight: null,
                       decoration: const InputDecoration(
                         labelText: 'Hồ sơ áp dụng consent',
                       ),
+                      selectedItemBuilder: (context) => _consentProfiles
+                          .map(
+                            (profile) => Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '${profileDisplayName(profile)} · '
+                                '${profileDemographicSubtitle(profile)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
                       items: _consentProfiles
                           .map((profile) {
                             final id = profile['id']?.toString() ?? '';

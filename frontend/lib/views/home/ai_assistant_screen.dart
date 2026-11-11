@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'main_navigation_wrapper.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
 import 'package:frontend/services/ai_service.dart';
+import 'package:frontend/services/risk_message_mapper.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
@@ -129,19 +132,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         }
         recent.add((measuredAt: measuredAt, heartRate: heartRate));
       }
-      recent.sort((a, b) => b.heartRate.compareTo(a.heartRate));
+      recent.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
+      final peakMeasurement = recent.isEmpty
+          ? null
+          : recent.reduce((a, b) => a.heartRate >= b.heartRate ? a : b);
       if (!mounted || requestProfileId != _chatProfileId) return;
       setState(() {
         _analysisLoaded = true;
         _measurementsInPeriod = recent.length;
-        _peakHeartRate = recent.isEmpty ? null : recent.first.heartRate;
-        _peakHeartRateAt = recent.isEmpty ? null : recent.first.measuredAt;
+        _peakHeartRate = peakMeasurement?.heartRate;
+        _peakHeartRateAt = peakMeasurement?.measuredAt;
         _riskLevel = risk.riskLevel;
         _riskAnalyzedCount = risk.analyzedCount;
         _riskWarnings = risk.warnings;
         _riskRecommendations = risk.recommendations;
         _riskRecommendation = risk.recommendation;
-        _riskInterpretation = risk.interpretation;
+        _riskInterpretation = risk.interpretation == null
+            ? null
+            : _assistantDisplayText(risk.interpretation!);
         _riskGeneratedBy = risk.generatedBy;
         _isAnalyzing = false;
       });
@@ -345,11 +353,30 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   _ChatMessage _chatMessageFromJson(Map<String, dynamic> json) {
     final role = json['role']?.toString();
     final sentAt = DateTime.tryParse(json['created_at']?.toString() ?? '');
+    final content = json['content']?.toString() ?? '';
     return _ChatMessage(
-      text: json['content']?.toString() ?? '',
+      text: role == 'USER' ? content : _assistantDisplayText(content),
       isUser: role == 'USER',
       sentAt: sentAt?.toLocal() ?? DateTime.now(),
     );
+  }
+
+  String _assistantDisplayText(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return 'Trợ lý chưa trả về nội dung.';
+    if (!value.startsWith('{') && !value.startsWith('[')) return raw;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map<String, dynamic>) {
+        for (final key in const ['reply', 'answer', 'message', 'content', 'text']) {
+          final text = decoded[key];
+          if (text is String && text.trim().isNotEmpty) return text.trim();
+        }
+      }
+    } on FormatException {
+      // Avoid showing malformed provider payloads as raw data.
+    }
+    return 'Trợ lý chưa thể hiển thị phản hồi này. Vui lòng thử lại.';
   }
 
   _ChatMessage _welcomeMessage() => _ChatMessage(
@@ -424,8 +451,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         }
         _messages.add(
           _ChatMessage(
-            text:
-                response['reply']?.toString() ?? 'Trợ lý chưa trả về nội dung.',
+            text: _assistantDisplayText(response['reply']?.toString() ?? ''),
             isUser: false,
             sentAt: DateTime.now(),
           ),
@@ -434,7 +460,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     } catch (error) {
       if (!mounted || _chatProfileId != requestProfileId) return;
       final message = error is AiFallbackException
-          ? 'Phản hồi dự phòng (chưa được lưu): ${error.fallbackReply}\n\n${error.message}'
+          ? 'Phản hồi dự phòng (chưa được lưu): ${_assistantDisplayText(error.fallbackReply)}\n\n${error.message}'
           : 'Không gửi được tin nhắn. $error';
       setState(() {
         if (error is AiFallbackException) {
@@ -446,7 +472,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         );
       });
     } finally {
-      if (mounted) {
+      if (mounted && _chatProfileId == requestProfileId) {
         setState(() => _isSendingChat = false);
         _scrollToBottom();
       }
@@ -479,7 +505,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           tooltip: 'Quay lại',
         ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(102),
+          preferredSize: const Size.fromHeight(118),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -603,9 +629,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   }
 
   Future<void> _openQuickAdd() async {
+    final profileId = _chatProfileId;
+    if (profileId == null) {
+      _showMessage('Hồ sơ đang xem chưa sẵn sàng.');
+      return;
+    }
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => QuickAddScreen(member: _selectedMember),
+        builder: (_) => QuickAddScreen(
+          member: _selectedMember,
+          profileId: profileId,
+        ),
       ),
     );
     if (saved == true && mounted) {
@@ -667,6 +701,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           ],
         ),
         const SizedBox(height: AppSpacing.x4),
+        Text(
+          'Kết quả áp dụng cho hồ sơ đang xem, dựa trên nhật ký sức khỏe. '
+          'Dữ liệu nhập thủ công là nguồn chính; Wear OS chỉ bổ sung khi có.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.x1),
+        Text(
+          'Các quy tắc hiện sàng lọc nhịp tim, bước chân, calo, huyết áp, '
+          'giấc ngủ và thân nhiệt trong 7 ngày gần nhất.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.x3),
         StatusBadge(
           label: _analysisLoaded
               ? (_riskLevel == 'UNKNOWN'
@@ -699,13 +745,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                   in _riskRecommendations.isEmpty
                       ? const [
                           'Bổ sung ít nhất 3 mẫu nhịp tim.',
-                          'Hoặc ghi nhận huyết áp, số bước hay calo trong ngày.',
+                          'Hoặc nhập tổng số bước chân hoặc calo của ngày cần đánh giá.',
                         ]
                       : _riskRecommendations)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.x1),
                   child: Text(
-                    '• $recommendation',
+                    '• ${RiskMessageMapper.toUserMessage(recommendation)}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -713,7 +759,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           )
         else if (_analysisLoaded)
           Text(
-            'Căn cứ demo: nhịp tim >120 bpm (R01); 3 mẫu liên tiếp vượt ngưỡng tạo cảnh báo R02. Có ${_measurementsInPeriod ?? 0} mẫu nhịp tim trong 7 ngày, tổng ${_riskAnalyzedCount ?? 0} mẫu được quy tắc đánh giá.',
+            'Các ngưỡng gồm nhịp tim, bước chân, calo, huyết áp, giấc ngủ và thân nhiệt. Có ${_measurementsInPeriod ?? 0} mẫu nhịp tim trong 7 ngày; tổng ${_riskAnalyzedCount ?? 0} chỉ số được đánh giá.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         const SizedBox(height: AppSpacing.x2),
@@ -729,7 +775,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.x1),
               child: Text(
-                '• $warning',
+                '• ${RiskMessageMapper.toUserMessage(warning)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -743,11 +789,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         ],
         if (_riskInterpretation != null) ...[
           const SizedBox(height: AppSpacing.x2),
-          Text(
-            'Diễn giải AI: $_riskInterpretation',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppColors.textPrimary),
+          const Text('Diễn giải AI:'),
+          const SizedBox(height: AppSpacing.x1),
+          _MarkdownMessage(
+            _assistantDisplayText(_riskInterpretation!),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textPrimary,
+            ),
           ),
         ] else if (_riskGeneratedBy == 'RULE_ONLY') ...[
           const SizedBox(height: AppSpacing.x2),
@@ -770,14 +818,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
   );
 
   Widget _systemWarningCard() {
-    final warning = _riskWarnings.firstOrNull;
+    final rawWarning = _riskWarnings.firstOrNull;
+    final warning = rawWarning == null
+        ? null
+        : RiskMessageMapper.toUserMessage(rawWarning);
     final title = !_analysisLoaded
         ? 'Chưa chạy đánh giá nguy cơ'
         : warning ?? 'Không có cảnh báo theo các ngưỡng đã kiểm tra';
     final detail = _analysisLoaded
         ? [
             if (_peakHeartRate != null)
-              'Nhịp tim cao nhất trong 7 ngày: $_peakHeartRate bpm lúc ${_timeLabel(_peakHeartRateAt!)}.',
+              'Nhịp tim cao nhất trong 7 ngày: $_peakHeartRate bpm${_peakHeartRateAt == null ? '' : ' lúc ${_timeLabel(_peakHeartRateAt!)}'}.',
             _riskRecommendation ?? 'Chưa có đề xuất bổ sung từ hệ thống.',
           ].join(' ')
         : 'Chọn “Phân tích” để yêu cầu backend đánh giá hồ sơ này.';
@@ -841,7 +892,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
                 ? (_riskWarnings.isEmpty
                       ? _riskRecommendation ??
                             'Chưa có nhận định bổ sung từ hệ thống.'
-                      : _riskWarnings.join(' '))
+                      : _riskWarnings
+                            .map(RiskMessageMapper.toUserMessage)
+                            .join(' '))
                 : 'Chưa có dữ liệu phân tích. Hãy tải đánh giá nguy cơ cho hồ sơ đang chọn.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -1022,7 +1075,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  _MarkdownMessage(
                     message.text,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: message.isUser ? AppColors.surface : _ink,
@@ -1118,4 +1171,128 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final DateTime sentAt;
+}
+
+/// Renders the small, common Markdown subset used in assistant replies.
+/// Keeping this local avoids a new package dependency while preserving line
+/// breaks, headings, bullet lists, bold text, and inline code.
+class _MarkdownMessage extends StatelessWidget {
+  const _MarkdownMessage(this.markdown, {required this.style});
+
+  final String markdown;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = markdown.replaceAll('\r\n', '\n').split('\n');
+    final blocks = <Widget>[];
+    final paragraph = <String>[];
+
+    void flushParagraph() {
+      if (paragraph.isEmpty) return;
+      blocks.add(
+        Text.rich(
+          _inlineSpan(paragraph.join(' '), style),
+          style: style,
+        ),
+      );
+      paragraph.clear();
+    }
+
+    for (final rawLine in lines) {
+      final line = rawLine.trimRight();
+      if (line.trim().isEmpty) {
+        flushParagraph();
+        continue;
+      }
+      final heading = RegExp(r'^(#{1,3})\s+(.+)$').firstMatch(line.trim());
+      if (heading != null) {
+        flushParagraph();
+        final headingStyle = style?.copyWith(
+          fontSize: (style?.fontSize ?? 14) +
+              (heading.group(1)!.length == 1 ? 3 : 1),
+          fontWeight: FontWeight.w700,
+        );
+        blocks.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text.rich(
+              _inlineSpan(heading.group(2)!, headingStyle),
+              style: headingStyle,
+            ),
+          ),
+        );
+        continue;
+      }
+      final bullet = RegExp(r'^\s*[-*+]\s+(.+)$').firstMatch(line);
+      if (bullet != null) {
+        flushParagraph();
+        blocks.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('•  ', style: style),
+                Expanded(
+                  child: Text.rich(
+                    _inlineSpan(bullet.group(1)!, style),
+                    style: style,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        continue;
+      }
+      paragraph.add(line.trim());
+    }
+    flushParagraph();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var index = 0; index < blocks.length; index++) ...[
+          if (index > 0) const SizedBox(height: 4),
+          blocks[index],
+        ],
+      ],
+    );
+  }
+
+  static TextSpan _inlineSpan(String text, TextStyle? baseStyle) {
+    final spans = <TextSpan>[];
+    final matcher = RegExp(r'(\*\*|__)(.+?)\1|`([^`]+)`').allMatches(text);
+    var offset = 0;
+    for (final match in matcher) {
+      if (match.start > offset) {
+        spans.add(TextSpan(text: text.substring(offset, match.start)));
+      }
+      if (match.group(3) != null) {
+        spans.add(
+          TextSpan(
+            text: match.group(3),
+            style: baseStyle?.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor: AppColors.background,
+            ),
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: match.group(2),
+            style: baseStyle?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        );
+      }
+      offset = match.end;
+    }
+    if (offset < text.length) {
+      spans.add(TextSpan(text: text.substring(offset)));
+    }
+    return TextSpan(style: baseStyle, children: spans);
+  }
 }

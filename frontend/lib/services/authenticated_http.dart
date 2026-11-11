@@ -33,18 +33,27 @@ class AuthenticatedHttpClient {
   final Future<void> Function(String token) _saveRefreshToken;
   final Future<void> Function() _clearTokens;
 
-  static Future<String?>? _refreshInFlight;
+  static int _sessionGeneration = 0;
+  Future<String?>? _refreshInFlight;
+  int? _refreshGeneration;
+
+  /// Invalidates refreshes already in flight before clearing stored credentials.
+  Future<void> clearSession() async {
+    _sessionGeneration++;
+    await _clearTokens();
+  }
 
   Future<http.Response> send(
     AuthenticatedRequest request, {
     bool retryUnauthorized = true,
     bool includeAccessToken = true,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     final accessToken = includeAccessToken ? await _readAccessToken() : null;
     final response = await request(accessToken).timeout(_timeout);
     if (response.statusCode != 401 || !retryUnauthorized) return response;
 
-    final refreshedToken = await _refreshAccessToken();
+    final refreshedToken = await _refreshAccessToken(sessionGeneration);
     if (refreshedToken == null) return response;
     return request(refreshedToken).timeout(_timeout);
   }
@@ -70,25 +79,35 @@ class AuthenticatedHttpClient {
     );
   }
 
-  Future<String?> _refreshAccessToken() async {
+  Future<String?> _refreshAccessToken(int sessionGeneration) async {
+    if (sessionGeneration != _sessionGeneration) return null;
     final ongoingRefresh = _refreshInFlight;
-    if (ongoingRefresh != null) {
+    if (ongoingRefresh != null && _refreshGeneration == sessionGeneration) {
       await ongoingRefresh;
+      if (sessionGeneration != _sessionGeneration) return null;
       return _readAccessToken();
     }
 
-    final refresh = _performRefresh();
+    final refresh = _performRefresh(sessionGeneration);
     _refreshInFlight = refresh;
+    _refreshGeneration = sessionGeneration;
     try {
       return await refresh;
     } finally {
-      _refreshInFlight = null;
+      if (identical(_refreshInFlight, refresh)) {
+        _refreshInFlight = null;
+        _refreshGeneration = null;
+      }
     }
   }
 
-  Future<String?> _performRefresh() async {
+  Future<String?> _performRefresh(int sessionGeneration) async {
     final refreshToken = await _readRefreshToken();
-    if (refreshToken == null || refreshToken.isEmpty) return null;
+    if (refreshToken == null ||
+        refreshToken.isEmpty ||
+        sessionGeneration != _sessionGeneration) {
+      return null;
+    }
 
     final response = await _client
         .post(
@@ -99,7 +118,7 @@ class AuthenticatedHttpClient {
         .timeout(_timeout);
 
     if (response.statusCode == 400 || response.statusCode == 401) {
-      await _clearTokens();
+      if (sessionGeneration == _sessionGeneration) await _clearTokens();
       return null;
     }
     if (response.statusCode != 200) {
@@ -117,8 +136,10 @@ class AuthenticatedHttpClient {
       );
     }
 
+    if (sessionGeneration != _sessionGeneration) return null;
     final accessToken = payload['access'] as String;
     await _saveAccessToken(accessToken);
+    if (sessionGeneration != _sessionGeneration) return null;
     final rotatedRefreshToken = payload['refresh'];
     if (rotatedRefreshToken is String && rotatedRefreshToken.isNotEmpty) {
       await _saveRefreshToken(rotatedRefreshToken);

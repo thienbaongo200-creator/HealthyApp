@@ -73,13 +73,13 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
       selection.setProfiles(profiles);
       final currentProfileId = selection.selectedProfileId;
       final selectedProfileId =
-          profiles.any(
+      profiles.any(
             (profile) => profile['id']?.toString() == currentProfileId,
-          )
+      )
           ? currentProfileId
           : (profiles.where(isCurrentUserProfile).firstOrNull ??
-                    profiles.firstOrNull)?['id']
-                ?.toString();
+          profiles.firstOrNull)?['id']
+          ?.toString();
       final documents = await ApiService.fetchMedicalDocuments(
         profileId: selectedProfileId,
       );
@@ -137,10 +137,10 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     }
 
     final metadata =
-        await showDialog<({String title, String type, String description})>(
-          context: context,
-          builder: (context) => const _DocumentMetadataDialog(),
-        );
+    await showDialog<({String title, String type, String description})>(
+      context: context,
+      builder: (context) => const _DocumentMetadataDialog(),
+    );
     if (metadata == null || !mounted) return;
 
     setState(() => _isUploading = true);
@@ -158,7 +158,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         _documents = [
           uploadedDocument,
           ..._documents.where(
-            (document) => document['id'] != uploadedDocument['id'],
+                (document) => document['id'] != uploadedDocument['id'],
           ),
         ];
       });
@@ -182,7 +182,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
       if (!mounted) return;
       final fileName =
           document['file_name']?.toString() ??
-          '${document['title'] ?? 'medical-document'}.pdf';
+              '${document['title'] ?? 'medical-document'}.pdf';
       final extension = fileName.split('.').last.toLowerCase();
       final mimeType = switch (extension) {
         'jpg' || 'jpeg' => 'image/jpeg',
@@ -270,13 +270,13 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                       headers: {'Authorization': 'Bearer $token'},
                       fit: BoxFit.contain,
                       loadingBuilder: (context, child, progress) =>
-                          progress == null
+                      progress == null
                           ? child
                           : const Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.surface,
-                              ),
-                            ),
+                        child: CircularProgressIndicator(
+                          color: AppColors.surface,
+                        ),
+                      ),
                       errorBuilder: (context, error, stackTrace) => Padding(
                         padding: const EdgeInsets.all(AppSpacing.x6),
                         child: Column(
@@ -293,10 +293,10 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                               textAlign: TextAlign.center,
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
-                                    color: AppColors.surface.withValues(
-                                      alpha: .75,
-                                    ),
-                                  ),
+                                color: AppColors.surface.withValues(
+                                  alpha: .75,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -362,6 +362,10 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final selectableProfiles = _profiles
+        .where((profile) => profile['id'] != null)
+        .toList(growable: false);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -376,9 +380,9 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
             onPressed: _isUploading ? null : _uploadDocument,
             icon: _isUploading
                 ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
                 : const Icon(Icons.add_photo_alternate_outlined),
             label: const Text('Thêm tài liệu'),
           ),
@@ -393,97 +397,115 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.x4,
-                      AppSpacing.x3,
-                      AppSpacing.x4,
-                      AppSpacing.x6,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.x4,
+                AppSpacing.x3,
+                AppSpacing.x4,
+                AppSpacing.x6,
+              ),
+              children: [
+                const ProfileContextBanner(),
+                if (selectableProfiles.isNotEmpty)
+                  DropdownButtonFormField<String>(
+                    initialValue: _profileId,
+                    isExpanded: true,
+                    // Menu options have a title and subtitle; let them
+                    // size to content. The closed field uses one line.
+                    itemHeight: null,
+                    decoration: const InputDecoration(
+                      labelText: 'Hồ sơ thành viên',
+                      prefixIcon: Icon(Icons.person_outline),
                     ),
-                    children: [
-                      const ProfileContextBanner(),
-                      if (_profiles.isNotEmpty)
-                        DropdownButtonFormField<String>(
-                          initialValue: _profileId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Hồ sơ thành viên',
-                            prefixIcon: Icon(Icons.person_outline),
-                          ),
-                          items: [
-                            for (final profile in _profiles)
-                              DropdownMenuItem(
-                                value: profile['id'].toString(),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      profileRoleLabel(profile) == null
-                                          ? profileDisplayName(profile)
-                                          : '${profileDisplayName(profile)} '
-                                                '[${profileRoleLabel(profile)}]',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      profileDemographicSubtitle(profile),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                          onChanged: _selectProfile,
+                    selectedItemBuilder: (context) => selectableProfiles
+                        .map(
+                          (profile) => Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _profileOptionLabel(profile),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      const SizedBox(height: AppSpacing.x4),
-                      const SectionHeader(title: 'Tài liệu y tế'),
-                      const SizedBox(height: AppSpacing.x2),
-                      if (_error != null)
-                        ErrorState(message: _error!, onRetry: _loadData)
-                      else if (_documents.isEmpty)
-                        EmptyState(
-                          icon: Icons.folder_open_outlined,
-                          title: 'Chưa có tài liệu y tế',
-                          message:
-                              'Tải lên đơn thuốc, xét nghiệm hoặc hồ sơ y tế cho thành viên này.',
-                          action: PrimaryButton(
-                            label: 'Thêm tài liệu',
-                            icon: Icons.add,
-                            isLoading: _isUploading,
-                            onPressed: _uploadDocument,
+                      ),
+                    )
+                        .toList(growable: false),
+                    items: [
+                      for (final profile in selectableProfiles)
+                        DropdownMenuItem(
+                          value: profile['id'].toString(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _profileOptionLabel(profile),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                profileDemographicSubtitle(profile),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall,
+                              ),
+                            ],
                           ),
-                        )
-                      else
-                        for (final document in _documents) ...[
-                          const SizedBox(height: AppSpacing.x2),
-                          _DocumentCard(
-                            title:
-                                document['title']?.toString() ??
-                                'Tài liệu y tế',
-                            type: _documentType(
-                              document['document_type']?.toString(),
-                            ),
-                            description:
-                                document['description']?.toString() ?? '',
-                            uploadedAt:
-                                document['uploaded_at']?.toString() ?? '',
-                            onPreview: _isImageDocument(document)
-                                ? () => _previewDocument(document)
-                                : null,
-                            onDownload: () => _downloadDocument(document),
-                            onDelete: () => _deleteDocument(document),
-                          ),
-                        ],
+                        ),
                     ],
+                    onChanged: _selectProfile,
                   ),
+                const SizedBox(height: AppSpacing.x4),
+                const SectionHeader(title: 'Tài liệu y tế'),
+                const SizedBox(height: AppSpacing.x2),
+                if (_error != null)
+                  ErrorState(message: _error!, onRetry: _loadData)
+                else if (_documents.isEmpty)
+                  EmptyState(
+                    icon: Icons.folder_open_outlined,
+                    title: 'Chưa có tài liệu y tế',
+                    message:
+                    'Tải lên đơn thuốc, xét nghiệm hoặc hồ sơ y tế cho thành viên này.',
+                    action: PrimaryButton(
+                      label: 'Thêm tài liệu',
+                      icon: Icons.add,
+                      isLoading: _isUploading,
+                      onPressed: _uploadDocument,
+                    ),
+                  )
+                else
+                  for (final document in _documents) ...[
+                    const SizedBox(height: AppSpacing.x2),
+                    _DocumentCard(
+                      title:
+                      document['title']?.toString() ??
+                          'Tài liệu y tế',
+                      type: _documentType(
+                        document['document_type']?.toString(),
+                      ),
+                      description:
+                      document['description']?.toString() ?? '',
+                      uploadedAt:
+                      document['uploaded_at']?.toString() ?? '',
+                      onPreview: _isImageDocument(document)
+                          ? () => _previewDocument(document)
+                          : null,
+                      onDownload: () => _downloadDocument(document),
+                      onDelete: () => _deleteDocument(document),
+                    ),
+                  ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  String _profileOptionLabel(Map<String, dynamic> profile) {
+    final name = profileDisplayName(profile);
+    final role = profileRoleLabel(profile);
+    return role == null ? name : '$name [$role]';
   }
 }
 
@@ -568,9 +590,9 @@ class _DocumentMetadataDialogState extends State<_DocumentMetadataDialog> {
         onPressed: () {
           if (!_formKey.currentState!.validate()) return;
           Navigator.pop(context, (
-            title: _titleController.text.trim(),
-            type: _type,
-            description: _descriptionController.text.trim(),
+          title: _titleController.text.trim(),
+          type: _type,
+          description: _descriptionController.text.trim(),
           ));
         },
         child: const Text('Tiếp tục tải lên'),

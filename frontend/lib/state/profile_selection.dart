@@ -144,6 +144,14 @@ class ProfileSelectionController extends ChangeNotifier {
     return null;
   }
 
+  /// Drops profile data when the authenticated account changes or signs out.
+  void clear() {
+    if (_profiles.isEmpty && _selectedProfileId == null) return;
+    _profiles = const [];
+    _selectedProfileId = null;
+    notifyListeners();
+  }
+
   void setProfiles(List<Map<String, dynamic>> profiles) {
     _profiles = List.unmodifiable(normalizeProfiles(profiles));
     final currentIsValid = _profiles.any(

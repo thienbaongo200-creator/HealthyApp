@@ -109,8 +109,8 @@ class MockHealthDataService {
 
   void _updateHeartRate() {
     final target = activityState == MockActivityState.active
-        ? 110 + _random.nextInt(31)
-        : 65 + _random.nextInt(11);
+        ? 120 + _random.nextInt(51)
+        : 55 + _random.nextInt(36);
     final maxChange = activityState == MockActivityState.active
         ? 6
         : _heartRate < 65 || _heartRate > 75
@@ -121,6 +121,9 @@ class MockHealthDataService {
     if (delta.abs() <= maxChange) {
       _heartRate = target;
     }
+    _heartRate = activityState == MockActivityState.active
+        ? _heartRate.clamp(120, 170).toInt()
+        : _heartRate.clamp(55, 90).toInt();
   }
 
   void _updateSteps(double elapsedSeconds) {
