@@ -125,6 +125,7 @@ INSTALLED_APPS = [
     'profiles.apps.ProfilesConfig',
     'medical_records.apps.MedicalRecordsConfig',
     'households.apps.HouseholdsConfig',
+      'dashboard_preferences.apps.DashboardPreferencesConfig',
 ]
 
 MIDDLEWARE = [

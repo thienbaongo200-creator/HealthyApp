@@ -30,4 +30,5 @@ urlpatterns = [
     path('api/health-measurements/', include('health_measurements.urls')),
     path('api/ai-insights/', include('ai_services.insight_urls')),
     path('api/ai/', include('ai_services.urls')),
+    path('api/dashboard/', include('dashboard_preferences.urls')),
 ]

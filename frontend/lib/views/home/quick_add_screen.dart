@@ -13,13 +13,21 @@ enum _MetricType {
   weight,
   height,
   temperature,
+  steps,
+  calories,
 }
 
 class QuickAddScreen extends StatefulWidget {
-  const QuickAddScreen({super.key, this.member = 'Tôi', this.profileId});
+  const QuickAddScreen({
+    super.key,
+    this.member = 'Tôi',
+    this.profileId,
+    this.initialMeasurementType,
+  });
 
   final String member;
   final String? profileId;
+  final String? initialMeasurementType;
 
   @override
   State<QuickAddScreen> createState() => _QuickAddScreenState();
@@ -39,11 +47,30 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
   final _temperatureController = TextEditingController();
   final _heightController = TextEditingController();
   final _sleepController = TextEditingController();
+  final _stepsController = TextEditingController();
+  final _caloriesController = TextEditingController();
   final _noteController = TextEditingController();
 
   _MetricType _selectedType = _MetricType.bloodPressure;
   DateTime _measuredAt = DateTime.now();
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedType = switch (widget.initialMeasurementType) {
+      'HEART_RATE' => _MetricType.heartRate,
+      'BLOOD_PRESSURE' => _MetricType.bloodPressure,
+      'BLOOD_GLUCOSE' => _MetricType.glucose,
+      'SLEEP' => _MetricType.sleep,
+      'WEIGHT' || 'BMI' => _MetricType.weight,
+      'HEIGHT' => _MetricType.height,
+      'TEMPERATURE' => _MetricType.temperature,
+      'STEPS' => _MetricType.steps,
+      'CALORIES' => _MetricType.calories,
+      _ => _MetricType.bloodPressure,
+    };
+  }
 
   @override
   void dispose() {
@@ -55,6 +82,8 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     _temperatureController.dispose();
     _heightController.dispose();
     _sleepController.dispose();
+    _stepsController.dispose();
+    _caloriesController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -67,6 +96,8 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     _MetricType.sleep => 'Giấc ngủ',
     _MetricType.temperature => 'Thân nhiệt',
     _MetricType.height => 'Chiều cao',
+    _MetricType.steps => 'Số bước chân',
+    _MetricType.calories => 'Năng lượng tiêu hao',
   };
 
   IconData _typeIcon(_MetricType type) => switch (type) {
@@ -77,6 +108,8 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     _MetricType.sleep => Icons.bedtime_outlined,
     _MetricType.temperature => Icons.thermostat_rounded,
     _MetricType.height => Icons.height_rounded,
+    _MetricType.steps => Icons.directions_walk_rounded,
+    _MetricType.calories => Icons.local_fire_department_outlined,
   };
 
   Future<void> _pickDateTime() async {
@@ -116,6 +149,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
     required double min,
     required double max,
     String? hint,
+    bool wholeNumber = false,
   }) => TextFormField(
     controller: controller,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -141,6 +175,9 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       final value = double.tryParse(text.trim().replaceAll(',', '.'));
       if (value == null || value < min || value > max) {
         return 'Nhập giá trị từ $min đến $max $unit';
+      }
+      if (wholeNumber && value != value.roundToDouble()) {
+        return 'Vui lòng nhập số nguyên';
       }
       return null;
     },
@@ -173,15 +210,6 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
           ),
         ],
       ),
-      const SizedBox(height: 14),
-      _numberField(
-        controller: _heartRateController,
-        label: 'Nhịp tim',
-        unit: 'bpm',
-        min: 30,
-        max: 250,
-        hint: 'Ví dụ: 72',
-      ),
     ],
     _MetricType.heartRate => [
       _numberField(
@@ -189,7 +217,7 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
         label: 'Nhịp tim',
         unit: 'bpm',
         min: 30,
-        max: 250,
+        max: 220,
         hint: 'Ví dụ: 72',
       ),
     ],
@@ -243,6 +271,28 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
         hint: 'Ví dụ: 165',
       ),
     ],
+    _MetricType.steps => [
+      _numberField(
+        controller: _stepsController,
+        label: 'Số bước trong ngày',
+        unit: 'bước',
+        min: 0,
+        max: 200000,
+        hint: 'Ví dụ: 6500',
+        wholeNumber: true,
+      ),
+    ],
+    _MetricType.calories => [
+      _numberField(
+        controller: _caloriesController,
+        label: 'Năng lượng trong ngày',
+        unit: 'kcal',
+        min: 0,
+        max: 10000,
+        hint: 'Ví dụ: 350',
+        wholeNumber: true,
+      ),
+    ],
   };
 
   Map<String, dynamic> _valuesForSelectedType() {
@@ -252,7 +302,6 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       _MetricType.bloodPressure => {
         'systolic': double.parse(normalized(_systolicController)),
         'diastolic': double.parse(normalized(_diastolicController)),
-        'heart_rate': double.parse(normalized(_heartRateController)),
       },
       _MetricType.heartRate => {
         'heart_rate': double.parse(normalized(_heartRateController)),
@@ -271,6 +320,12 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       },
       _MetricType.height => {
         'height_cm': double.parse(normalized(_heightController)),
+      },
+      _MetricType.steps => {
+        'steps': double.parse(normalized(_stepsController)).toInt(),
+      },
+      _MetricType.calories => {
+        'calories': double.parse(normalized(_caloriesController)).toInt(),
       },
     };
   }
@@ -296,13 +351,23 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
       final measuredAt = _measuredAt.toUtc().toIso8601String();
       final key = 'manual-${DateTime.now().microsecondsSinceEpoch}';
       final records = <Map<String, dynamic>>[];
-      void add(String type, num value, String unit, {num? secondary}) {
+      void add(
+        String type,
+        num value,
+        String unit, {
+        num? secondary,
+        DateTime? startTime,
+        DateTime? endTime,
+      }) {
         records.add({
           'measurement_type': type,
           'value': value,
           'value_secondary': ?secondary,
           'unit': unit,
           'measured_at': measuredAt,
+          if (startTime != null)
+            'start_time': startTime.toUtc().toIso8601String(),
+          if (endTime != null) 'end_time': endTime.toUtc().toIso8601String(),
           'source': 'MANUAL',
           'idempotency_key': '${key}_$type',
         });
@@ -316,7 +381,6 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
             'mmHg',
             secondary: values['diastolic'] as num,
           );
-          add('HEART_RATE', values['heart_rate'] as num, 'bpm');
           break;
         case _MetricType.heartRate:
           add('HEART_RATE', values['heart_rate'] as num, 'bpm');
@@ -335,6 +399,34 @@ class _QuickAddScreenState extends State<QuickAddScreen> {
           break;
         case _MetricType.height:
           add('HEIGHT', values['height_cm'] as num, 'cm');
+          break;
+        case _MetricType.steps:
+        case _MetricType.calories:
+          final startOfDay = DateTime(
+            _measuredAt.year,
+            _measuredAt.month,
+            _measuredAt.day,
+          );
+          final startTime = _measuredAt.isAfter(startOfDay)
+              ? startOfDay
+              : _measuredAt.subtract(const Duration(seconds: 1));
+          if (_selectedType == _MetricType.steps) {
+            add(
+              'STEPS',
+              values['steps'] as num,
+              'steps',
+              startTime: startTime,
+              endTime: _measuredAt,
+            );
+          } else {
+            add(
+              'CALORIES',
+              values['calories'] as num,
+              'kcal',
+              startTime: startTime,
+              endTime: _measuredAt,
+            );
+          }
           break;
       }
       await ApiService.createManualMeasurements(

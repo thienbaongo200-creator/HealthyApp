@@ -10,6 +10,10 @@ import 'package:frontend/services/wear_offline_queue.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:frontend/widgets/widgets.dart';
+import '../../controllers/dashboard_preference_controller.dart';
+import '../../models/dashboard_preference.dart';
+import 'manage_metrics_bottom_sheet.dart';
+import 'all_measurements_screen.dart';
 
 import 'devices_screen.dart';
 import 'family_members_screen.dart';
@@ -53,6 +57,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ProfileSelectionController? _profileSelection;
   String? _observedProfileId;
   int _measurementRequestId = 0;
+  final DashboardPreferenceController _dashboardPreference = DashboardPreferenceController();
+  List<Map<String, dynamic>> _measurementRecords = const [];
 
   String? get _profileId => _profileSelection?.selectedProfileId;
 
@@ -93,11 +99,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _height = null;
       _sleepHours = null;
       _heartRateHistory.clear();
+      _measurementRecords = const [];
       _latestAIInsight = null;
     });
     if (profileId != null) {
       unawaited(_loadLatestAIInsight());
       unawaited(_refreshData());
+      unawaited(_dashboardPreference.loadPreference(profileId));
+    } else {
+      _dashboardPreference.clear();
     }
   }
 
@@ -119,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _dashboardPreference.addListener(_onDashboardPreferenceChanged);
     _batchFlushTimer = Timer.periodic(
       const Duration(seconds: 30),
       (_) => unawaited(_flushMeasurements()),
@@ -154,6 +165,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _onDashboardPreferenceChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _loadProfilesAndRefresh() async {
     try {
       final profiles = await ApiService.fetchProfiles();
@@ -163,6 +178,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (previousProfileId == _profileId) {
         await _loadLatestAIInsight();
         await _refreshData();
+        final profileId = _profileId;
+        if (profileId != null) await _dashboardPreference.loadPreference(profileId);
+        else _dashboardPreference.clear();
       }
     } catch (error) {
       if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
@@ -402,8 +420,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _dashboardPreference.removeListener(_onDashboardPreferenceChanged);
     _batchFlushTimer?.cancel();
     _wearSubscription.cancel();
+    _dashboardPreference.dispose();
     super.dispose();
   }
 
@@ -478,6 +498,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           numeric(profile?['height_cm'])?.toDouble();
       final sleep = latest('SLEEP');
       setState(() {
+        _measurementRecords = records;
         if (heartRate != null) _heartRate = heartRate;
         if (bloodPressure != null) {
           final systolic = numeric(bloodPressure['value']);
@@ -511,10 +532,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _openQuickAdd() async {
+  String _metricValue(String code) {
+    num? value(String type) {
+      final rows = _measurementRecords.where((row) => row['measurement_type'] == type).toList()
+        ..sort((a, b) => (b['measured_at'] ?? '').toString().compareTo((a['measured_at'] ?? '').toString()));
+      final raw = rows.isEmpty ? null : rows.first['value'];
+      return raw is num ? raw : num.tryParse(raw?.toString() ?? '');
+    }
+    switch (code) {
+      case 'HEART_RATE': return _heartRate > 0 ? '$_heartRate bpm' : '—';
+      case 'BLOOD_PRESSURE': return '$_bloodPressure mmHg';
+      case 'BMI': return _bmi?.toStringAsFixed(1) ?? '—';
+      case 'TEMPERATURE': return '${value(code)?.toStringAsFixed(1) ?? '—'} °C';
+      case 'WEIGHT': return '${_weight?.toStringAsFixed(1) ?? '—'} kg';
+      case 'HEIGHT': return '${_formatHeight(_height)} cm';
+      case 'SLEEP': return '${_sleepHours?.toStringAsFixed(1) ?? '—'} giờ';
+      case 'BLOOD_GLUCOSE': return '${_glucose?.toStringAsFixed(1) ?? '—'} mg/dL';
+      case 'STEPS': return '${value(code)?.toStringAsFixed(0) ?? '—'} bước';
+      case 'CALORIES': return '${value(code)?.toStringAsFixed(0) ?? '—'} kcal';
+      default: return '—';
+    }
+  }
+
+  Widget _trackedMetricsSection() {
+    final preference = _dashboardPreference.preference;
+    final order = preference?.metricOrder ?? DashboardPreference.defaults;
+    final selected = preference?.selectedMetrics ?? DashboardPreference.defaults;
+    final metrics = order.where(selected.contains).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [Expanded(child: _sectionTitle('Trạng thái sức khỏe', 'Cập nhật gần đây')),
+        IconButton(tooltip: 'Quản lý chỉ số theo dõi', onPressed: _profileId == null ? null : () async {
+          await ManageMetricsBottomSheet.show(context, _dashboardPreference, _profileId!);
+          if (mounted) setState(() {});
+        }, icon: const Icon(Icons.add_circle_outline, color: _teal))]),
+      const SizedBox(height: 12),
+      if (metrics.isEmpty)
+        _card(
+          child: const Padding(
+            padding: EdgeInsets.all(18),
+            child: Text('No metrics selected. Tap + to add metrics.'),
+          ),
+        )
+      else
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: metrics.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            mainAxisExtent: 84,
+          ),
+          itemBuilder: (context, index) {
+            final code = metrics[index];
+            final style = _metricStyle(code);
+            return Material(
+              color: Colors.white.withValues(alpha: .82),
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => _openMetric(code),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: style.color.withValues(alpha: .15)),
+                  ),
+                  child: _metric(
+                    icon: style.icon,
+                    color: style.color,
+                    label: MetricDefinition.byCode(code).label,
+                    value: _metricValue(code),
+                    unit: '',
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      Align(alignment: Alignment.centerRight, child: TextButton.icon(
+        onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(
+          builder: (_) => AllMeasurementsScreen(measurements: _measurementRecords))),
+        icon: const Icon(Icons.arrow_forward, size: 18), label: const Text('Xem tất cả'))),
+    ]);
+  }
+
+  ({IconData icon, Color color}) _metricStyle(String code) => switch (code) {
+    'HEART_RATE' => (icon: Icons.favorite_rounded, color: const Color(0xFFE66B71)),
+    'BLOOD_PRESSURE' => (icon: Icons.monitor_heart_rounded, color: const Color(0xFF28A99A)),
+    'BMI' => (icon: Icons.calculate_outlined, color: const Color(0xFF9A7BC1)),
+    'TEMPERATURE' => (icon: Icons.thermostat_rounded, color: const Color(0xFFEF8756)),
+    'WEIGHT' => (icon: Icons.monitor_weight_outlined, color: const Color(0xFF438ED8)),
+    'HEIGHT' => (icon: Icons.height_rounded, color: const Color(0xFF7D9B68)),
+    'SLEEP' => (icon: Icons.bedtime_rounded, color: const Color(0xFF8B83D7)),
+    'BLOOD_GLUCOSE' => (icon: Icons.water_drop_rounded, color: const Color(0xFF52A8D5)),
+    'STEPS' => (icon: Icons.directions_walk_rounded, color: const Color(0xFFE9A340)),
+    'CALORIES' => (icon: Icons.local_fire_department_rounded, color: const Color(0xFFE57C4D)),
+    _ => (icon: Icons.health_and_safety_outlined, color: _teal),
+  };
+
+  void _openMetric(String code) {
+    if (code == 'HEART_RATE') {
+      unawaited(_openTrends());
+    } else {
+      unawaited(_openQuickAdd(measurementType: code));
+    }
+  }
+
+  Future<void> _openQuickAdd({String? measurementType}) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => QuickAddScreen(member: _member, profileId: _profileId),
+        builder: (_) => QuickAddScreen(
+          member: _member,
+          profileId: _profileId,
+          initialMeasurementType: measurementType,
+        ),
       ),
     );
     if (saved == true && mounted) {
@@ -545,41 +678,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final member = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(title: Text('Chọn hồ sơ đang xem')),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE6F4F1),
-                child: Icon(Icons.groups_outlined, color: _teal),
-              ),
-              title: const Text('Quản lý thành viên gia đình'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.pop(context, '__manage_members__'),
-            ),
-            const Divider(height: 1),
-            for (final profile in _profiles)
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(title: Text('Chọn hồ sơ đang xem')),
               ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFE6F4F1),
-                  child: Icon(
-                    profile['profile_type'] == 'SELF'
-                        ? Icons.person
-                        : Icons.family_restroom,
-                    color: _teal,
-                  ),
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFE6F4F1),
+                  child: Icon(Icons.groups_outlined, color: _teal),
                 ),
-                title: Text(profileDisplayName(profile)),
-                subtitle: Text(profileDemographicSubtitle(profile)),
-                trailing: profile['id']?.toString() == _profileId
-                    ? const Icon(Icons.check, color: _teal)
-                    : null,
-                onTap: () => Navigator.pop(context, profile['id']?.toString()),
+                title: const Text('Quản lý thành viên gia đình'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(context, '__manage_members__'),
               ),
-            const SizedBox(height: 12),
-          ],
+              const Divider(height: 1),
+              for (final profile in _profiles)
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFE6F4F1),
+                    child: Icon(
+                      profile['profile_type'] == 'SELF'
+                          ? Icons.person
+                          : Icons.family_restroom,
+                      color: _teal,
+                    ),
+                  ),
+                  title: Text(profileDisplayName(profile)),
+                  subtitle: Text(profileDemographicSubtitle(profile)),
+                  trailing: profile['id']?.toString() == _profileId
+                      ? const Icon(Icons.check, color: _teal)
+                      : null,
+                  onTap: () =>
+                      Navigator.pop(context, profile['id']?.toString()),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
@@ -725,117 +863,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
                 const SizedBox(height: 23),
-                _sectionTitle('Trạng thái sức khỏe', 'Cập nhật gần đây'),
-                const SizedBox(height: 12),
-                _card(
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.favorite_rounded,
-                              color: const Color(0xFFE66B71),
-                              label: 'Nhịp tim',
-                              value: _heartRate > 0 ? '$_heartRate' : '—',
-                              unit: 'bpm',
-                            ),
-                          ),
-                          _metricDivider(),
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.bedtime_rounded,
-                              color: const Color(0xFF8B83D7),
-                              label: 'Giấc ngủ',
-                              value: _sleepHours == null
-                                  ? '—'
-                                  : _sleepHours!.toStringAsFixed(1),
-                              unit: 'giờ',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 15),
-                        child: Divider(height: 1, color: Color(0xFFEDF1F0)),
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.monitor_heart_rounded,
-                              color: const Color(0xFF28A99A),
-                              label: 'Huyết áp',
-                              value: _bloodPressure,
-                              unit: _bloodPressure == '—' ? 'mmHg' : 'mmHg',
-                            ),
-                          ),
-                          _metricDivider(),
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.water_drop_rounded,
-                              color: const Color(0xFF52A8D5),
-                              label: 'Đường huyết',
-                              value: _glucose == null
-                                  ? '—'
-                                  : _glucose!.toStringAsFixed(1),
-                              unit: 'mg/dL',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 15),
-                        child: Divider(height: 1, color: Color(0xFFEDF1F0)),
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.monitor_weight_outlined,
-                              color: const Color(0xFF438ED8),
-                              label: 'Cân nặng',
-                              value: _weight == null
-                                  ? '—'
-                                  : _weight!.toStringAsFixed(1),
-                              unit: 'kg',
-                            ),
-                          ),
-                          _metricDivider(),
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.height_rounded,
-                              color: const Color(0xFF7D9B68),
-                              label: 'Chiều cao',
-                              value: _height == null
-                                  ? '—'
-                                  : _height!.toStringAsFixed(1),
-                              unit: 'cm',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 15),
-                        child: Divider(height: 1, color: Color(0xFFEDF1F0)),
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _metric(
-                              icon: Icons.calculate_outlined,
-                              color: const Color(0xFF9A7BC1),
-                              label: 'BMI',
-                              value: _bmi?.toStringAsFixed(1) ?? '—',
-                              unit: 'kg/m²',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
+                _trackedMetricsSection(),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: () => Navigator.of(context).push<void>(
                     MaterialPageRoute<void>(
@@ -1119,43 +1148,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: const TextStyle(color: Color(0xFF83918F), fontSize: 11),
             ),
             const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Flexible(
-                  child: Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _ink,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      unit,
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      value,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF83918F),
-                        fontSize: 9,
+                        color: _ink,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 3),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        unit,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          color: Color(0xFF83918F),
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ],
         ),
       ),
     ],
   );
+
+  String _formatHeight(double? height) {
+    if (height == null || !height.isFinite || height <= 0) return '—';
+    return height == height.roundToDouble()
+        ? height.toStringAsFixed(0)
+        : height.toStringAsFixed(1);
+  }
 
   Widget _metricDivider() => Container(
     width: 1,
