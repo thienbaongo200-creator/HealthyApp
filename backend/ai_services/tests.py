@@ -594,12 +594,138 @@ class HealthRiskAssessmentApiTests(APITestCase):
                 measurement_type="HEART_RATE",
                 value=value,
                 unit="bpm",
-                measured_at=f"2026-10-14T10:{minute:02d}:00Z",
+                measured_at=timezone.now() - timedelta(minutes=minute),
                 source="MANUAL",
             )
         response = self._assess_risk()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["risk_level"], "LOW")
+        self.assertEqual(response.data["analyzed_count"], 3)
+
+    def test_manual_daily_steps_are_used_by_risk_rules(self):
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+        now = timezone.now()
+        measured_at = now - timedelta(days=1)
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="STEPS",
+            value=4_000,
+            unit="steps",
+            measured_at=measured_at,
+            start_time=measured_at - timedelta(hours=12),
+            end_time=measured_at,
+            source="MANUAL",
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R03", response.data["triggered_rules"])
+        self.assertEqual(response.data["analyzed_count"], 1)
+
+    def test_single_manual_high_heart_rate_is_enough_to_run_r01(self):
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="HEART_RATE",
+            value=125,
+            unit="bpm",
+            measured_at=timezone.now(),
+            source="MANUAL",
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["triggered_rules"], ["R01"])
+        self.assertEqual(response.data["analyzed_count"], 1)
+
+    def test_manual_daily_total_takes_priority_over_newer_wearable_total(self):
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+        now = timezone.now()
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="STEPS",
+            value=7_000,
+            unit="steps",
+            measured_at=now - timedelta(hours=1),
+            source="MANUAL",
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="STEPS",
+            value=4_000,
+            unit="steps",
+            measured_at=now,
+            source="WEAR_OS",
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("R03", response.data["triggered_rules"])
+        self.assertEqual(response.data["analyzed_count"], 1)
+
+    def test_wearable_daily_total_is_a_fallback_when_no_manual_entry_exists(self):
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="STEPS",
+            value=4_000,
+            unit="steps",
+            measured_at=timezone.now(),
+            source="WEAR_OS",
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R03", response.data["triggered_rules"])
+
+    def test_risk_rules_include_manual_and_wearable_heart_rate_together(self):
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+        now = timezone.now()
+        for index, (value, source) in enumerate(
+            ((75, "MANUAL"), (130, "WEAR_OS"), (80, "MANUAL"))
+        ):
+            HealthMeasurement.objects.create(
+                profile=self.profile,
+                measurement_type="HEART_RATE",
+                value=value,
+                unit="bpm",
+                measured_at=now - timedelta(minutes=index),
+                source=source,
+            )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R01", response.data["triggered_rules"])
         self.assertEqual(response.data["analyzed_count"], 3)
 
     def test_risk_assessment_high_risk_repeated_heart_rate(self):
@@ -610,7 +736,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
                 measurement_type="HEART_RATE",
                 value=value,
                 unit="bpm",
-                measured_at=f"2026-10-14T10:{minute:02d}:00Z",
+                measured_at=timezone.now() - timedelta(minutes=minute),
                 source="MANUAL",
             )
         response = self._assess_risk()
@@ -618,6 +744,49 @@ class HealthRiskAssessmentApiTests(APITestCase):
         self.assertEqual(response.data["risk_level"], "HIGH")
         self.assertIn("R02", response.data["triggered_rules"])
         self.assertTrue(len(response.data["warnings"]) > 0)
+
+    def test_high_manual_blood_pressure_triggers_r05_and_counts_measurement(self):
+        AIConsentService.set_consent(
+            user=self.account, profile=self.profile, granted=False, version="test"
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile, measurement_type="BLOOD_PRESSURE",
+            value=140, value_secondary=85, unit="mmHg",
+            measured_at=timezone.now(), source="MANUAL",
+        )
+        response = self._assess_risk()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R05", response.data["triggered_rules"])
+        self.assertEqual(response.data["analyzed_count"], 1)
+        self.assertIn("140/85", response.data["warnings"][0])
+
+    def test_short_manual_sleep_triggers_r06(self):
+        AIConsentService.set_consent(
+            user=self.account, profile=self.profile, granted=False, version="test"
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile, measurement_type="SLEEP", value=5.5,
+            unit="hours", measured_at=timezone.now(), source="MANUAL",
+        )
+        response = self._assess_risk()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R06", response.data["triggered_rules"])
+        self.assertEqual(response.data["analyzed_count"], 1)
+        self.assertIn("5.50", response.data["warnings"][0])
+
+    def test_high_manual_temperature_triggers_r07(self):
+        AIConsentService.set_consent(
+            user=self.account, profile=self.profile, granted=False, version="test"
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile, measurement_type="TEMPERATURE", value=37.8,
+            unit="C", measured_at=timezone.now(), source="MANUAL",
+        )
+        response = self._assess_risk()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R07", response.data["triggered_rules"])
+        self.assertEqual(response.data["analyzed_count"], 1)
+        self.assertIn("37.8", response.data["warnings"][0])
 
     def test_chat_requires_ai_consent(self):
         AIConsentService.set_consent(

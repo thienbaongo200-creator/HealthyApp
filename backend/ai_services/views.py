@@ -98,7 +98,7 @@ class HealthRiskAssessmentView(APIView):
             require_ai_consent=False,
         )
         period_end = data.get("period_end") or timezone.now()
-        period_start = data.get("period_start") or (period_end - timedelta(days=30))
+        period_start = data.get("period_start") or (period_end - timedelta(days=7))
         result = RiskRuleEngine().assess(
             profile,
             period_start=period_start,

@@ -330,6 +330,25 @@ class AccountsAuthIntegrationTestCase(APITestCase):
             complete_response.data["user"]["is_profile_completed"]
         )
 
+    def test_profile_height_is_validated_as_centimeters(self):
+        user = User.objects.create_user(
+            email="height-profile@example.com",
+            password="SecurePassword123!",
+        )
+        self.client.force_authenticate(user=user)
+
+        invalid = self.client.patch(
+            reverse("auth-profile"), {"height": 1.6}, format="json"
+        )
+        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
+
+        valid = self.client.patch(
+            reverse("auth-profile"), {"height": 160}, format="json"
+        )
+        self.assertEqual(valid.status_code, status.HTTP_200_OK)
+        profile = PersonProfile.objects.get(account=user, profile_type="SELF")
+        self.assertEqual(float(profile.height_cm), 160.0)
+
     def test_login_throttle_is_limited_per_ip(self):
         cache.clear()
         payload = {"email": "unknown@example.com", "password": "WrongPassword"}

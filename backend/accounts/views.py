@@ -11,7 +11,7 @@ from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -125,10 +125,20 @@ class ProfileView(APIView):
 
         profile.gender = str(request.data.get("gender", profile.gender)).strip()
         profile.date_of_birth = date_of_birth or profile.date_of_birth
-        profile.height_cm = request.data.get(
+        height_cm = request.data.get(
             "height_cm",
             request.data.get("height", profile.height_cm),
         )
+        try:
+            profile.height_cm = serializers.DecimalField(
+                max_digits=5,
+                decimal_places=2,
+                min_value=30,
+                max_value=300,
+                allow_null=True,
+            ).run_validation(height_cm)
+        except serializers.ValidationError as error:
+            return Response({"height_cm": error.detail}, status=status.HTTP_400_BAD_REQUEST)
         profile.weight_kg = request.data.get(
             "weight_kg",
             request.data.get("weight", profile.weight_kg),
