@@ -160,15 +160,29 @@ Chạy từ thư mục Flutter:
 ```powershell
 cd D:\HealthyApp\frontend
 flutter pub get
-flutter run -t lib/main.dart -d <YOUR_DEVICE_ID> --dart-define=API_BASE_URL=http://<YOUR_LAN_IP>:8000/api
+flutter run -t lib/main.dart `
+-d <YOUR_DEVICE_ID> `
+--dart-define=API_BASE_URL=http://<YOUR_LAN_IP>:8000/api `
+--dart-define=WATCH_SYNC_TOKEN=healthyapp-defense-demo-token-2026-32chars `
+--dart-define=WATCH_DEVICE_IDENTIFIER=wear-os-demo-device
 ```
 
 Ví dụ thực tế: 
 ```powershell
-flutter run -t lib/main.dart -d adb-R5CX826Q9VB-IjsOKx._adb-tls-connect._tcp --dart-define=API_BASE_URL=http://192.168.1.10:8000/api
+flutter run -t lib/main.dart -d adb-R5CX826Q9VB-IjsOKx._adb-tls-connect._tcp --dart-define=API_BASE_URL=http://192.168.1.10:8000/api --dart-define=WATCH_SYNC_TOKEN=healthyapp-defense-demo-token-2026-32chars --dart-define=WATCH_DEVICE_IDENTIFIER=wear-os-demo-device
 ```
 
-Trong ứng dụng, mở dashboard để Phone khởi tạo HTTP listener tại cổng `8080`. API URL mặc định đã trỏ tới IP trên, nhưng lệnh trên truyền giá trị rõ ràng để có thể dễ thay đổi nếu IP máy tính đổi.
+Sau khi đăng nhập, mở Dashboard để Phone khởi tạo HTTP listener ở cổng `8080`. Kiểm tra listener bằng:
+
+```powershell
+netstat -ano | findstr :8080
+```
+
+Kết quả mong đợi:
+
+```text
+TCP 127.0.0.1:8080 LISTENING
+```
 
 ### Bước 3 — Tạo ADB forward/reverse cho Wear OS Emulator
 
@@ -177,6 +191,19 @@ Khởi động Wear OS Emulator trong Android Studio, giữ điện thoại kế
 ```powershell
 adb -s <phone-device-id> forward tcp:8080 tcp:8080
 adb -s <wear-device-id> reverse tcp:8080 tcp:8080
+```
+
+Kiểm tra các kết nối ADB:
+
+```powershell
+adb -s <phone-device-id> forward --list
+adb -s <wear-device-id> reverse --list
+```
+
+Kết quả mong đợi:
+
+```text
+tcp:8080 tcp:8080
 ```
 
 Ví dụ thực tế: 
@@ -193,17 +220,71 @@ Mở terminal khác:
 
 ```powershell
 cd D:\HealthyApp\frontend
-flutter run -t lib/main_wear.dart -d <wear-device-id> --dart-define=WATCH_SYNC_URL=http://localhost:8080/sync
+flutter run -t lib/main_wear.dart `
+-d emulator-5554 `
+--dart-define=WATCH_SYNC_URL=http://localhost:8080/sync `
+--dart-define=WATCH_SYNC_TOKEN=healthyapp-defense-demo-token-2026-32chars `
+--dart-define=WATCH_DEVICE_IDENTIFIER=wear-os-demo-device `
+--dart-define=USE_MOCK_WEAR_OS=true
 ```
 
-Ví dụ thực tế: 
-```powershell
-cd D:\HealthyApp\frontend
-flutter run -t lib/main_wear.dart -d emulator-5554 --dart-define=WATCH_SYNC_URL=http://localhost:8080/sync
-```
+Use the exact same demo token on the phone build. Keep the Phone HTTP listener
+and both ADB forwarding connections active before expecting samples to arrive.
+The Wear mock also runs without a token and keeps samples in its offline queue;
+a token is required for phone sync.
 
 
 Wear OS mặc định dùng `http://localhost:8080/sync`; `WATCH_SYNC_URL` ở trên ghi rõ endpoint cho emulator. Mở chế độ **Vận động** để gửi mẫu mỗi 5 giây; chế độ nghỉ gửi mỗi 60 giây. Kiểm tra log của Phone để xác nhận có nhận snapshot và sau đó đồng bộ batch lên Django.
+
+Phone and Wear OS builds must use the same `WATCH_SYNC_TOKEN` and
+`WATCH_DEVICE_IDENTIFIER`. Pair the identifier `wear-os-demo-device` to the
+intended profile in **Devices**. Incoming samples are resolved through that
+pairing and the owning profile; changing the currently viewed profile does not
+change the destination. Unacknowledged samples remain in the Wear app's local
+SQLite outbox and retry when connectivity returns.
+
+The defense/demo build defaults to `USE_MOCK_WEAR_OS=true`. Its samples exercise
+the offline queue and sync path; they are simulated, not measurements from a
+commercial sensor. Set the flag to `false` only after a real sensor adapter is
+configured.
+
+#### Kiểm thử Wear OS Sync — Kết quả mong đợi
+
+Wear OS:
+
+```text
+SYNC URL = http://localhost:8080/sync
+
+TOKEN LENGTH = 42
+
+Sending request...
+
+Response status = 200
+
+Response body = {"status":"success"}
+```
+
+Backend Django:
+
+```text
+POST /api/health-measurements/batch/ HTTP/1.1 200
+```
+
+Ví dụ log thực tế:
+
+```text
+[08/Nov/2026 17:43:23] "POST /api/health-measurements/batch/ HTTP/1.1" 200
+```
+
+Luồng đã kiểm chứng:
+
+```text
+Wear OS Emulator
+→ Phone Listener (:8080)
+→ Django Backend
+→ /api/health-measurements/batch/
+→ Database
+```
 
 ## API chính
 
@@ -281,3 +362,7 @@ adb -s <phone-device-id> logcat | Select-String 'ApiService|LoginScreen|CLEARTEX
 ```
 
 Login posts JSON `{"account":"username-or-email","password":"..."}` to `POST /api/auth/login/`; the custom Django view accepts that shape and returns an `access` JWT. It allows anonymous login and does not require a CSRF token because the API uses JWT, not session authentication. CORS is enforced by browsers and does not block native Android HTTP requests. Never log passwords or JWTs.
+
+### Tài khoản
+Admin `thienbaongo200@gmail.com` Mk: `thienngo$123`
+Demo `thienbaongo123@gmail.com` Mk: `Baoquoc$!%123`
