@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
 import 'package:http/http.dart' as http;
@@ -42,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
+    ProfileSelectionScope.of(context).clear();
 
     String inputAccount = _accountController.text.trim();
     String password = _passwordController.text;
@@ -49,6 +51,8 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final token = await _apiService.login(inputAccount, password);
       await _apiService.setToken(token);
+      // Drop cached profiles before fetching the newly authenticated account.
+      ProfileSelectionScope.of(context).clear();
       _showSnackBar('Đăng nhập thành công!', AppColors.success);
       final profileComplete = await ApiService.isCurrentProfileComplete();
       if (mounted) {

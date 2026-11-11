@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
+import 'package:frontend/state/profile_selection.dart';
 import '../../services/api_service.dart';
 import '../../widgets/widgets.dart';
+import 'login_screen.dart';
 import 'profile_setup_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -52,16 +54,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (result['success'] == true) {
-      _showSnackBar(result['message'] as String, AppColors.success);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
-      );
+      if (!mounted) return;
+      ProfileSelectionScope.of(context).clear();
+      try {
+        await ApiService.instance.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil<void>(
+          MaterialPageRoute<void>(builder: (_) => const ProfileSetupScreen()),
+          (_) => false,
+        );
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        _showSnackBar(
+          'T\u00e0i kho\u1ea3n \u0111\u00e3 t\u1ea1o. Vui l\u00f2ng \u0111\u0103ng nh\u1eadp \u0111\u1ec3 thi\u1ebft l\u1eadp h\u1ed3 s\u01a1.',
+          AppColors.success,
+        );
+        Navigator.of(context).pushAndRemoveUntil<void>(
+          MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+          (_) => false,
+        );
+      }
     } else {
-      _showSnackBar(result['message'] as String, AppColors.danger);
+      setState(() => _isLoading = false);
+      _showSnackBar(
+        result['message']?.toString() ?? 'Đăng ký thất bại.',
+        AppColors.danger,
+      );
     }
   }
 
