@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:path/path.dart' as p;
@@ -26,6 +27,13 @@ class WearOfflineQueue {
   WearOfflineQueue._();
 
   Database? _database;
+  final StreamController<void> _changes = StreamController<void>.broadcast();
+
+  Stream<void> get changes => _changes.stream;
+
+  void _notifyChanged() {
+    if (!_changes.isClosed) _changes.add(null);
+  }
 
   Future<Database> get database async {
     if (_database case final db?) return db;
@@ -81,30 +89,56 @@ class WearOfflineQueue {
       },
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
+    _notifyChanged();
   }
 
-  Future<List<WearQueueItem>> ready({int limit = 100}) async {
+  Future<List<WearQueueItem>> ready({int limit = 100, String? profileId}) async {
     final db = await database;
+    final where = StringBuffer('''
+      status IN (?, ?) AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+    ''');
+    final whereArgs = <Object?>[
+      'WAITING',
+      'RETRY_PENDING',
+      DateTime.now().toUtc().toIso8601String(),
+    ];
+    if (profileId != null) {
+      where.write(' AND profile_id = ?');
+      whereArgs.add(profileId);
+    }
     final rows = await db.query(
       'wear_queue',
-      where: '''
-        status IN (?, ?) AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-      ''',
-      whereArgs: [
-        'WAITING',
-        'RETRY_PENDING',
-        DateTime.now().toUtc().toIso8601String(),
-      ],
+      where: where.toString(),
+      whereArgs: whereArgs,
       orderBy: 'created_at ASC',
       limit: limit,
     );
     return rows.map(_fromRow).toList(growable: false);
   }
 
-  Future<int> pendingCount() async {
+  Future<List<WearQueueItem>> failedItems({String? profileId}) async {
+    final rows = await (await database).query(
+      'wear_queue',
+      where: profileId == null ? "status = 'FAILED'" : "status = 'FAILED' AND profile_id = ?",
+      whereArgs: profileId == null ? null : [profileId],
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  Future<int> pendingCount({String? profileId}) async {
     final db = await database;
     final rows = await db.rawQuery(
-      "SELECT COUNT(*) AS count FROM wear_queue WHERE status IN ('WAITING','SENDING','RETRY_PENDING')",
+      "SELECT COUNT(*) AS count FROM wear_queue WHERE status IN ('WAITING','SENDING','RETRY_PENDING')${profileId == null ? '' : ' AND profile_id = ?'}",
+      profileId == null ? null : [profileId],
+    );
+    return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  Future<int> failedCount({String? profileId}) async {
+    final rows = await (await database).rawQuery(
+      "SELECT COUNT(*) AS count FROM wear_queue WHERE status = 'FAILED'${profileId == null ? '' : ' AND profile_id = ?'}",
+      profileId == null ? null : [profileId],
     );
     return Sqflite.firstIntValue(rows) ?? 0;
   }
@@ -122,6 +156,7 @@ class WearOfflineQueue {
       );
     }
     await batch.commit(noResult: true);
+    _notifyChanged();
   }
 
   Future<void> updateMeasurement(WearQueueItem item, Map<String, dynamic> measurement) async {
@@ -135,6 +170,7 @@ class WearOfflineQueue {
       where: 'idempotency_key = ?',
       whereArgs: [item.key],
     );
+    _notifyChanged();
   }
 
   Future<void> markSynced(String key) => _update(key, {
@@ -182,6 +218,7 @@ class WearOfflineQueue {
       where: 'idempotency_key = ?',
       whereArgs: [key],
     );
+    _notifyChanged();
   }
 
   WearQueueItem _fromRow(Map<String, Object?> row) => WearQueueItem(

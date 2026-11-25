@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
@@ -6,22 +8,27 @@ import 'main_navigation_wrapper.dart';
 import 'quick_add_screen.dart';
 import 'package:frontend/widgets/widgets.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/error_mapper.dart';
 import 'package:frontend/services/watch_sync_config.dart';
+import 'package:frontend/services/watch_service.dart';
+import 'package:frontend/services/wear_offline_queue.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class DevicesScreen extends StatefulWidget {
   const DevicesScreen({
     super.key,
     required this.isWatchConnected,
-    required this.pendingMeasurements,
+    required this.wearConnectedProfileId,
+    required this.wearConnectedDeviceId,
     required this.onSync,
     this.profileId,
     this.member = 'Tôi',
   });
 
   final bool isWatchConnected;
-  final int pendingMeasurements;
-  final Future<void> Function() onSync;
+  final String? wearConnectedProfileId;
+  final String? wearConnectedDeviceId;
+  final Future<void> Function(String profileId) onSync;
   final String? profileId;
   final String member;
 
@@ -33,17 +40,53 @@ class _DevicesScreenState extends State<DevicesScreen> {
   static const _teal = AppColors.primary;
   static const _ink = AppColors.textPrimary;
   static const _storage = FlutterSecureStorage();
+  final WearOfflineQueue _wearQueue = WearOfflineQueue.instance;
   bool _isSyncing = false;
   String? _pairedDeviceId;
+  bool _deviceVerificationFailed = false;
+  String? _wearEventProfileId;
+  String? _wearEventDeviceId;
+  int _pendingMeasurements = 0;
+  int _failedMeasurements = 0;
   String? _profileId;
   int _deviceRequestId = 0;
   ProfileSelectionController? _profileSelection;
+  late final StreamSubscription<void> _queueSubscription;
+  late final StreamSubscription<Map<String, dynamic>> _wearSubscription;
 
   @override
   void initState() {
     super.initState();
     _profileId = widget.profileId;
+    if (widget.isWatchConnected &&
+        widget.wearConnectedProfileId == _profileId) {
+      _wearEventProfileId = widget.wearConnectedProfileId;
+      _wearEventDeviceId = widget.wearConnectedDeviceId;
+    }
+    _queueSubscription = _wearQueue.changes.listen((_) {
+      unawaited(_refreshQueueCounts());
+    });
+    _wearSubscription = WatchService().wearDataStream.listen((event) {
+      if (!mounted) return;
+      final profileId = event['profile_id']?.toString();
+      final deviceId = event['device_id']?.toString();
+      if (profileId == null || deviceId == null) return;
+      if (profileId != _profileId) {
+        if (profileId == _wearEventProfileId) {
+          setState(() {
+            _wearEventProfileId = null;
+            _wearEventDeviceId = null;
+          });
+        }
+        return;
+      }
+      setState(() {
+        _wearEventProfileId = profileId;
+        _wearEventDeviceId = deviceId;
+      });
+    });
     _loadPairedDevice();
+    _refreshQueueCounts();
   }
 
   @override
@@ -54,10 +97,14 @@ class _DevicesScreenState extends State<DevicesScreen> {
     _profileSelection?.removeListener(_onProfileSelectionChanged);
     _profileSelection = selection;
     final selectedProfileId = selection.selectedProfileId;
-    if (selectedProfileId != null && selectedProfileId != _profileId) {
+    if (selectedProfileId != _profileId) {
       _profileId = selectedProfileId;
       _pairedDeviceId = null;
+      _deviceVerificationFailed = false;
+      _wearEventProfileId = null;
+      _wearEventDeviceId = null;
       _loadPairedDevice();
+      _refreshQueueCounts();
     }
     selection.addListener(_onProfileSelectionChanged);
   }
@@ -69,17 +116,23 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   void _onProfileSelectionChanged() {
     final profileId = _profileSelection?.selectedProfileId;
-    if (!mounted || profileId == null || profileId == _profileId) return;
+    if (!mounted || profileId == _profileId) return;
     setState(() {
       _profileId = profileId;
       _pairedDeviceId = null;
+      _deviceVerificationFailed = false;
+      _wearEventProfileId = null;
+      _wearEventDeviceId = null;
     });
     _loadPairedDevice();
+    _refreshQueueCounts();
   }
 
   @override
   void dispose() {
     _profileSelection?.removeListener(_onProfileSelectionChanged);
+    _queueSubscription.cancel();
+    _wearSubscription.cancel();
     super.dispose();
   }
 
@@ -87,28 +140,129 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final requestId = ++_deviceRequestId;
     final id = _profileId;
     if (id == null) {
-      if (mounted) setState(() => _pairedDeviceId = null);
+      if (mounted) {
+        setState(() {
+          _pairedDeviceId = null;
+          _deviceVerificationFailed = false;
+        });
+      }
       return;
     }
-    final value = await _storage.read(key: 'paired_device_$id');
-    if (!mounted || requestId != _deviceRequestId || id != _profileId) return;
-    if (mounted) setState(() => _pairedDeviceId = value);
+    try {
+      final cachedId = await _storage.read(key: 'paired_device_$id');
+      final cachedIdentifier = await _storage.read(
+        key: 'paired_device_identifier_$id',
+      );
+      final devices = await ApiService.fetchDevices(profileId: id);
+      final activeList = devices
+          .where(
+            (device) =>
+                device['profile_id']?.toString() == id &&
+                device['status'] == 'ACTIVE' &&
+                (device['id']?.toString().isNotEmpty ?? false),
+          )
+          .toList(growable: false);
+      final selected = activeList.where((device) {
+            return cachedId != null && device['id']?.toString() == cachedId;
+          }).firstOrNull ??
+          activeList.where((device) {
+            return cachedIdentifier != null &&
+                device['device_identifier']?.toString() == cachedIdentifier;
+          }).firstOrNull ??
+          activeList.where((device) {
+            return device['device_identifier']?.toString() ==
+                watchDeviceIdentifier;
+          }).firstOrNull ??
+          (activeList.length == 1 ? activeList.single : null);
+      if (!mounted || requestId != _deviceRequestId || id != _profileId) return;
+      final deviceId = selected?['id']?.toString();
+      if (deviceId == null || deviceId.isEmpty) {
+        await _storage.delete(key: 'paired_device_$id');
+        await _storage.delete(key: 'paired_device_identifier_$id');
+      } else {
+        await _storage.write(key: 'paired_device_$id', value: deviceId);
+        final identifier = selected?['device_identifier']?.toString();
+        if (identifier != null && identifier.isNotEmpty) {
+          await _storage.write(
+            key: 'paired_device_identifier_$id',
+            value: identifier,
+          );
+        }
+      }
+      if (!mounted || requestId != _deviceRequestId || id != _profileId) return;
+      setState(() {
+        _pairedDeviceId = deviceId;
+        _deviceVerificationFailed = false;
+      });
+    } catch (error) {
+      if (!mounted || requestId != _deviceRequestId || id != _profileId) return;
+      setState(() {
+        _pairedDeviceId = null;
+        _deviceVerificationFailed = true;
+      });
+      debugPrint('[Devices] Could not verify active device for profile: $error');
+    }
+  }
+
+  Future<void> _refreshQueueCounts() async {
+    final profileId = _profileId;
+    if (profileId == null) {
+      if (mounted) {
+        setState(() {
+          _pendingMeasurements = 0;
+          _failedMeasurements = 0;
+        });
+      }
+      return;
+    }
+    final pending = await _wearQueue.pendingCount(profileId: profileId);
+    final failed = await _wearQueue.failedCount(profileId: profileId);
+    if (!mounted || profileId != _profileId) return;
+    setState(() {
+      _pendingMeasurements = pending;
+      _failedMeasurements = failed;
+    });
   }
 
   Future<void> _syncNow() async {
-    if (widget.pendingMeasurements == 0) {
+    final profileId = _profileId;
+    if (profileId == null) {
+      _showMessage('Chọn hồ sơ trước khi đồng bộ.');
+      return;
+    }
+    if (_pendingMeasurements == 0) {
       _showMessage('Không có dữ liệu đang chờ đồng bộ.');
       return;
     }
 
     setState(() => _isSyncing = true);
     try {
-      await widget.onSync();
+      await widget.onSync(profileId);
+      await _refreshQueueCounts();
       if (mounted) {
         _showMessage(
           'Đã chạy đồng bộ. Dữ liệu chưa gửi được sẽ được giữ để thử lại.',
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  Future<void> _retryFailed() async {
+    final profileId = _profileId;
+    if (profileId == null || _isSyncing) return;
+    setState(() => _isSyncing = true);
+    try {
+      final failed = await _wearQueue.failedItems(profileId: profileId);
+      for (final item in failed) {
+        await _wearQueue.retryFailed(item.key);
+      }
+      await widget.onSync(profileId);
+      await _refreshQueueCounts();
+      if (mounted) _showMessage('Đã đưa bản ghi lỗi vào hàng đợi thử lại.');
+    } catch (error) {
+      if (mounted) _showMessage('Không thể thử lại dữ liệu: $error');
     } finally {
       if (mounted) setState(() => _isSyncing = false);
     }
@@ -132,9 +286,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Ghép nối thiết bị'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             TextField(
               controller: identifier,
               decoration: const InputDecoration(
@@ -146,7 +301,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
               controller: name,
               decoration: const InputDecoration(labelText: 'Tên thiết bị'),
             ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -280,7 +436,11 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final connected = widget.isWatchConnected;
+    final connected =
+        _profileId != null &&
+        _pairedDeviceId != null &&
+        _wearEventProfileId == _profileId &&
+        _wearEventDeviceId == _pairedDeviceId;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -316,7 +476,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     Expanded(
                       child: Text(
                         connected
-                            ? 'Đồng hồ đang gửi dữ liệu sức khỏe.'
+                            ? 'Đã nhận dữ liệu đồng hồ cho hồ sơ này.'
+                            : _deviceVerificationFailed
+                            ? 'Không thể xác minh thiết bị đang hoạt động.'
                             : 'Kết nối đồng hồ để cập nhật dữ liệu sức khỏe.',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
@@ -335,7 +497,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
                 status: _statusPill(
                   active: connected,
                   label: _pairedDeviceId != null
-                      ? 'Đã ghép nối'
+                      ? connected
+                          ? 'Đã nhận dữ liệu'
+                          : 'Đã ghép nối'
                       : connected
                       ? 'Đã kết nối'
                       : 'Chưa kết nối',
@@ -354,16 +518,29 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   _detailRow(
                     Icons.cloud_sync_outlined,
                     'Bản ghi chờ gửi',
-                    '${widget.pendingMeasurements}',
+                    '$_pendingMeasurements chờ • $_failedMeasurements lỗi',
                   ),
                 ],
                 footer: SizedBox(
                   width: double.infinity,
-                  child: GradientButton(
-                    label: _isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay',
-                    icon: Icons.sync_rounded,
-                    onPressed: _isSyncing ? null : _syncNow,
-                    isLoading: _isSyncing,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GradientButton(
+                        label: _isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay',
+                        icon: Icons.sync_rounded,
+                        onPressed: _isSyncing ? null : _syncNow,
+                        isLoading: _isSyncing,
+                      ),
+                      if (_failedMeasurements > 0) ...[
+                        const SizedBox(height: AppSpacing.x2),
+                        OutlinedButton.icon(
+                          onPressed: _isSyncing ? null : _retryFailed,
+                          icon: const Icon(Icons.replay_rounded),
+                          label: Text('Thử lại $_failedMeasurements bản ghi lỗi'),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -383,7 +560,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   _detailRow(
                     Icons.sync_alt_rounded,
                     'Nhận dữ liệu từ đồng hồ',
-                    'Cổng 8080',
+                    'Cổng $phoneSyncPort',
                   ),
                 ],
               ),

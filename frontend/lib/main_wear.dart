@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'services/mock_health_data_service.dart';
@@ -41,6 +41,7 @@ class _WearDashboardState extends State<WearDashboard> {
   Timer? _timer;
   Timer? _retryTimer;
   bool _isSyncing = false;
+  int _failedCount = 0;
   String _syncStatus = 'Đang khởi tạo';
   final MockHealthDataService _mockData = MockHealthDataService();
   final WatchSenderService _senderService = WatchSenderService();
@@ -56,15 +57,25 @@ class _WearDashboardState extends State<WearDashboard> {
   }
 
   Future<void> _initWearState() async {
-    if (mounted) {
+    if (!mounted) return;
+    {
       if (useMockWearOs) {
         debugPrint('[Wear OS] $wearMockArchitectureNote.');
-        setState(() => _syncStatus = 'Mock Mode • Offline Queue & Sync');
+        setState(() => _syncStatus = 'Mock Mode • HTTP Sync • Offline Queue');
         _startMockDataAndSync();
         _retryTimer = Timer.periodic(
           const Duration(seconds: 5),
           (_) => unawaited(_flushPending()),
         );
+        final failedItems = await _pendingQueue.failedItems();
+        if (mounted) {
+          setState(() {
+            _failedCount = failedItems.length;
+            if (_failedCount > 0) {
+              _syncStatus = '$_failedCount mẫu lỗi cần xử lý';
+            }
+          });
+        }
       } else {
         setState(() => _syncStatus = 'Real sensors chưa được cấu hình');
         debugPrint(
@@ -118,16 +129,39 @@ class _WearDashboardState extends State<WearDashboard> {
       while (mounted) {
         final item = await _pendingQueue.firstReady();
         if (item == null) break;
-        final sent = await _senderService.sendDataToPhone(item.payload);
-        if (!sent) {
-          await _pendingQueue.scheduleRetry(item);
-          if (mounted) {
-            setState(() => _syncStatus = 'Đang chờ kết nối • sẽ thử lại');
-          }
-          break;
+        final result = await _senderService.sendDataToPhone(item.payload);
+        switch (result.disposition) {
+          case WatchSendDisposition.accepted:
+            await _pendingQueue.acknowledge(item.idempotencyKey);
+            if (mounted) {
+              final failedItems = await _pendingQueue.failedItems();
+              setState(() {
+                _syncStatus = 'Đã gửi sang điện thoại • Chờ máy chủ';
+                _failedCount = failedItems.length;
+              });
+            }
+            break;
+          case WatchSendDisposition.retryableFailure:
+            await _pendingQueue.scheduleRetry(item);
+            if (mounted) {
+              setState(() => _syncStatus = 'Mất kết nối • sẽ tự thử lại');
+            }
+            break;
+          case WatchSendDisposition.permanentFailure:
+            await _pendingQueue.markFailed(
+              item.idempotencyKey,
+              result.message,
+            );
+            if (mounted) {
+              final failedItems = await _pendingQueue.failedItems();
+              setState(() {
+                _failedCount = failedItems.length;
+                _syncStatus = 'Mẫu bị từ chối • ${result.message}';
+              });
+            }
+            break;
         }
-        await _pendingQueue.acknowledge(item.idempotencyKey);
-        if (mounted) setState(() => _syncStatus = 'Đã đồng bộ');
+        if (result.disposition != WatchSendDisposition.accepted) break;
       }
     } catch (error, stackTrace) {
       debugPrint('[Wear OS] Queue sync failed: $error\n$stackTrace');
@@ -135,6 +169,19 @@ class _WearDashboardState extends State<WearDashboard> {
     } finally {
       _isSyncing = false;
     }
+  }
+
+  Future<void> _retryFailed() async {
+    final failed = await _pendingQueue.failedItems();
+    for (final item in failed) {
+      await _pendingQueue.retryFailed(item.idempotencyKey);
+    }
+    if (!mounted) return;
+    setState(() {
+      _failedCount = 0;
+      _syncStatus = 'Đang thử lại mẫu đã khắc phục';
+    });
+    await _flushPending();
   }
 
   void _setActivityState(MockActivityState state) {
@@ -215,12 +262,20 @@ class _WearDashboardState extends State<WearDashboard> {
                   ' • ${_mockData.activityState == MockActivityState.active ? '5' : '60'}s'
                   ' • $_syncStatus',
                   style: TextStyle(
-                    color: _syncStatus == 'Đã đồng bộ'
+                    color: _syncStatus.startsWith('Đã gửi sang điện thoại')
                         ? AppColors.success
                         : AppColors.warning,
                     fontSize: 12,
                   ),
                 ),
+                if (_failedCount > 0) ...[
+                  const SizedBox(height: 4),
+                  TextButton.icon(
+                    onPressed: _isSyncing ? null : _retryFailed,
+                    icon: const Icon(Icons.replay_rounded, size: 16),
+                    label: Text('Thử lại $_failedCount mẫu lỗi'),
+                  ),
+                ],
                 if (useMockWearOs) ...[
                   const SizedBox(height: 8),
                   const Padding(

@@ -4,17 +4,42 @@ import 'package:flutter/foundation.dart';
 import 'watch_sync_config.dart';
 import 'package:http/http.dart' as http;
 
+enum WatchSendDisposition { accepted, retryableFailure, permanentFailure }
+
+class WatchSendResult {
+  const WatchSendResult(this.disposition, this.message);
+
+  final WatchSendDisposition disposition;
+  final String message;
+}
+
 class WatchSenderService {
   static const String _syncUrl = String.fromEnvironment(
     'WATCH_SYNC_URL',
     defaultValue: 'http://localhost:8080/sync',
   );
 
-  Future<bool> sendDataToPhone(Map<String, dynamic> healthData) async {
+  Future<WatchSendResult> sendDataToPhone(
+    Map<String, dynamic> healthData,
+  ) async {
+    final key = healthData['idempotency_key']?.toString();
+    final identifier = healthData['device_identifier']?.toString().trim();
+    final hasMeasurements =
+        healthData['heart_rate'] is num &&
+        healthData['steps'] is num &&
+        healthData['calories'] is num;
+    if (key == null || key.isEmpty || identifier == null || identifier.isEmpty || !hasMeasurements) {
+      return const WatchSendResult(
+        WatchSendDisposition.permanentFailure,
+        'Payload thiếu idempotency_key, device_identifier hoặc chỉ số bắt buộc.',
+      );
+    }
     if (kDebugMode) {
       debugPrint('SYNC URL = $_syncUrl');
       debugPrint('TOKEN LENGTH = ${watchSyncToken.length}');
-      debugPrint('PAYLOAD = ${jsonEncode(healthData)}');
+      debugPrint(
+        'TOKEN DIAGNOSTIC ID = ${watchSyncTokenDiagnosticId(watchSyncToken)}',
+      );
     }
     if (watchSyncToken.length < 32) {
       if (kDebugMode) {
@@ -25,7 +50,10 @@ class WatchSenderService {
       if (!useMockWearOs) {
         debugPrint('[Wear OS] WATCH_SYNC_TOKEN is not configured.');
       }
-      return false;
+      return const WatchSendResult(
+        WatchSendDisposition.permanentFailure,
+        'WATCH_SYNC_TOKEN chưa được cấu hình đúng.',
+      );
     }
     try {
       if (kDebugMode) {
@@ -47,12 +75,29 @@ class WatchSenderService {
         debugPrint('Response body = ${response.body}');
       }
       if (response.statusCode == 200) {
-        return true;
+        return const WatchSendResult(
+          WatchSendDisposition.accepted,
+          'Điện thoại đã nhận mẫu vào hàng đợi.',
+        );
       }
-      return false;
+      if (response.statusCode == 408 ||
+          response.statusCode == 429 ||
+          response.statusCode >= 500) {
+        return WatchSendResult(
+          WatchSendDisposition.retryableFailure,
+          'Điện thoại/API tạm thời lỗi HTTP ${response.statusCode}.',
+        );
+      }
+      return WatchSendResult(
+        WatchSendDisposition.permanentFailure,
+        'Điện thoại từ chối mẫu với HTTP ${response.statusCode}.',
+      );
     } on Exception catch (error) {
       debugPrint('[Wear OS] Data sync failed: $error');
-      return false;
+      return WatchSendResult(
+        WatchSendDisposition.retryableFailure,
+        'Mất kết nối tới điện thoại: $error',
+      );
     }
   }
 }

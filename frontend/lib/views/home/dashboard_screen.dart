@@ -4,8 +4,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/error_mapper.dart';
 import 'package:frontend/services/mock_health_data_service.dart';
 import 'package:frontend/services/watch_service.dart';
+import 'package:frontend/services/watch_sync_config.dart';
 import 'package:frontend/services/wear_offline_queue.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -44,13 +46,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double? _height;
   double? _sleepHours;
   bool _wearConnected = false;
+  String? _wearConnectedProfileId;
+  String? _wearConnectedDeviceId;
   int _selectedTab = 0;
   String _member = 'Tôi';
   Map<String, dynamic>? _latestAIInsight;
   final List<int> _heartRateHistory = [];
   final WearOfflineQueue _wearQueue = WearOfflineQueue.instance;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  int _pendingMeasurementCount = 0;
   late final StreamSubscription<Map<String, dynamic>> _wearSubscription;
   Timer? _batchFlushTimer;
   bool _isFlushingBatch = false;
@@ -98,6 +101,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _weight = null;
       _height = null;
       _sleepHours = null;
+      _wearConnected = false;
+      _wearConnectedProfileId = null;
+      _wearConnectedDeviceId = null;
       _heartRateHistory.clear();
       _measurementRecords = const [];
       _latestAIInsight = null;
@@ -132,11 +138,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _dashboardPreference.addListener(_onDashboardPreferenceChanged);
     _batchFlushTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => unawaited(_flushMeasurements()),
+      (_) => unawaited(_flushMeasurements(profileId: _profileId)),
     );
     _wearSubscription = WatchService().wearDataStream.listen(
       (data) {
         if (!mounted) return;
+        final eventProfileId = data['profile_id']?.toString();
+        final eventDeviceId = data['device_id']?.toString();
+        if (eventProfileId == null ||
+            eventDeviceId == null ||
+            eventProfileId != _profileId) {
+          return;
+        }
         final heartRate =
             (data['heart_rate'] as num?)?.toInt() ??
             (data['heartRate'] as num?)?.toInt();
@@ -149,6 +162,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         setState(() {
           _wearConnected = true;
+          _wearConnectedProfileId = eventProfileId;
+          _wearConnectedDeviceId = eventDeviceId;
           _heartRate = heartRate;
           _heartRateHistory.add(heartRate);
           if (_heartRateHistory.length > 12) _heartRateHistory.removeAt(0);
@@ -160,8 +175,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_loadProfilesAndRefresh().whenComplete(_initWatchListener));
-      _refreshPendingCount();
+      unawaited(_loadProfilesAndRefresh().whenComplete(() {
+        if (!mounted) return;
+        unawaited(_initWatchListener());
+      }));
     });
   }
 
@@ -183,9 +200,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         else _dashboardPreference.clear();
       }
     } catch (error) {
-      if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
+      if (mounted) _showMessage(ErrorMapper.toUserMessage(error.toString()));
     }
-    unawaited(_flushMeasurements());
+    unawaited(_flushMeasurements(profileId: _profileId));
   }
 
   Future<void> _loadLatestAIInsight() async {
@@ -245,8 +262,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ]) {
       await _wearQueue.enqueue(profileId, measurement);
     }
-    await _refreshPendingCount();
-    if (_pendingMeasurementCount >= 10) unawaited(_flushMeasurements());
+    unawaited(_flushMeasurements(profileId: profileId));
   }
 
   Future<void> _persistWearData(Map<String, dynamic> data) async {
@@ -303,8 +319,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
     if (matches.length != 1) {
-      throw StateError(
-        'Wear device must map to exactly one accessible profile.',
+      throw FormatException(
+        matches.isEmpty
+            ? 'No paired active device matches identifier "$identifier" on the selected accessible profiles.'
+            : 'The device identifier matches more than one accessible profile; keep it paired to one profile.',
       );
     }
     final owner = matches.single;
@@ -336,18 +354,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       endTime.toIso8601String(),
       startTime.toIso8601String(),
     );
-  }
-
-  Future<void> _refreshPendingCount() async {
-    final count = await _wearQueue.pendingCount();
-    if (mounted) setState(() => _pendingMeasurementCount = count);
+    // These identities are resolved locally from the current authorized
+    // profile/device mapping; never trust profile/device fields from the watch.
+    data['profile_id'] = owner.profileId;
+    data['device_id'] = owner.deviceId;
   }
 
   Future<void> _initWatchListener() async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (!mounted || Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       await WatchService().initPhoneListener(
-        port: 8080,
+        port: phoneSyncPort,
         persistBeforeAcknowledgement: _persistWearData,
       );
     } catch (error, stackTrace) {
@@ -357,12 +374,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _flushMeasurements() async {
-    if (_isFlushingBatch) return;
+  Future<void> _flushMeasurements({String? profileId}) async {
+    if (_isFlushingBatch || profileId == null) return;
     _isFlushingBatch = true;
+    final syncedProfileIds = <String>{};
     try {
       while (true) {
-        final ready = await _wearQueue.ready(limit: 100);
+        final ready = await _wearQueue.ready(limit: 100, profileId: profileId);
         if (ready.isEmpty) break;
         final firstValid = ready.where((item) {
           final deviceId = item.measurement['device_id']?.toString() ?? '';
@@ -398,9 +416,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
           break;
         }
+        debugPrint(
+          '[Dashboard] Wear batch result: '
+          'saved=${result.acknowledgedKeys.length}, '
+          'rejected=${result.rejectedKeys.length}, '
+          'retry=${result.retryKeys.length}.',
+        );
         for (final item in batch) {
           if (result.acknowledgedKeys.contains(item.key)) {
             await _wearQueue.markSynced(item.key);
+            syncedProfileIds.add(selectedProfileId);
           } else if (result.rejectedKeys.contains(item.key)) {
             await _wearQueue.markFailed(
               item.key,
@@ -413,12 +438,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } finally {
       _isFlushingBatch = false;
-      await _refreshPendingCount();
+      if (syncedProfileIds.contains(_profileId)) await _refreshData();
     }
   }
 
   @override
   void dispose() {
+    WatchService().removePersister(_persistWearData);
     _profileSelection?.removeListener(_onProfileSelectionChanged);
     _dashboardPreference.removeListener(_onDashboardPreferenceChanged);
     _batchFlushTimer?.cancel();
@@ -670,7 +696,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       try {
         _profileSelection!.setProfiles(await ApiService.fetchProfiles());
       } catch (error) {
-        if (mounted) _showMessage('Không thể tải hồ sơ thành viên: $error');
+        if (mounted) _showMessage(ErrorMapper.toUserMessage(error.toString()));
         return;
       }
     }
@@ -1236,10 +1262,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           _ => DevicesScreen(
             isWatchConnected: _wearConnected,
-            pendingMeasurements: _pendingMeasurementCount,
+            wearConnectedProfileId: _wearConnectedProfileId,
+            wearConnectedDeviceId: _wearConnectedDeviceId,
             profileId: _profileId,
             member: _member,
-            onSync: _flushMeasurements,
+            onSync: (profileId) => _flushMeasurements(profileId: profileId),
           ),
         },
       ),
