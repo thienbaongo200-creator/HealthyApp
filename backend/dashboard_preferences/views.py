@@ -16,13 +16,13 @@ class DashboardPreferenceView(APIView):
     def _get_profile(self, request, profile_id):
         profile = get_object_or_404(PersonProfile, pk=profile_id, is_archived=False)
         if not PermissionService.has_profile_access(request.user, profile.pk, "view"):
-            raise PermissionDenied("You do not have permission to manage this profile dashboard.")
+            raise PermissionDenied("Bạn không có quyền quản lý bảng điều khiển của hồ sơ này.")
         return profile
 
     def get(self, request):
         profile_id = request.query_params.get("profile_id")
         if not profile_id:
-            return Response({"profile_id": "This query parameter is required."}, status=400)
+            return Response({"profile_id": "Tham số hồ sơ là bắt buộc."}, status=400)
         profile = self._get_profile(request, profile_id)
         preference = DashboardPreference.objects.filter(profile=profile).first()
         if preference is None:
@@ -33,7 +33,7 @@ class DashboardPreferenceView(APIView):
     def put(self, request):
         profile_id = request.data.get("profile_id")
         if not profile_id:
-            return Response({"profile_id": "This field is required."}, status=400)
+            return Response({"profile_id": "Trường hồ sơ là bắt buộc."}, status=400)
         profile = self._get_profile(request, profile_id)
         preference, _ = DashboardPreference.objects.get_or_create(
             profile=profile, defaults={"selected_metrics": DEFAULT_METRICS, "metric_order": DEFAULT_METRICS}

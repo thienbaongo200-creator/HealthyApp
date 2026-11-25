@@ -33,10 +33,18 @@ class PermissionServiceTestCase(TestCase):
             created_by=self.user_owner
         )
         HouseholdMember.objects.create(
-            household=self.household, profile=self.profile_owner, role="OWNER", status="ACTIVE"
+            household=self.household,
+            profile=self.profile_owner,
+            account=self.user_owner,
+            role="OWNER",
+            status="ACTIVE",
         )
         self.household_member_other = HouseholdMember.objects.create(
-            household=self.household, profile=self.profile_other, role="MEMBER", status="ACTIVE"
+            household=self.household,
+            profile=self.profile_other,
+            account=self.user_other,
+            role="MEMBER",
+            status="ACTIVE",
         )
 
     def test_owner_access(self):
@@ -80,7 +88,7 @@ class PermissionServiceTestCase(TestCase):
             )
         )
 
-    def test_caregiver_share_is_read_only_even_when_share_level_allows_logging(self):
+    def test_caregiver_view_and_log_allows_measurement_creation_only(self):
         caregiver_membership = self.household_member_other
         caregiver_membership.account = self.user_other
         caregiver_membership.role = "CAREGIVER"
@@ -105,7 +113,7 @@ class PermissionServiceTestCase(TestCase):
                 required_permission="edit",
             )
         )
-        self.assertFalse(
+        self.assertTrue(
             PermissionService.has_profile_access(
                 self.user_other,
                 self.profile_owner.id,

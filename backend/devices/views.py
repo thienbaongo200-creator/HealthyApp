@@ -20,7 +20,7 @@ class DeviceListCreateView(APIView):
         queryset = Device.objects.filter(profile__is_archived=False)
         if profile_id:
             if not PermissionService.has_profile_access(request.user, profile_id):
-                raise PermissionDenied("You do not have access to this profile.")
+                raise PermissionDenied("Bạn không có quyền truy cập hồ sơ này.")
             queryset = queryset.filter(profile_id=profile_id)
         else:
             owned_profiles = PersonProfile.objects.filter(
@@ -44,12 +44,12 @@ class DeviceListCreateView(APIView):
             profile.pk,
             required_permission="measurement_write",
         ):
-            raise PermissionDenied("You cannot pair a device to this profile.")
+            raise PermissionDenied("Bạn không có quyền ghép thiết bị với hồ sơ này.")
         device = Device.objects.filter(
             device_identifier=data["device_identifier"]
         ).first()
         if device and device.profile_id != profile.pk:
-            raise PermissionDenied("This device is already paired with another profile.")
+            raise PermissionDenied("Thiết bị này đã được ghép với một hồ sơ khác.")
         created = device is None
         if device is None:
             device = Device.objects.create(
@@ -78,7 +78,7 @@ class DeviceDetailView(APIView):
             device.profile_id,
             required_permission="edit",
         ):
-            raise PermissionDenied("You cannot revoke this device.")
+            raise PermissionDenied("Bạn không có quyền thu hồi thiết bị này.")
         device.status = "REVOKED"
         device.save(update_fields=("status", "updated_at"))
         return Response(DeviceSerializer(device).data)

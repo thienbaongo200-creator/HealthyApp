@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import authenticate, get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError
+from django.test import override_settings
 from django.urls import reverse
 from django.utils.dateparse import parse_date
 from rest_framework import status
@@ -15,6 +16,7 @@ from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.test import APITestCase
 
+from households.models import Household
 from profiles.models import PersonProfile
 
 User = get_user_model()
@@ -184,6 +186,7 @@ class ProfileView(APIView):
             status=status.HTTP_200_OK,
         )
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class AccountsAuthIntegrationTestCase(APITestCase):
     def setUp(self):
         # Đảm bảo các tên 'auth-register', 'auth-login' khớp với accounts/urls.py của bạn
@@ -205,6 +208,57 @@ class AccountsAuthIntegrationTestCase(APITestCase):
         self.assertIn('message', response.data)
         self.assertIn('user', response.data)
         self.assertEqual(response.data['user']['email'], self.user_data['email'])
+        account = User.objects.get(email=self.user_data['email'])
+        self.assertEqual(
+            PersonProfile.objects.filter(account=account, profile_type='SELF').count(),
+            1,
+        )
+        self.assertEqual(Household.objects.filter(created_by=account).count(), 0)
+
+    def test_new_account_can_create_household_then_dependent_profile(self):
+        registration = self.client.post(
+            self.register_url,
+            self.user_data,
+            format='json',
+        )
+        self.assertEqual(registration.status_code, status.HTTP_201_CREATED)
+        account = User.objects.get(email=self.user_data['email'])
+        self.client.force_authenticate(user=account)
+
+        profiles = self.client.get(reverse('profile-list'))
+        households = self.client.get(reverse('household-list'))
+        invitations = self.client.get(reverse('invitation-list'))
+        self.assertEqual(profiles.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(profiles.data), 1)
+        self.assertEqual(profiles.data[0]['profile_type'], 'SELF')
+        self.assertEqual(households.status_code, status.HTTP_200_OK)
+        self.assertEqual(households.data, [])
+        self.assertEqual(invitations.status_code, status.HTTP_200_OK)
+        self.assertEqual(invitations.data, [])
+
+        household = self.client.post(
+            reverse('household-list'),
+            {'name': 'New Account Household'},
+            format='json',
+        )
+        self.assertEqual(household.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(household.data['viewer_role'], None)
+
+        dependent = self.client.post(
+            reverse('profile-list'),
+            {
+                'profile_type': 'DEPENDENT',
+                'full_name': 'New Dependent',
+                'gender': 'female',
+            },
+            format='json',
+        )
+        self.assertEqual(dependent.status_code, status.HTTP_201_CREATED)
+        refreshed_profiles = self.client.get(reverse('profile-list'))
+        refreshed_households = self.client.get(reverse('household-list'))
+        self.assertEqual(len(refreshed_profiles.data), 2)
+        self.assertEqual(len(refreshed_households.data), 1)
+        self.assertEqual(refreshed_households.data[0]['viewer_role'], 'OWNER')
 
     def test_register_ignores_stale_authorization_header(self):
         self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-valid-jwt")

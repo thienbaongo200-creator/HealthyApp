@@ -21,7 +21,7 @@ class MeasurementStatisticsQuerySerializer(serializers.Serializer):
         start = attrs.get("from_date")
         end = attrs.get("to_date")
         if start and end and start > end:
-            raise serializers.ValidationError({"to": "Must be later than or equal to from."})
+            raise serializers.ValidationError({"to": "Thời điểm kết thúc phải bằng hoặc sau thời điểm bắt đầu."})
         return attrs
 
 
@@ -39,7 +39,7 @@ class MeasurementStatisticsView(APIView):
         params = query.validated_data
         profile_id = params["profile_id"]
         if not PermissionService.has_profile_access(request.user, profile_id, "view"):
-            raise PermissionDenied("You do not have access to this profile.")
+            raise PermissionDenied("Bạn không có quyền truy cập hồ sơ này.")
 
         measurements = HealthMeasurement.objects.filter(
             profile_id=profile_id,

@@ -16,7 +16,10 @@ from rest_framework.test import APITestCase
 from accounts.models import PasswordResetCode
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    SECURE_SSL_REDIRECT=False,
+)
 class PasswordResetFlowTests(APITestCase):
     email = "reset-user@example.com"
     old_password = "OldStrongPassword!873"
@@ -101,7 +104,7 @@ class PasswordResetFlowTests(APITestCase):
         response = self._reset("000000")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["detail"], "Reset code is invalid or expired.")
+        self.assertEqual(response.data["detail"], "Mã xác nhận không hợp lệ hoặc đã hết hạn.")
         self.assertEqual(PasswordResetCode.objects.get(account=self.account).attempts, 1)
 
     def test_expired_otp_is_rejected(self):
@@ -113,7 +116,7 @@ class PasswordResetFlowTests(APITestCase):
         response = self._reset(self._get_otp_from_mail())
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["detail"], "Reset code is invalid or expired.")
+        self.assertEqual(response.data["detail"], "Mã xác nhận không hợp lệ hoặc đã hết hạn.")
         self.assertTrue(check_password(self.old_password, self.account.password))
 
     def test_otp_is_rejected_after_five_failed_attempts(self):
@@ -125,7 +128,7 @@ class PasswordResetFlowTests(APITestCase):
         response = self._reset(self._get_otp_from_mail())
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["detail"], "Reset code is invalid or expired.")
+        self.assertEqual(response.data["detail"], "Mã xác nhận không hợp lệ hoặc đã hết hạn.")
 
     def test_weak_password_is_rejected_without_changing_existing_password(self):
         self._request_code()
@@ -162,4 +165,4 @@ class PasswordResetFlowTests(APITestCase):
         response = self._reset("12ab")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["detail"], "Reset code is invalid or expired.")
+        self.assertEqual(response.data["detail"], "Mã xác nhận không hợp lệ hoặc đã hết hạn.")

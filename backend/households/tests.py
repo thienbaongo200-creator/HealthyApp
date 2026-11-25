@@ -2,7 +2,7 @@ import uuid
 
 from accounts.models import Account
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from profiles.models import PersonProfile
 from rest_framework import status
@@ -89,6 +89,7 @@ class HouseholdModelTests(TestCase):
         self.assertFalse(ProfileShare.objects.filter(pk=share.pk).exists())
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class HouseholdAPITests(APITestCase):
     def setUp(self):
         test_id = uuid.uuid4().hex
@@ -190,6 +191,10 @@ class HouseholdAPITests(APITestCase):
             HouseholdMember.objects.filter(pk=invitee_membership.pk).exists()
         )
         self.assertFalse(ProfileShare.objects.filter(pk=share.pk).exists())
+        self.assertEqual(
+            self.client.get(reverse("household-list")).data,
+            [],
+        )
 
         self.client.force_authenticate(user=self.owner)
         owner_leave = self.client.post(
@@ -198,6 +203,116 @@ class HouseholdAPITests(APITestCase):
             format="json",
         )
         self.assertEqual(owner_leave.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_owner_can_dissolve_household_and_profiles_are_preserved(self):
+        household = Household.objects.create(
+            name="Dissolve Household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.owner,
+            profile=self.owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        member_profile = PersonProfile.objects.create(
+            account=self.invitee,
+            profile_type="SELF",
+            full_name="Active Member",
+        )
+        active_member = HouseholdMember.objects.create(
+            household=household,
+            account=self.invitee,
+            profile=member_profile,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+        active_share = ProfileShare.objects.create(
+            member=active_member,
+            profile=self.owner_profile,
+            share_level="VIEW_ONLY",
+        )
+
+        pending_account = Account.objects.create_user(
+            email=f"household-pending-{uuid.uuid4().hex}@example.com",
+            password="test-password-123",
+        )
+        pending_profile = PersonProfile.objects.create(
+            account=pending_account,
+            profile_type="SELF",
+            full_name="Pending Member",
+        )
+        pending_member = HouseholdMember.objects.create(
+            household=household,
+            account=pending_account,
+            profile=pending_profile,
+            role="CAREGIVER",
+            status="PENDING",
+        )
+        pending_share = ProfileShare.objects.create(
+            member=pending_member,
+            profile=self.owner_profile,
+            share_level="VIEW_AND_LOG",
+        )
+        dependent_profile = PersonProfile.objects.create(
+            created_by=self.owner,
+            profile_type="DEPENDENT",
+            full_name="Dependent Profile",
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=dependent_profile,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+
+        response = self.client.delete(
+            reverse("household-detail", kwargs={"household_id": household.pk})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Household.objects.filter(pk=household.pk).exists())
+        self.assertFalse(HouseholdMember.objects.filter(household_id=household.pk).exists())
+        self.assertFalse(ProfileShare.objects.filter(pk=active_share.pk).exists())
+        self.assertFalse(ProfileShare.objects.filter(pk=pending_share.pk).exists())
+        self.assertTrue(PersonProfile.objects.filter(pk=self.owner_profile.pk).exists())
+        self.assertTrue(PersonProfile.objects.filter(pk=member_profile.pk).exists())
+        self.assertTrue(PersonProfile.objects.filter(pk=pending_profile.pk).exists())
+        self.assertTrue(PersonProfile.objects.filter(pk=dependent_profile.pk).exists())
+
+    def test_non_owner_cannot_dissolve_household(self):
+        household = Household.objects.create(
+            name="Protected Household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.owner,
+            profile=self.owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        member_profile = PersonProfile.objects.create(
+            account=self.invitee,
+            profile_type="SELF",
+            full_name="Household Member",
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.invitee,
+            profile=member_profile,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+
+        self.client.force_authenticate(user=self.invitee)
+        response = self.client.delete(
+            reverse("household-detail", kwargs={"household_id": household.pk})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Household.objects.filter(pk=household.pk).exists())
 
     def test_owner_invites_account_invitee_accepts_and_owner_can_remove_member(self):
         household = Household.objects.create(
@@ -389,6 +504,81 @@ class HouseholdAPITests(APITestCase):
         )
         self.assertEqual(update.status_code, status.HTTP_200_OK)
         self.assertEqual(update.data["role"], "MEMBER")
+        share = ProfileShare.objects.get(
+            member=membership,
+            profile=self.owner_profile,
+        )
+        self.assertEqual(share.share_level, "VIEW_AND_LOG")
+
+    def test_share_level_patch_requires_target_when_member_has_multiple_shares(self):
+        household = Household.objects.create(
+            name="Multiple Shares Household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.owner,
+            profile=self.owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        invite = self.client.post(
+            reverse("household-member-list", kwargs={"household_id": household.pk}),
+            {"email": self.invitee.email, "share_level": "VIEW_ONLY"},
+            format="json",
+        )
+        self.assertEqual(invite.status_code, status.HTTP_201_CREATED)
+        member = HouseholdMember.objects.get(pk=invite.data["id"])
+
+        dependent = PersonProfile.objects.create(
+            created_by=self.owner,
+            profile_type="DEPENDENT",
+            full_name="Shared Dependent",
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=dependent,
+            role="MEMBER",
+            status="ACTIVE",
+        )
+        dependent_share = ProfileShare.objects.create(
+            member=member,
+            profile=dependent,
+            share_level="VIEW_ONLY",
+        )
+        owner_share = ProfileShare.objects.get(
+            member=member,
+            profile=self.owner_profile,
+        )
+        url = reverse(
+            "household-member-detail",
+            kwargs={"household_id": household.pk, "member_id": member.pk},
+        )
+
+        ambiguous_update = self.client.patch(
+            url,
+            {"share_level": "VIEW_AND_LOG"},
+            format="json",
+        )
+        self.assertEqual(ambiguous_update.status_code, status.HTTP_400_BAD_REQUEST)
+        owner_share.refresh_from_db()
+        dependent_share.refresh_from_db()
+        self.assertEqual(owner_share.share_level, "VIEW_ONLY")
+        self.assertEqual(dependent_share.share_level, "VIEW_ONLY")
+
+        targeted_update = self.client.patch(
+            url,
+            {
+                "share_profile_id": str(dependent.pk),
+                "share_level": "VIEW_AND_LOG",
+            },
+            format="json",
+        )
+        self.assertEqual(targeted_update.status_code, status.HTTP_200_OK)
+        owner_share.refresh_from_db()
+        dependent_share.refresh_from_db()
+        self.assertEqual(owner_share.share_level, "VIEW_ONLY")
+        self.assertEqual(dependent_share.share_level, "VIEW_AND_LOG")
 
     def test_non_owner_cannot_invite_household_member(self):
         household = Household.objects.create(

@@ -17,18 +17,18 @@ class DashboardPreferenceSerializer(serializers.ModelSerializer):
 
     def validate_selected_metrics(self, value):
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-            raise serializers.ValidationError("Must be a list of metric codes.")
+            raise serializers.ValidationError("Danh sách chỉ số phải có định dạng hợp lệ.")
         if len(value) != len(set(value)):
-            raise serializers.ValidationError("Metric codes must be unique.")
+            raise serializers.ValidationError("Danh sách chỉ số không được có giá trị trùng lặp.")
         invalid = set(value) - VALID_METRICS
         if invalid:
-            raise serializers.ValidationError(f"Unsupported metrics: {sorted(invalid)}")
+            raise serializers.ValidationError(f"Các mã chỉ số không được hỗ trợ: {sorted(invalid)}")
         return value
 
     def validate(self, attrs):
         selected = attrs.get("selected_metrics", getattr(self.instance, "selected_metrics", []))
         order = attrs.get("metric_order", selected)
         if not isinstance(order, list) or len(order) != len(set(order)) or set(order) != set(selected):
-            raise serializers.ValidationError({"metric_order": "Must contain each selected metric exactly once."})
+            raise serializers.ValidationError({"metric_order": "Thứ tự phải chứa mỗi chỉ số đã chọn đúng một lần."})
         attrs["metric_order"] = order
         return attrs

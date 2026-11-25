@@ -151,6 +151,77 @@ class MedicalRecordApiTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.account)
 
+    def test_caregiver_can_post_measurement_only_with_view_and_log_share(self):
+        owner = Account.objects.create_user(
+            email=f"measurement-owner-{uuid.uuid4().hex}@example.com",
+            password="test-password",
+        )
+        owner_profile = PersonProfile.objects.create(
+            account=owner,
+            profile_type="SELF",
+            full_name="Measurement Owner",
+        )
+        caregiver_profile = PersonProfile.objects.create(
+            account=self.account,
+            profile_type="SELF",
+            full_name="Measurement Caregiver",
+        )
+        household = Household.objects.create(
+            name="Caregiver Measurement Write",
+            created_by=owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=owner,
+            profile=owner_profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        caregiver_membership = HouseholdMember.objects.create(
+            household=household,
+            account=self.account,
+            profile=caregiver_profile,
+            role="CAREGIVER",
+            status="ACTIVE",
+        )
+        share = ProfileShare.objects.create(
+            member=caregiver_membership,
+            profile=owner_profile,
+            share_level="VIEW_ONLY",
+        )
+        payload = {
+            "profile_id": str(owner_profile.pk),
+            "measurement_type": "HEART_RATE",
+            "value": "88",
+            "unit": "bpm",
+            "measured_at": "2026-11-22T05:00:00Z",
+        }
+
+        denied = self.client.post(
+            "/api/health-measurements/",
+            payload,
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertFalse(HealthMeasurement.objects.filter(profile=owner_profile).exists())
+
+        share.share_level = "VIEW_AND_LOG"
+        share.save(update_fields=["share_level", "updated_at"])
+        allowed = self.client.post(
+            "/api/health-measurements/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(allowed.status_code, 201, allowed.data)
+        self.assertTrue(
+            HealthMeasurement.objects.filter(
+                profile=owner_profile,
+                measurement_type="HEART_RATE",
+                value="88",
+            ).exists()
+        )
+
     def test_all_medical_record_endpoints_create_and_list_by_profile(self):
         visit_response = self.client.post(
             "/api/medical-records/visits/",
@@ -443,6 +514,24 @@ class HealthMeasurementBatchApiTests(TestCase):
             profile_type="DEPENDENT",
             full_name="Dependent profile",
         )
+        household = Household.objects.create(
+            name="Measurement filter household",
+            created_by=self.account,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=primary_profile,
+            account=self.account,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=dependent_profile,
+            account=self.account,
+            role="MEMBER",
+            status="ACTIVE",
+        )
         for profile, value in ((primary_profile, 72), (dependent_profile, 85)):
             HealthMeasurement.objects.create(
                 profile=profile,
@@ -630,6 +719,24 @@ class MedicalDocumentApiTests(TestCase):
             profile_type="DEPENDENT",
             full_name="Dependent",
         )
+        household = Household.objects.create(
+            name="Document filter household",
+            created_by=self.owner,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=self.owner_profile,
+            account=self.owner,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=dependent_profile,
+            account=self.owner,
+            role="MEMBER",
+            status="ACTIVE",
+        )
         MedicalDocument.objects.create(
             profile=self.owner_profile,
             title="Self document",
@@ -678,7 +785,8 @@ class MedicalDocumentApiTests(TestCase):
         )
 
         self.assertEqual(upload_response.status_code, 403)
-        self.assertEqual(delete_response.status_code, 403)
+        # The scoped queryset hides records outside the caller's authorized profiles.
+        self.assertEqual(delete_response.status_code, 404)
         self.assertEqual(retrieve_response.status_code, 404)
         self.assertEqual(download_response.status_code, 404)
         self.assertTrue(MedicalDocument.objects.filter(pk=document.pk).exists())

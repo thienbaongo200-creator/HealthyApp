@@ -54,7 +54,7 @@ class HealthMeasurementFieldsSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         errors = {}
         if self.initial_data.get("device") not in (None, ""):
-            errors["device"] = "Device association is assigned by the server."
+            errors["device"] = "Thiết bị được hệ thống gán tự động."
         if errors:
             raise serializers.ValidationError(errors)
 
@@ -82,40 +82,40 @@ class HealthMeasurementFieldsSerializer(serializers.ModelSerializer):
 
         if measurement_type == "BLOOD_PRESSURE":
             if secondary is None:
-                errors["value_secondary"] = "Diastolic pressure is required."
+                errors["value_secondary"] = "Vui lòng nhập chỉ số huyết áp tâm trương."
             else:
                 if not 40 <= value <= 250:
-                    errors["value"] = "Systolic pressure must be between 40 and 250 mmHg."
+                    errors["value"] = "Huyết áp tâm thu phải trong khoảng 40 đến 250 mmHg."
                 if not 40 <= secondary <= 250:
-                    errors["value_secondary"] = "Diastolic pressure must be between 40 and 250 mmHg."
+                    errors["value_secondary"] = "Huyết áp tâm trương phải trong khoảng 40 đến 250 mmHg."
                 if value <= secondary:
-                    errors["value"] = "Systolic pressure must be greater than diastolic pressure."
+                    errors["value"] = "Huyết áp tâm thu phải cao hơn huyết áp tâm trương."
         else:
             if secondary is not None:
-                errors["value_secondary"] = "Only blood pressure accepts a secondary value."
+                errors["value_secondary"] = "Chỉ số phụ chỉ áp dụng cho huyết áp."
 
             value_range = self.VALUE_RANGES.get(measurement_type)
             if measurement_type == "BLOOD_GLUCOSE":
                 unit_key = str(unit).strip().lower()
                 value_range = self.GLUCOSE_RANGES.get(unit_key)
                 if value_range is None:
-                    errors["unit"] = "Use mg/dL or mmol/L for blood glucose."
+                    errors["unit"] = "Đường huyết chỉ hỗ trợ đơn vị mg/dL hoặc mmol/L."
 
             if value_range is not None and not value_range[0] <= value <= value_range[1]:
                 errors["value"] = (
-                    f"Value for {measurement_type} must be between "
-                    f"{value_range[0]} and {value_range[1]}."
+                    f"Giá trị {measurement_type} phải trong khoảng "
+                    f"{value_range[0]} đến {value_range[1]}."
                 )
 
             if measurement_type in {"STEPS", "CALORIES"}:
                 if value != value.to_integral_value():
-                    errors["value"] = f"{measurement_type} must be a whole number."
+                    errors["value"] = f"Giá trị {measurement_type} phải là số nguyên."
                 if start_time is None or end_time is None:
                     errors["start_time"] = (
-                        "start_time and end_time are required for cumulative measurements."
+                        "Vui lòng nhập thời điểm bắt đầu và kết thúc cho chỉ số tích lũy."
                     )
                 elif end_time <= start_time:
-                    errors["end_time"] = "end_time must be later than start_time."
+                    errors["end_time"] = "Thời điểm kết thúc phải sau thời điểm bắt đầu."
 
         if errors:
             raise serializers.ValidationError(errors)
@@ -135,11 +135,11 @@ class HealthMeasurementSerializer(HealthMeasurementFieldsSerializer):
     def validate(self, attrs):
         if self.instance is not None and "profile_id" in self.initial_data:
             raise serializers.ValidationError(
-                {"profile_id": "A measurement cannot be moved to another profile."}
+                {"profile_id": "Không thể chuyển chỉ số sang hồ sơ khác."}
             )
         if self.initial_data.get("source") not in (None, "MANUAL"):
             raise serializers.ValidationError(
-                {"source": "Measurement source is assigned by the server."}
+                {"source": "Nguồn dữ liệu chỉ số được hệ thống gán tự động."}
             )
         return super().validate(attrs)
 
@@ -165,7 +165,7 @@ class HealthMeasurementBatchSerializer(serializers.Serializer):
     def validate(self, attrs):
         if ("records" in attrs) == ("measurements" in attrs):
             raise serializers.ValidationError(
-                {"records": "Provide exactly one of records or legacy measurements."}
+                {"records": "Chỉ gửi một trong hai trường records hoặc measurements."}
             )
         attrs["records"] = attrs.pop("measurements", attrs.get("records"))
         return attrs

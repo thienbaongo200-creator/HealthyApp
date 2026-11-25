@@ -4,7 +4,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
-from households.models import HouseholdMember
+from households.models import Household, HouseholdMember
 from .models import PersonProfile
 from .serializers import PersonProfileSerializer
 
@@ -61,6 +61,19 @@ class PersonProfileAPITests(APITestCase):
         )
         self.client.force_authenticate(user=self.account)
 
+    def _activate_household_owner(self, profile):
+        household = Household.objects.create(
+            name="Profile API test household",
+            created_by=self.account,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=profile,
+            account=self.account,
+            role="OWNER",
+            status="ACTIVE",
+        )
+
     def test_create_list_update_and_archive_profile(self):
         own_profile = PersonProfile.objects.create(
             account=self.account,
@@ -68,6 +81,7 @@ class PersonProfileAPITests(APITestCase):
             profile_type="SELF",
             full_name="Profile Owner",
         )
+        self._activate_household_owner(own_profile)
         self_profile_response = self.client.get(reverse("profile-list"))
         self.assertEqual(self_profile_response.status_code, status.HTTP_200_OK)
         self.assertTrue(
@@ -146,6 +160,13 @@ class PersonProfileAPITests(APITestCase):
         self.assertTrue(profile.is_archived)
 
     def test_create_and_update_dependent_household_role(self):
+        own_profile = PersonProfile.objects.create(
+            account=self.account,
+            created_by=self.account,
+            profile_type="SELF",
+            full_name="Care Household Owner",
+        )
+        self._activate_household_owner(own_profile)
         create_response = self.client.post(
             reverse("profile-list"),
             {

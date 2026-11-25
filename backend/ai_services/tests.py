@@ -24,6 +24,7 @@ from ai_services.services.assistant import (
 )
 from ai_services.services.consent import AIConsentService
 from households.models import Household, HouseholdMember, ProfileShare
+from medical_records.models import Allergy, LabResult, MedicalHistory, Medication
 
 
 class AssistantFallbackTests(TestCase):
@@ -332,6 +333,14 @@ class HealthRiskAssessmentApiTests(APITestCase):
             format="json",
         )
 
+    def _disable_ai_for_risk_test(self):
+        AIConsentService.set_consent(
+            user=self.account,
+            profile=self.profile,
+            granted=False,
+            version="test",
+        )
+
     def test_chat_health_context_summarizes_measurement_trends_and_profile_bmi(self):
         now = timezone.now()
         self.profile.height_cm = 170
@@ -445,7 +454,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
         self.assertEqual(response.data["generated_by"], "RULE_ONLY")
         get_provider.assert_not_called()
 
-    def test_unlinked_dependent_uses_creator_consent(self):
+    def test_unlinked_dependent_requires_active_household_owner_for_consent(self):
         dependent = PersonProfile.objects.create(
             account=None,
             created_by=self.account,
@@ -463,8 +472,25 @@ class HealthRiskAssessmentApiTests(APITestCase):
             )
 
         denied = self._assess_risk(dependent)
-        self.assertEqual(denied.status_code, status.HTTP_200_OK)
-        self.assertEqual(denied.data["generated_by"], "RULE_ONLY")
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        household = Household.objects.create(
+            name="Consent test household",
+            created_by=self.account,
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            account=self.account,
+            profile=self.profile,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        HouseholdMember.objects.create(
+            household=household,
+            profile=dependent,
+            role="MEMBER",
+            status="ACTIVE",
+        )
 
         AIConsentService.set_consent(
             user=self.account,
@@ -788,6 +814,121 @@ class HealthRiskAssessmentApiTests(APITestCase):
         self.assertEqual(response.data["analyzed_count"], 1)
         self.assertIn("37.8", response.data["warnings"][0])
 
+    def test_r08_trigger(self):
+        self._disable_ai_for_risk_test()
+        LabResult.objects.create(
+            profile=self.profile,
+            test_name="Glucose",
+            result="12.5",
+            unit="mmol/L",
+            reference_range="3.9-5.5 mmol/L",
+            tested_at=timezone.now(),
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R08", response.data["triggered_rules"])
+        self.assertEqual(response.data["risk_level"], "MEDIUM")
+        self.assertIn(
+            "R08",
+            AIInsight.objects.get(pk=response.data["id"]).triggered_rules,
+        )
+
+    def test_r08_not_trigger(self):
+        self._disable_ai_for_risk_test()
+        LabResult.objects.create(
+            profile=self.profile,
+            test_name="Glucose",
+            result="4.8",
+            unit="mmol/L",
+            reference_range="3.9-5.5 mmol/L",
+            tested_at=timezone.now(),
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("R08", response.data["triggered_rules"])
+
+    def test_r09_trigger(self):
+        self._disable_ai_for_risk_test()
+        Allergy.objects.create(
+            profile=self.profile,
+            allergen="penicillin",
+            severity="SEVERE",
+        )
+        Medication.objects.create(profile=self.profile, name="Penicillin 500 mg")
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R09", response.data["triggered_rules"])
+        self.assertEqual(response.data["risk_level"], "HIGH")
+        self.assertIn(
+            "R09",
+            AIInsight.objects.get(pk=response.data["id"]).triggered_rules,
+        )
+
+    def test_r09_not_trigger(self):
+        self._disable_ai_for_risk_test()
+        Allergy.objects.create(
+            profile=self.profile,
+            allergen="penicillin",
+            severity="SEVERE",
+        )
+        Medication.objects.create(profile=self.profile, name="Metformin 500 mg")
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("R09", response.data["triggered_rules"])
+
+    def test_r10_trigger(self):
+        self._disable_ai_for_risk_test()
+        MedicalHistory.objects.create(
+            profile=self.profile,
+            condition="Hypertension",
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="HEART_RATE",
+            value=125,
+            unit="bpm",
+            measured_at=timezone.now(),
+            source="MANUAL",
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("R01", response.data["triggered_rules"])
+        self.assertIn("R10", response.data["triggered_rules"])
+        self.assertIn(
+            "R10",
+            AIInsight.objects.get(pk=response.data["id"]).triggered_rules,
+        )
+
+    def test_r10_not_trigger(self):
+        self._disable_ai_for_risk_test()
+        MedicalHistory.objects.create(
+            profile=self.profile,
+            condition="Hypertension",
+        )
+        HealthMeasurement.objects.create(
+            profile=self.profile,
+            measurement_type="HEART_RATE",
+            value=75,
+            unit="bpm",
+            measured_at=timezone.now(),
+            source="MANUAL",
+        )
+
+        response = self._assess_risk()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("R10", response.data["triggered_rules"])
+
     def test_chat_requires_ai_consent(self):
         AIConsentService.set_consent(
             user=self.account,
@@ -943,7 +1084,7 @@ class HealthRiskAssessmentApiTests(APITestCase):
         self.assertIsNone(response.data["conversation_id"])
         self.assertEqual(
             response.data["message"],
-            "AI is temporarily unavailable. This local fallback was not saved; please retry.",
+            "Trợ lý AI hiện tạm thời không khả dụng. Phản hồi dự phòng chưa được lưu; vui lòng thử lại.",
         )
         self.assertFalse(Conversation.objects.exists())
         self.assertFalse(Message.objects.exists())

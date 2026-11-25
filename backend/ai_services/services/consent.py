@@ -8,23 +8,28 @@ from households.models import HouseholdMember
 class AIConsentService:
     @staticmethod
     def can_manage(user, profile):
+        if not user or not user.is_authenticated:
+            return False
         if profile.profile_type == "SELF":
             return profile.account_id == user.pk
 
-        if profile.created_by_id == user.pk:
-            return True
-
-        return HouseholdMember.objects.filter(
+        # Consent for a dependent belongs to the current guardian/household
+        # owner. Being the historical creator is not an enduring grant.
+        target_household_ids = HouseholdMember.objects.filter(
             profile=profile,
             status="ACTIVE",
-            role="OWNER",
+        ).values_list("household_id", flat=True)
+        return HouseholdMember.objects.filter(
+            household_id__in=target_household_ids,
             account=user,
+            status="ACTIVE",
+            role="OWNER",
         ).exists()
 
     @classmethod
     def set_consent(cls, *, user, profile, granted, version):
         if not cls.can_manage(user, profile):
-            raise PermissionDenied("Only the profile owner or guardian may manage consent.")
+            raise PermissionDenied("Chỉ chủ hồ sơ hoặc người giám hộ mới được quản lý sự đồng ý sử dụng AI.")
 
         record, _ = AIConsent.objects.get_or_create(
             profile=profile,

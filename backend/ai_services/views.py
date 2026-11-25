@@ -48,10 +48,10 @@ def authorized_profile(
         profile_id,
         required_permission=required_permission,
     ):
-        raise PermissionDenied("You do not have permission to view this profile.")
+        raise PermissionDenied("Bạn không có quyền xem hồ sơ này.")
     profile = get_object_or_404(PersonProfile, id=profile_id, is_archived=False)
     if require_ai_consent and not PermissionService.has_profile_ai_consent(profile):
-        raise PermissionDenied("AI consent from the profile owner is required.")
+        raise PermissionDenied("Cần có sự đồng ý sử dụng AI của chủ hồ sơ.")
     return profile
 
 
@@ -155,7 +155,7 @@ class RiskAnalysisRequestSerializer(serializers.Serializer):
         start, end = attrs.get("period_start"), attrs.get("period_end")
         if start and end and start > end:
             raise serializers.ValidationError(
-                {"period_start": "Must be earlier than or equal to period_end."}
+                {"period_start": "Thời điểm bắt đầu phải bằng hoặc trước thời điểm kết thúc."}
             )
         return attrs
 
@@ -167,7 +167,7 @@ class AIInsightListView(ListAPIView):
     def get_queryset(self):
         profile_id = self.request.query_params.get("profile_id")
         if not profile_id:
-            raise ValidationError({"profile_id": "This query parameter is required."})
+            raise ValidationError({"profile_id": "Tham số hồ sơ là bắt buộc."})
         profile = authorized_profile(
             self.request,
             serializers.UUIDField().run_validation(profile_id),
@@ -182,10 +182,23 @@ class AiChatSessionView(APIView):
     throttle_scope = "ai_chat"
 
     def post(self, request, profile_id):
-        profile = authorized_profile(request, profile_id, required_permission="view")
+        profile = authorized_profile(
+            request,
+            profile_id,
+            required_permission="view",
+            require_ai_consent=False,
+        )
+        if not AIConsentService.has_consent(profile):
+            return Response(
+                {
+                    "error_code": "AI_CONSENT_REQUIRED",
+                    "detail": "Cần có sự đồng ý của chủ hồ sơ để sử dụng Trợ lý AI.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         message_text = request.data.get("message", "")
         if not isinstance(message_text, str) or not message_text.strip():
-            return Response({"error": "Message content is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Nội dung tin nhắn là bắt buộc."}, status=status.HTTP_400_BAD_REQUEST)
         message_text = message_text.strip()
 
         conversation_id = request.data.get("conversation_id")
@@ -221,8 +234,8 @@ class AiChatSessionView(APIView):
                     "fallback": True,
                     "retryable": True,
                     "message": (
-                        "AI is temporarily unavailable. This local fallback was "
-                        "not saved; please retry."
+                        "Trợ lý AI hiện tạm thời không khả dụng. Phản hồi dự phòng "
+                        "chưa được lưu; vui lòng thử lại."
                     ),
                     "fallback_reply": reply,
                 },
@@ -264,7 +277,7 @@ class AiConversationListView(ListAPIView):
     def get_queryset(self):
         profile_id = self.request.query_params.get("profile")
         if not profile_id:
-            raise ValidationError({"profile": "This query parameter is required."})
+            raise ValidationError({"profile": "Tham số hồ sơ là bắt buộc."})
         profile_id = serializers.UUIDField().run_validation(profile_id)
         authorized_profile(
             self.request,
@@ -294,7 +307,7 @@ class AiConversationMessagesView(ListAPIView):
             required_permission="view",
         ):
             raise PermissionDenied(
-                "You do not have permission to view this conversation."
+                "Bạn không có quyền xem cuộc trò chuyện này."
             )
         return Message.objects.filter(conversation=conversation).order_by(
             "created_at", "pk"

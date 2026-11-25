@@ -1,12 +1,14 @@
+import re
 from datetime import date, datetime, timedelta
 
 from django.utils import timezone
 
 from health_measurements.models import HealthMeasurement
+from medical_records.models import Allergy, LabResult, MedicalHistory, Medication
 
 
 class RiskRuleEngine:
-    """Deterministic R01-R07 screening rules; never calls an AI provider."""
+    """Deterministic R01-R10 screening rules; never calls an AI provider."""
 
     HEART_RATE_LIMIT = 120
     HEART_RATE_SAMPLES = 50
@@ -16,6 +18,56 @@ class RiskRuleEngine:
     HIGH_DIASTOLIC = 90
     SLEEP_MINIMUM_HOURS = 6.0
     HIGH_TEMPERATURE_C = 37.8
+    LAB_NUMBER = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)"
+    LAB_REFERENCE_PATTERN = re.compile(
+        rf"^\s*(<=|>=|<|>)?\s*({LAB_NUMBER})"
+        rf"(?:\s*(?:-|–|—|to)\s*({LAB_NUMBER}))?(?:\s+.*)?\s*$",
+        re.IGNORECASE,
+    )
+    LAB_RESULT_PATTERN = re.compile(rf"^\s*({LAB_NUMBER})(?:\s+.*)?\s*$")
+
+    @classmethod
+    def _lab_result_is_out_of_range(cls, result, reference_range):
+        result_match = cls.LAB_RESULT_PATTERN.fullmatch(result)
+        reference_match = cls.LAB_REFERENCE_PATTERN.fullmatch(reference_range)
+        if result_match is None or reference_match is None:
+            return False
+
+        value = float(result_match.group(1))
+        operator, first_bound, second_bound = reference_match.groups()
+        first_bound = float(first_bound)
+        if second_bound is not None:
+            if operator is not None:
+                return False
+            lower_bound, upper_bound = sorted((first_bound, float(second_bound)))
+            return value < lower_bound or value > upper_bound
+        if operator == "<":
+            return value >= first_bound
+        if operator == "<=":
+            return value > first_bound
+        if operator == ">":
+            return value <= first_bound
+        if operator == ">=":
+            return value < first_bound
+        return False
+
+    @staticmethod
+    def _is_active_medication(medication, today):
+        return (
+            medication.status == "ACTIVE"
+            and (medication.start_date is None or medication.start_date <= today)
+            and (medication.end_date is None or medication.end_date >= today)
+        )
+
+    @staticmethod
+    def _allergy_matches_medication(allergen, medication_name):
+        allergen = allergen.casefold().strip()
+        medication_name = medication_name.casefold().strip()
+        return bool(
+            allergen
+            and medication_name
+            and re.search(rf"(?<!\w){re.escape(allergen)}(?!\w)", medication_name)
+        )
 
     @staticmethod
     def _preferred_latest(recent, measurement_type):
@@ -61,6 +113,26 @@ class RiskRuleEngine:
             measured_at__lte=period_end,
             source__in=("MANUAL", "WEAR_OS"),
         )
+        lab_results = list(
+            LabResult.objects.filter(
+                profile=profile,
+                tested_at__gte=period_start,
+                tested_at__lte=period_end,
+            ).order_by("-tested_at")
+        )
+        allergies = list(
+            Allergy.objects.filter(profile=profile, is_active=True).order_by("created_at")
+        )
+        medications = [
+            medication
+            for medication in Medication.objects.filter(profile=profile).order_by(
+                "created_at"
+            )
+            if self._is_active_medication(medication, today)
+        ]
+        medical_histories = list(
+            MedicalHistory.objects.filter(profile=profile).order_by("created_at")
+        )
         heart_rate_query = recent.filter(measurement_type="HEART_RATE")
         manual_heart_rates = list(
             heart_rate_query.filter(source="MANUAL")
@@ -105,7 +177,19 @@ class RiskRuleEngine:
         analyzed_count = len(heart_rates) + int(steps is not None) + int(
             calories is not None
         ) + int(blood_pressure is not None) + int(sleep is not None) + int(temperature is not None)
-        if not applicable:
+        analyzed_count += (
+            len(lab_results)
+            + len(allergies)
+            + len(medications)
+            + len(medical_histories)
+        )
+        if not (
+            applicable
+            or lab_results
+            or allergies
+            or medications
+            or medical_histories
+        ):
             return {
                 "risk_level": "UNKNOWN",
                 "analyzed_count": analyzed_count,
@@ -178,11 +262,62 @@ class RiskRuleEngine:
             warnings.append(f"R07: High temperature ({float(temperature.value):.1f} \u00b0C).")
             level = "MEDIUM"
 
+        abnormal_labs = [
+            lab_result
+            for lab_result in lab_results
+            if self._lab_result_is_out_of_range(
+                lab_result.result,
+                lab_result.reference_range,
+            )
+        ]
+        if abnormal_labs:
+            triggered_rules.append("R08")
+            for lab_result in abnormal_labs:
+                measured = f"{lab_result.result} {lab_result.unit}".strip()
+                warnings.append(
+                    f"R08: {lab_result.test_name} result {measured} is outside "
+                    f"the reference range {lab_result.reference_range}."
+                )
+            level = "MEDIUM"
+
+        allergy_exposures = [
+            (allergy, medication)
+            for allergy in allergies
+            for medication in medications
+            if self._allergy_matches_medication(
+                allergy.allergen,
+                medication.name,
+            )
+        ]
+        if allergy_exposures:
+            triggered_rules.append("R09")
+            for allergy, medication in allergy_exposures:
+                warnings.append(
+                    f"R09: Active medication {medication.name} matches recorded "
+                    f"allergen {allergy.allergen}."
+                )
+                if allergy.severity == "SEVERE":
+                    level = "HIGH"
+                elif level == "LOW":
+                    level = "MEDIUM"
+
+        if medical_histories and triggered_rules:
+            triggered_rules.append("R10")
+            conditions = ", ".join(
+                sorted({history.condition for history in medical_histories})
+            )
+            warnings.append(
+                f"R10: Existing medical history ({conditions}) accompanies "
+                "one or more triggered health-risk rules."
+            )
+            if level == "LOW":
+                level = "MEDIUM"
+
         if not warnings:
             warnings.append("Không có cảnh báo nào được kích hoạt trong dữ liệu đã chọn.")
         recommendation = {
             "HIGH": "Có chỉ số cần được theo dõi. Hãy đo lại đúng hướng dẫn và liên hệ nhân viên y tế nếu bất thường kéo dài hoặc có triệu chứng.",
-            "MEDIUM": "Theo dõi nhịp tim và đo lại trong điều kiện phù hợp; liên hệ nhân viên y tế nếu bất thường lặp lại hoặc có triệu chứng.",
+            "MEDIUM": "Theo dõi các chỉ số hoặc dấu hiệu được cảnh báo; liên hệ nhân viên y tế nếu bất thường kéo dài, lặp lại hoặc có triệu chứng.",
             "LOW": "Chưa phát hiện cảnh báo theo các quy tắc thử nghiệm đang bật. Kết quả chỉ mang tính tham khảo, không thay thế chẩn đoán y tế.",
         }[level]
         return {
