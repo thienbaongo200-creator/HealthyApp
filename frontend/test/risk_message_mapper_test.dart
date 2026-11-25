@@ -14,9 +14,21 @@ void main() {
   });
 
   test('maps new health rules and preserves measured values', () {
+    expect(
+      RiskMessageMapper.toUserMessage('R01: elevated heart rate'),
+      contains('nhịp tim'),
+    );
     expect(RiskMessageMapper.toUserMessage('R05: Blood pressure high (145/92 mmHg).'), contains('145/92 mmHg'));
+    expect(
+      RiskMessageMapper.toUserMessage('R04: Calories below target (250 kcal).'),
+      allOf(contains('calo'), contains('250 kcal')),
+    );
     expect(RiskMessageMapper.toUserMessage('R06: Sleep duration below 6 hours (5.50 hours).'), contains('5.50 hours'));
     expect(RiskMessageMapper.toUserMessage('R07: High temperature (38.1 C).'), contains('38.1 C'));
+    expect(
+      RiskMessageMapper.toUserMessage('R07: High temperature (38.1 C).'),
+      contains('Thân nhiệt'),
+    );
   });
 
   test('does not expose an unknown technical rule identifier', () {
