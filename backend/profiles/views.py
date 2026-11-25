@@ -1,47 +1,25 @@
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.views import APIView
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import generics
-from households.models import HouseholdMember, ProfileShare
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
+from core.permissions import IsProfileOwnerOrShared, PermissionService
 from .models import PersonProfile
 from .serializers import PersonProfileCreateSerializer, PersonProfileSerializer
 from ai_services.models import AIConsent
 from ai_services.serializers import AIConsentSerializer, AIConsentUpdateSerializer
 from ai_services.services.consent import AIConsentService
 
-
 def accessible_profiles_for(user):
-    """Profiles readable by user, matching the existing owner/share rules."""
-    owned = PersonProfile.objects.filter(
-        Q(account=user) | Q(created_by=user),
-        is_archived=False,
-    )
-    owner_household_ids = HouseholdMember.objects.filter(
-        profile__in=owned, status="ACTIVE", role="OWNER"
-    ).values_list("household_id", flat=True)
-    shared_ids = ProfileShare.objects.filter(
-        member__profile__in=owned,
-        member__status="ACTIVE",
-        share_level__in=("VIEW_ONLY", "VIEW_AND_LOG"),
-    ).values_list("profile_id", flat=True)
-    household_profile_ids = HouseholdMember.objects.filter(
-        household_id__in=owner_household_ids, status="ACTIVE"
-    ).values_list("profile_id", flat=True)
-    return PersonProfile.objects.filter(
-        Q(account=user)
-        | Q(created_by=user)
-        | Q(pk__in=shared_ids)
-        | Q(pk__in=household_profile_ids),
-        is_archived=False,
-    ).distinct()
+    """Backward-compatible wrapper around the central authorization queryset."""
+    return PermissionService.accessible_profiles(user)
 
 
 class PersonProfileViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsProfileOwnerOrShared]
     serializer_class = PersonProfileSerializer
 
     def get_queryset(self):
@@ -53,6 +31,8 @@ class PersonProfileViewSet(viewsets.ModelViewSet):
         return PersonProfileSerializer
 
     def create(self, request, *args, **kwargs):
+        if not PermissionService.is_active_owner(request.user):
+            raise PermissionDenied("Chỉ chủ hộ đang hoạt động mới được tạo hồ sơ phụ thuộc.")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         profile = serializer.save()
@@ -65,15 +45,26 @@ class PersonProfileViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        profile = self.get_object()
-        if profile.account_id != self.request.user.pk and profile.created_by_id != self.request.user.pk:
-            raise PermissionDenied("Only the profile owner can update this profile.")
+        if not PermissionService.has_profile_access(
+            self.request.user, serializer.instance.pk, required_permission="edit"
+        ):
+            raise PermissionDenied("Chỉ người quản lý hồ sơ mới được cập nhật hồ sơ này.")
         serializer.save()
+
+    def perform_destroy(self, instance):
+        if not PermissionService.has_profile_access(
+            self.request.user, instance.pk, required_permission="edit"
+        ) or instance.profile_type == "SELF":
+            raise PermissionDenied("Chỉ người quản lý hồ sơ mới được lưu trữ hồ sơ này.")
+        instance.is_archived = True
+        instance.save(update_fields=["is_archived", "updated_at"])
 
     def destroy(self, request, *args, **kwargs):
         profile = self.get_object()
-        if profile.account_id != request.user.pk and profile.created_by_id != request.user.pk:
-            raise PermissionDenied("Only the profile owner can archive this profile.")
+        if not PermissionService.has_profile_access(
+            request.user, profile.pk, required_permission="edit"
+        ):
+            raise PermissionDenied("Chỉ người quản lý hồ sơ mới được lưu trữ hồ sơ này.")
         profile.is_archived = True
         profile.save(update_fields=["is_archived", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -87,44 +78,16 @@ class ProfileListCreateView(generics.ListCreateAPIView):
         return accessible_profiles_for(self.request.user)
 
     def perform_create(self, serializer):
+        # This endpoint creates DEPENDENT profiles; only a current active
+        # household OWNER may do so (RBAC matrix, Table 2.42).
+        if not PermissionService.is_active_owner(self.request.user):
+            raise PermissionDenied("Chỉ chủ hộ đang hoạt động mới được tạo hồ sơ phụ thuộc.")
         # Khi tạo mới từ phía user, mặc định đây là hồ sơ DEPENDENT (hồ sơ SELF đã được tự động tạo khi Register)
         serializer.save(
             account=self.request.user,
             created_by=self.request.user,
             profile_type="DEPENDENT",
         )
-
-class ProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = PersonProfileSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        # Đảm bảo user chỉ thao tác trên hồ sơ thuộc về chính tài khoản của họ
-        return accessible_profiles_for(self.request.user)
-
-    def perform_update(self, serializer):
-        if (
-            serializer.instance.account_id != self.request.user.pk
-            and serializer.instance.created_by_id != self.request.user.pk
-        ):
-            raise PermissionDenied("Only the profile owner can update this profile.")
-        serializer.save()
-
-    def destroy(self, request, *args, **kwargs):
-        """Thay vì xóa cứng (DELETE), ta thực hiện archive mềm (is_archived = True)"""
-        profile = self.get_object()
-        if profile.account_id != request.user.pk and profile.created_by_id != request.user.pk:
-            raise PermissionDenied("Only the profile owner can archive this profile.")
-        if profile.profile_type == "SELF":
-            return Response(
-                {"detail": "Không thể xóa hoặc archive hồ sơ chính (SELF)."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        profile.is_archived = True
-        profile.save(update_fields=["is_archived", "updated_at"])
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
 
 class ProfileAIConsentView(APIView):
     permission_classes = [IsAuthenticated]
@@ -136,7 +99,7 @@ class ProfileAIConsentView(APIView):
             is_archived=False,
         )
         if not AIConsentService.can_manage(user, profile):
-            raise PermissionDenied("Only the profile owner or guardian may manage consent.")
+            raise PermissionDenied("Chỉ chủ hồ sơ hoặc người giám hộ mới được quản lý sự đồng ý sử dụng AI.")
         return profile
 
     def get(self, request, profile_id):
@@ -157,3 +120,62 @@ class ProfileAIConsentView(APIView):
             version=serializer.validated_data["consent_version"],
         )
         return Response(AIConsentSerializer(record).data, status=status.HTTP_200_OK)
+
+class ProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Endpoint quản lý chi tiết một PersonProfile (Xem, Cập nhật, Archive).
+    Đã được ghi đè get_object để chuyển từ lỗi 404 sang 403 Forbidden đúng chuẩn kịch bản TC09.
+    """
+    queryset = PersonProfile.objects.filter(is_archived=False)
+    serializer_class = PersonProfileSerializer
+    permission_classes = [IsAuthenticated, IsProfileOwnerOrShared]
+
+    def get_object(self):
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+
+        # 1. Tìm xem profile có tồn tại trong hệ thống hay không (tránh 404 ẩn dữ liệu)
+        try:
+            obj = PersonProfile.objects.get(**filter_kwargs, is_archived=False)
+        except PersonProfile.DoesNotExist:
+            raise NotFound("Không tìm thấy hồ sơ này.")
+
+        # 2. Xác định phương thức request để kiểm tra đúng quyền (view hay edit)
+        req_type = 'edit' if self.request.method in ['POST', 'PUT', 'PATCH', 'DELETE'] else 'view'
+
+        # 3. Gọi PermissionService để kiểm tra quyền truy cập chi tiết
+        has_access = PermissionService.has_profile_access(
+            self.request.user, obj.id, required_permission=req_type
+        )
+
+        # 4. Nếu user ngoài cố tình chọc vào -> Bắn PermissionDenied để DRF trả về chính xác 403 Forbidden
+        if not has_access:
+            raise PermissionDenied("Bạn không có quyền truy cập hoặc chỉnh sửa hồ sơ này.")
+
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    def perform_update(self, serializer):
+        profile = self.get_object()
+        if not PermissionService.has_profile_access(
+            self.request.user, profile.pk, required_permission="edit"
+        ):
+            raise PermissionDenied("Chỉ người quản lý hồ sơ mới được cập nhật hồ sơ này.")
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        """Thay vì xóa cứng (DELETE), ta thực hiện archive mềm (is_archived = True)"""
+        profile = self.get_object()
+        if not PermissionService.has_profile_access(
+            request.user, profile.pk, required_permission="edit"
+        ):
+            raise PermissionDenied("Chỉ người quản lý hồ sơ mới được lưu trữ hồ sơ này.")
+        if profile.profile_type == "SELF":
+            return Response(
+                {"detail": "Không thể xóa hoặc lưu trữ hồ sơ chính."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        profile.is_archived = True
+        profile.save(update_fields=["is_archived", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

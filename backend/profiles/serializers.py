@@ -7,7 +7,7 @@ from .models import PersonProfile
 
 class HouseholdRoleField(serializers.Field):
     default_error_messages = {
-        "invalid": "Role must be MEMBER or CAREGIVER.",
+        "invalid": "Vai trò phải là MEMBER hoặc CAREGIVER.",
     }
 
     def get_attribute(self, instance):
@@ -83,7 +83,7 @@ class PersonProfileSerializer(serializers.ModelSerializer):
 
     def validate_height_cm(self, value):
         if value is not None and not 30 <= value <= 300:
-            raise serializers.ValidationError("Height must be between 30 and 300 cm.")
+            raise serializers.ValidationError("Chiều cao phải trong khoảng 30 đến 300 cm.")
         return value
 
     class Meta:
@@ -138,12 +138,25 @@ class PersonProfileSerializer(serializers.ModelSerializer):
         if request is None or not request.user.is_authenticated:
             return None
 
-        if profile.account_id == request.user.pk or profile.created_by_id == request.user.pk:
+        if profile.profile_type == "SELF" and profile.account_id == request.user.pk:
             return "OWNER"
 
         share = self._sharing(profile)
         if share:
             return share.member.role
+
+        target_household_ids = HouseholdMember.objects.filter(
+            profile=profile,
+            status="ACTIVE",
+        ).values_list("household_id", flat=True)
+        is_household_owner = HouseholdMember.objects.filter(
+            household_id__in=target_household_ids,
+            account=request.user,
+            status="ACTIVE",
+            role="OWNER",
+        ).exists()
+        if is_household_owner:
+            return "OWNER"
 
         membership = HouseholdMember.objects.filter(
             profile=profile,
@@ -152,16 +165,6 @@ class PersonProfileSerializer(serializers.ModelSerializer):
         ).order_by("created_at").first()
         if membership:
             return membership.role
-
-        is_household_owner = HouseholdMember.objects.filter(
-            Q(profile__account=request.user) | Q(profile__created_by=request.user),
-            status="ACTIVE",
-            role="OWNER",
-            household__members__profile=profile,
-            household__members__status="ACTIVE",
-        ).exists()
-        if is_household_owner:
-            return "OWNER"
 
         return "MEMBER"
 
@@ -179,7 +182,7 @@ class PersonProfileSerializer(serializers.ModelSerializer):
 
     def validate_household_role(self, value):
         if self.instance and self.instance.profile_type == "SELF":
-            raise serializers.ValidationError("The primary profile role cannot be changed.")
+            raise serializers.ValidationError("Không thể thay đổi vai trò của hồ sơ chính.")
         return value
 
     def create(self, validated_data):
@@ -200,7 +203,7 @@ class PersonProfileSerializer(serializers.ModelSerializer):
 
     def validate_relation_type(self, value):
         if self.instance and self.instance.profile_type == "SELF" and value:
-            raise serializers.ValidationError("SELF profiles cannot have a family relation.")
+            raise serializers.ValidationError("Hồ sơ chính không thể khai báo quan hệ gia đình.")
         return value
 
 
@@ -209,7 +212,7 @@ class PersonProfileCreateSerializer(serializers.ModelSerializer):
 
     def validate_height_cm(self, value):
         if value is not None and not 30 <= value <= 300:
-            raise serializers.ValidationError("Height must be between 30 and 300 cm.")
+            raise serializers.ValidationError("Chiều cao phải trong khoảng 30 đến 300 cm.")
         return value
 
     class Meta:
@@ -229,12 +232,12 @@ class PersonProfileCreateSerializer(serializers.ModelSerializer):
 
     def validate_profile_type(self, value):
         if value not in {"SELF", "DEPENDENT"}:
-            raise serializers.ValidationError("Unsupported profile type.")
+            raise serializers.ValidationError("Loại hồ sơ không được hỗ trợ.")
         return value
 
     def validate(self, attrs):
         if attrs.get("profile_type", "DEPENDENT") == "SELF" and attrs.get("relation_type"):
-            raise serializers.ValidationError({"relation_type": "SELF profiles cannot have a family relation."})
+            raise serializers.ValidationError({"relation_type": "Hồ sơ chính không thể khai báo quan hệ gia đình."})
         return attrs
 
     def create(self, validated_data):

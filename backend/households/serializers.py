@@ -1,6 +1,5 @@
-from django.db.models import Q
 from rest_framework import serializers
-from .models import Household, HouseholdMember
+from .models import Household, HouseholdMember, ProfileShare
 
 class HouseholdSerializer(serializers.ModelSerializer):
     viewer_role = serializers.SerializerMethodField()
@@ -14,18 +13,13 @@ class HouseholdSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request is None or not request.user.is_authenticated:
             return None
-
-        return (
-            household.members.filter(status="ACTIVE")
-            .filter(
-                Q(account=request.user)
-                | Q(profile__account=request.user)
-                | Q(profile__created_by=request.user)
-            )
-            .order_by("created_at")
-            .values_list("role", flat=True)
-            .first()
+        memberships = household.members.filter(
+            account=request.user,
+            status="ACTIVE",
         )
+        if memberships.filter(role="OWNER").exists():
+            return "OWNER"
+        return memberships.order_by("created_at").values_list("role", flat=True).first()
 
 
 class HouseholdMemberSerializer(serializers.ModelSerializer):
@@ -33,14 +27,27 @@ class HouseholdMemberSerializer(serializers.ModelSerializer):
     user_email = serializers.ReadOnlyField(source='account.email')
     profile_name = serializers.ReadOnlyField(source='profile.full_name')
     profile_type = serializers.ReadOnlyField(source='profile.profile_type')
+    shares = serializers.SerializerMethodField()
 
     class Meta:
         model = HouseholdMember
         fields = [
             'id', 'household', 'household_name', 'profile', 'profile_name',
             'profile_type', 'user_email', 'role', 'status', 'created_at',
+            'shares',
         ]
         read_only_fields = ['id', 'profile', 'created_at']
+
+    def get_shares(self, member):
+        return list(
+            ProfileShare.objects.filter(member=member)
+            .select_related('profile')
+            .values(
+                'profile_id',
+                'profile__full_name',
+                'share_level',
+            )
+        )
 
 
 class HouseholdMemberUpdateSerializer(serializers.Serializer):
@@ -49,6 +56,7 @@ class HouseholdMemberUpdateSerializer(serializers.Serializer):
         choices=['VIEW_ONLY', 'VIEW_AND_LOG'],
         required=False,
     )
+    share_profile_id = serializers.UUIDField(required=False)
 
 
 class HouseholdInviteSerializer(serializers.Serializer):

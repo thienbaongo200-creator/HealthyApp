@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -105,6 +105,16 @@ class HouseholdDetailView(APIView):
             HouseholdSerializer(household, context={"request": request}).data
         )
 
+    def delete(self, request, household_id):
+        household = get_object_or_404(Household, pk=household_id)
+        if not _get_household_owner_membership(household, request.user):
+            raise PermissionDenied("Chỉ chủ hộ đang hoạt động mới được giải tán hộ gia đình.")
+
+        # HouseholdMember/ProfileShare rows cascade with the household. PersonProfile
+        # records are independent and remain available after the household is dissolved.
+        household.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class HouseholdLeaveView(APIView):
     permission_classes = [IsAuthenticated]
@@ -120,12 +130,12 @@ class HouseholdLeaveView(APIView):
         )
         if not memberships.exists():
             return Response(
-                {"detail": "Active household membership was not found."},
+                {"detail": "Không tìm thấy tư cách thành viên đang hoạt động trong hộ gia đình."},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if memberships.filter(role="OWNER").exists():
             raise PermissionDenied(
-                "Household owners must transfer ownership before leaving."
+                "Chủ hộ không thể rời hộ gia đình khi chưa bàn giao quyền chủ hộ."
             )
 
         memberships.delete()
@@ -138,7 +148,7 @@ class HouseholdMemberListCreateView(APIView):
     def _get_owned_household(self, household_id, user):
         household = get_object_or_404(Household, pk=household_id)
         if not _get_household_owner_membership(household, user):
-            raise PermissionDenied("Only an active household owner can manage members.")
+            raise PermissionDenied("Chỉ chủ hộ đang hoạt động mới được quản lý thành viên.")
         return household
 
     def get(self, request, household_id):
@@ -158,12 +168,12 @@ class HouseholdMemberListCreateView(APIView):
         ).first()
         if invited_account is None:
             return Response(
-                {"detail": "An account with this email does not exist."},
+                {"detail": "Không tìm thấy tài khoản với địa chỉ email này."},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if invited_account.pk == request.user.pk:
             return Response(
-                {"detail": "You cannot invite yourself."},
+                {"detail": "Bạn không thể tự mời chính mình vào hộ gia đình."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -173,7 +183,7 @@ class HouseholdMemberListCreateView(APIView):
             profile=invited_profile,
         ).exists():
             return Response(
-                {"detail": "This account already has a household membership."},
+                {"detail": "Tài khoản này đã là thành viên của hộ gia đình."},
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -193,7 +203,7 @@ class HouseholdMemberListCreateView(APIView):
                 status="ACTIVE",
                 profile=share_profile,
             ).exists() and share_profile.account_id != request.user.pk:
-                raise PermissionDenied("You can only share a profile you manage.")
+                raise PermissionDenied("Bạn chỉ có thể chia sẻ hồ sơ do mình quản lý.")
 
         try:
             with transaction.atomic():
@@ -212,7 +222,7 @@ class HouseholdMemberListCreateView(APIView):
                 )
         except IntegrityError:
             return Response(
-                {"detail": "This account already has a household membership."},
+                {"detail": "Tài khoản này đã là thành viên của hộ gia đình."},
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -228,7 +238,7 @@ class HouseholdMemberDetailView(APIView):
     def _get_owner_and_member(self, household_id, member_id, user):
         household = get_object_or_404(Household, pk=household_id)
         if not _get_household_owner_membership(household, user):
-            raise PermissionDenied("Only an active household owner can manage members.")
+            raise PermissionDenied("Chỉ chủ hộ đang hoạt động mới được quản lý thành viên.")
         member = get_object_or_404(
             HouseholdMember.objects.select_related("profile"),
             household=household,
@@ -244,21 +254,32 @@ class HouseholdMemberDetailView(APIView):
         )
         if member.role == "OWNER":
             return Response(
-                {"detail": "Household owner roles cannot be changed here."},
+                {"detail": "Không thể thay đổi vai trò của chủ hộ tại đây."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         serializer = HouseholdMemberUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        if "role" in data:
-            member.role = data["role"]
-            member.save(update_fields=["role", "updated_at"])
-
         if "share_level" in data:
             share_profile_id = data.get("share_profile_id")
             if share_profile_id is None:
-                share_profile = _get_or_create_self_profile(request.user)
+                existing_shares = ProfileShare.objects.filter(member=member)
+                existing_profile_ids = list(
+                    existing_shares.values_list("profile_id", flat=True)[:2]
+                )
+                if len(existing_profile_ids) > 1:
+                    raise ValidationError(
+                        {"share_profile_id": "Specify which shared profile to update."}
+                    )
+                if existing_profile_ids:
+                    share_profile = get_object_or_404(
+                        PersonProfile,
+                        pk=existing_profile_ids[0],
+                        is_archived=False,
+                    )
+                else:
+                    share_profile = _get_or_create_self_profile(request.user)
             else:
                 share_profile = get_object_or_404(
                     PersonProfile,
@@ -272,12 +293,16 @@ class HouseholdMemberDetailView(APIView):
                     status="ACTIVE",
                     profile=share_profile,
                 ).exists() and share_profile.account_id != request.user.pk:
-                    raise PermissionDenied("You can only share a profile you manage.")
+                    raise PermissionDenied("Bạn chỉ có thể chia sẻ hồ sơ do mình quản lý.")
             ProfileShare.objects.update_or_create(
                 member=member,
                 profile=share_profile,
                 defaults={"share_level": data["share_level"]},
             )
+
+        if "role" in data:
+            member.role = data["role"]
+            member.save(update_fields=["role", "updated_at"])
 
         return Response(HouseholdMemberSerializer(member).data)
 
@@ -289,7 +314,7 @@ class HouseholdMemberDetailView(APIView):
         )
         if member.role == "OWNER":
             return Response(
-                {"detail": "The household owner cannot be removed."},
+                {"detail": "Không thể gỡ chủ hộ khỏi hộ gia đình."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         member.delete()
@@ -333,7 +358,7 @@ class InvitationResponseView(APIView):
         ):
             invitation.delete()
             return Response(
-                {"detail": "This invitation has expired."},
+                {"detail": "Lời mời này đã hết hạn."},
                 status=status.HTTP_410_GONE,
             )
 

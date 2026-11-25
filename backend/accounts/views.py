@@ -23,6 +23,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from profiles.models import PersonProfile
+from core.exceptions import translate_validation_messages
 from ai_services.services.consent import AIConsentService
 from .models import PasswordResetCode
 
@@ -63,7 +64,7 @@ class RegisterView(APIView):
 
         if not email or "@" not in email or not isinstance(password, str) or len(password) < 6:
             return Response(
-                {"detail": "A valid email and a password of at least 6 characters are required."},
+                {"detail": "Vui lòng nhập địa chỉ email hợp lệ và mật khẩu có ít nhất 6 ký tự."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -78,13 +79,13 @@ class RegisterView(APIView):
             validate_password(password, user=Account(email=email))
         except DjangoValidationError as error:
             return Response(
-                {"password": error.messages},
+                {"password": translate_validation_messages(error.messages)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         if Account.objects.filter(email__iexact=email).exists():
             return Response(
-                {"detail": "Email is already in use."},
+                {"detail": "Email này đã được đăng ký tài khoản trước đó."},
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -93,7 +94,7 @@ class RegisterView(APIView):
             get_or_create_self_profile(account)
         except IntegrityError:
             return Response(
-                {"detail": "Email is already in use."},
+                {"detail": "Email này đã được đăng ký tài khoản trước đó."},
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -119,7 +120,7 @@ class ProfileView(APIView):
         date_of_birth = parse_date(str(request.data.get("date_of_birth", "")))
         if request.data.get("date_of_birth") and date_of_birth is None:
             return Response(
-                {"detail": "date_of_birth must use YYYY-MM-DD."},
+                {"detail": "Ngày sinh phải có định dạng YYYY-MM-DD."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -138,7 +139,10 @@ class ProfileView(APIView):
                 allow_null=True,
             ).run_validation(height_cm)
         except serializers.ValidationError as error:
-            return Response({"height_cm": error.detail}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"height_cm": translate_validation_messages(error.detail)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         profile.weight_kg = request.data.get(
             "weight_kg",
             request.data.get("weight", profile.weight_kg),
@@ -180,7 +184,7 @@ class AiConsentView(APIView):
         consent = request.data.get("ai_consent")
         if not isinstance(consent, bool):
             return Response(
-                {"ai_consent": ["Must be a boolean."]},
+                {"ai_consent": ["Giá trị phải là đúng hoặc sai."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -212,7 +216,7 @@ class LoginView(APIView):
 
         if not email or not isinstance(password, str) or not password:
             return Response(
-                {"detail": "email and password are required."},
+                {"detail": "Vui lòng nhập email và mật khẩu."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -223,7 +227,7 @@ class LoginView(APIView):
         )
         if account is None:
             return Response(
-                {"detail": "Invalid email or password."},
+                {"detail": "Email hoặc mật khẩu không chính xác."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -254,7 +258,7 @@ class ForgotPasswordView(APIView):
     def post(self, request):
         email = str(request.data.get("email", "")).strip()
         if not email or "@" not in email:
-            return Response({"email": ["Enter a valid email address."]}, status=400)
+            return Response({"email": ["Địa chỉ email không hợp lệ."]}, status=400)
         account = get_user_model().objects.filter(email__iexact=email, is_active=True).first()
         if account:
             code = f"{secrets.randbelow(1_000_000):06d}"
@@ -266,8 +270,8 @@ class ForgotPasswordView(APIView):
             )
             try:
                 sent = send_mail(
-                    "HealthyApp password reset code",
-                    f"Your password reset code is {code}. It expires in 15 minutes.",
+                    "Mã đặt lại mật khẩu HealthyApp",
+                    f"Mã đặt lại mật khẩu của bạn là {code}. Mã hết hạn sau 15 phút.",
                     settings.DEFAULT_FROM_EMAIL,
                     [account.email],
                     fail_silently=False,
@@ -278,8 +282,8 @@ class ForgotPasswordView(APIView):
                 logger.exception("Failed to send a password reset code")
                 reset.delete()
                 # Keep the response indistinguishable from an unknown email.
-                return Response({"detail": "If an account exists for this email, a reset code has been sent."})
-        return Response({"detail": "If an account exists for this email, a reset code has been sent."})
+                return Response({"detail": "Nếu email đã đăng ký, mã đặt lại mật khẩu đã được gửi."})
+        return Response({"detail": "Nếu email đã đăng ký, mã đặt lại mật khẩu đã được gửi."})
 
 
 class ResetPasswordView(APIView):
@@ -293,9 +297,9 @@ class ResetPasswordView(APIView):
         code = str(request.data.get("otp", "")).strip()
         new_password = request.data.get("new_password", "")
         if not email or not code or not isinstance(new_password, str):
-            return Response({"detail": "email, otp and new_password are required."}, status=400)
+            return Response({"detail": "Vui lòng nhập email, mã xác nhận và mật khẩu mới."}, status=400)
         if len(code) != 6 or not code.isdigit():
-            return Response({"detail": "Reset code is invalid or expired."}, status=400)
+            return Response({"detail": "Mã xác nhận không hợp lệ hoặc đã hết hạn."}, status=400)
         with transaction.atomic():
             account = get_user_model().objects.select_for_update().filter(
                 email__iexact=email, is_active=True
@@ -309,19 +313,22 @@ class ResetPasswordView(APIView):
                 else None
             )
             if reset is None or reset.expires_at <= timezone.now() or reset.attempts >= 5:
-                return Response({"detail": "Reset code is invalid or expired."}, status=400)
+                return Response({"detail": "Mã xác nhận không hợp lệ hoặc đã hết hạn."}, status=400)
             if not check_password(code, reset.code_hash):
                 reset.attempts += 1
                 reset.save(update_fields=["attempts"])
-                return Response({"detail": "Reset code is invalid or expired."}, status=400)
+                return Response({"detail": "Mã xác nhận không hợp lệ hoặc đã hết hạn."}, status=400)
             try:
                 validate_password(new_password, user=account)
             except DjangoValidationError as error:
-                return Response({"new_password": error.messages}, status=400)
+                return Response(
+                    {"new_password": translate_validation_messages(error.messages)},
+                    status=400,
+                )
             account.set_password(new_password)
             account.save(update_fields=["password"])
             PasswordResetCode.objects.filter(account=account).delete()
-        return Response({"detail": "Password has been reset successfully."})
+        return Response({"detail": "Đặt lại mật khẩu thành công."})
 
 
 class LogoutView(APIView):
@@ -331,7 +338,7 @@ class LogoutView(APIView):
         refresh_token = request.data.get("refresh")
         if not refresh_token:
             return Response(
-                {"detail": "Refresh token is required."},
+                {"detail": "Thiếu mã làm mới phiên đăng nhập."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -339,20 +346,20 @@ class LogoutView(APIView):
             token = RefreshToken(refresh_token)
         except (TokenError, AuthenticationFailed):
             return Response(
-                {"detail": "Refresh token is invalid or revoked."},
+                {"detail": "Mã làm mới phiên đăng nhập không hợp lệ hoặc đã bị thu hồi."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         token_user_id = token.get(api_settings.USER_ID_CLAIM)
         if str(token_user_id) != str(request.user.pk):
             raise PermissionDenied(
-                "You can only revoke a refresh token belonging to your account."
+                "Bạn chỉ có thể thu hồi phiên đăng nhập thuộc tài khoản của mình."
             )
 
         try:
             token.blacklist()
             return Response(
-                {"message": "Successfully logged out"},
+                {"message": "Đăng xuất thành công."},
                 status=status.HTTP_205_RESET_CONTENT,
             )
         except AttributeError as error:

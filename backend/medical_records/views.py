@@ -2,7 +2,6 @@ import mimetypes
 from uuid import UUID
 
 from django.db import IntegrityError, OperationalError, transaction
-from django.db.models import Q
 from django.http import FileResponse, HttpResponseRedirect
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -16,7 +15,6 @@ from health_measurements.serializers import (
     HealthMeasurementSerializer,
 )
 from profiles.models import PersonProfile
-from households.models import HouseholdMember, ProfileShare
 from .serializers import (
     AllergySerializer,
     LabResultSerializer,
@@ -54,34 +52,9 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             return HealthMeasurement.objects.none()
 
         # Lấy tất cả profile hợp lệ của user đang đăng nhập
-        user_profiles = PersonProfile.objects.filter(
-            Q(account=user) | Q(created_by=user),
-            is_archived=False,
+        allowed_profile_ids = set(
+            PermissionService.accessible_profiles(user).values_list("pk", flat=True)
         )
-        
-        # 1. Profile của chính user
-        owned_profile_ids = list(user_profiles.values_list('id', flat=True))
-        
-        # 2. Profile được chia sẻ qua ProfileShare (thành viên ACTIVE và có cấp độ quyền xem)
-        shared_profile_ids = list(ProfileShare.objects.filter(
-            member__profile__in=user_profiles,
-            member__status='ACTIVE',
-            share_level__in=['VIEW_ONLY', 'VIEW_AND_LOG']
-        ).values_list('profile_id', flat=True))
-        
-        # 3. Other profiles are visible only in households where this user is an active OWNER.
-        owner_household_ids = HouseholdMember.objects.filter(
-            profile__in=user_profiles,
-            status='ACTIVE',
-            role='OWNER',
-        ).values_list('household_id', flat=True)
-        household_profile_ids = list(HouseholdMember.objects.filter(
-            household_id__in=owner_household_ids,
-            status='ACTIVE',
-        ).values_list('profile_id', flat=True))
-
-        # Gộp tất cả các ID profile được phép xem vào tập duy nhất
-        allowed_profile_ids = set(owned_profile_ids + shared_profile_ids + household_profile_ids)
 
         requested_profile_id = self.request.query_params.get('profile_id')
         if requested_profile_id:
@@ -89,7 +62,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
                 requested_profile_id = UUID(requested_profile_id)
             except ValueError as error:
                 raise ValidationError(
-                    {"profile_id": "Must be a valid UUID."}
+                    {"profile_id": "Mã hồ sơ phải là UUID hợp lệ."}
                 ) from error
 
         blocked_caregiver_profile_ids = set()
@@ -112,7 +85,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             )
         ):
             raise PermissionDenied(
-                "Owner AI consent is required for caregivers to view measurements."
+                "Người chăm sóc cần có sự đồng ý sử dụng AI của chủ hồ sơ để xem chỉ số."
             )
 
         allowed_profile_ids.difference_update(blocked_caregiver_profile_ids)
@@ -141,7 +114,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
                 required_permission="measurement_write",
             ):
                 raise PermissionDenied(
-                    "You do not have permission to add measurements to this profile."
+                    "Bạn không có quyền thêm chỉ số vào hồ sơ này."
                 )
             profile = PersonProfile.objects.get(pk=profile_id)
 
@@ -151,7 +124,7 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
             required_permission="measurement_write",
         ):
             raise PermissionDenied(
-                "You do not have permission to add measurements to this profile."
+                "Bạn không có quyền thêm chỉ số vào hồ sơ này."
             )
 
         serializer.save(profile=profile, source="MANUAL", device=None)
@@ -159,14 +132,14 @@ class HealthMeasurementViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         if serializer.instance.source == "WEAR_OS":
             raise PermissionDenied(
-                "Wear OS measurements cannot be changed manually."
+                "Không thể chỉnh sửa thủ công chỉ số được ghi nhận từ Wear OS."
             )
         serializer.save()
 
     def perform_destroy(self, instance):
         if instance.source == "WEAR_OS":
             raise PermissionDenied(
-                "Wear OS measurements cannot be deleted manually."
+                "Không thể xóa thủ công chỉ số được ghi nhận từ Wear OS."
             )
         instance.delete()
 
@@ -208,14 +181,14 @@ class HealthMeasurementBatchCreateView(APIView):
                 "status": "BỊ_TỪ_CHỐI",
             }
             if not isinstance(item, dict):
-                result["errors"] = {"non_field_errors": ["Each item must be a JSON object."]}
+                result["errors"] = {"non_field_errors": ["Mỗi phần tử phải là một đối tượng JSON."]}
                 results.append(result)
                 continue
             result["idempotency_key"] = item.get("idempotency_key")
 
             device_id = item.get("device_id")
             if not device_id:
-                result["errors"] = {"device_id": ["A paired device is required."]}
+                result["errors"] = {"device_id": ["Thiết bị đã ghép nối là bắt buộc."]}
                 results.append(result)
                 continue
             device = Device.objects.filter(
@@ -225,12 +198,12 @@ class HealthMeasurementBatchCreateView(APIView):
             ).first()
             if device is None:
                 result["errors"] = {
-                    "device_id": ["Device must be active and paired to this profile."]
+                    "device_id": ["Thiết bị phải đang hoạt động và được ghép với hồ sơ này."]
                 }
                 results.append(result)
                 continue
             if "source" in item:
-                result["errors"] = {"source": ["Source is assigned by the server."]}
+                result["errors"] = {"source": ["Nguồn dữ liệu được hệ thống gán tự động."]}
                 results.append(result)
                 continue
 
@@ -246,7 +219,7 @@ class HealthMeasurementBatchCreateView(APIView):
             result["idempotency_key"] = idempotency_key
             if not idempotency_key:
                 result["errors"] = {
-                    "idempotency_key": ["This field is required for batch sync."]
+                    "idempotency_key": ["Mã chống trùng lặp là bắt buộc khi đồng bộ theo lô."]
                 }
                 results.append(result)
                 continue
@@ -287,13 +260,13 @@ class HealthMeasurementBatchCreateView(APIView):
                         measurement_id=str(existing.pk),
                     )
                 else:
-                    result["errors"] = {"detail": ["Measurement violates a database constraint."]}
+                    result["errors"] = {"detail": ["Chỉ số không đáp ứng các ràng buộc dữ liệu."]}
                 results.append(result)
                 continue
             except OperationalError:
                 result.update(
                     status="CẦN_THỬ_LẠI",
-                    errors={"detail": ["Temporary database error; retry this item."]},
+                    errors={"detail": ["Hệ thống đang bận. Vui lòng thử đồng bộ lại chỉ số này."]},
                 )
                 results.append(result)
                 continue
@@ -311,7 +284,7 @@ class HealthMeasurementBatchCreateView(APIView):
         return Response(
             {
                 "status": "success" if rejected_count == 0 and retry_count == 0 else "partial",
-                "message": "Batch processed.",
+                "message": "Đã xử lý dữ liệu đồng bộ theo lô.",
                 "received_count": len(results),
                 "created_count": created_count,
                 "duplicate_count": duplicate_count,
@@ -338,7 +311,7 @@ class ProfileScopedMedicalRecordViewSet(viewsets.ModelViewSet):
                 profile_id = UUID(profile_id)
             except ValueError as error:
                 raise ValidationError(
-                    {"profile_id": "Must be a valid UUID."}
+                    {"profile_id": "Mã hồ sơ phải là UUID hợp lệ."}
                 ) from error
             if not PermissionService.has_profile_access(
                 self.request.user,
@@ -346,7 +319,7 @@ class ProfileScopedMedicalRecordViewSet(viewsets.ModelViewSet):
                 required_permission="view",
             ):
                 raise PermissionDenied(
-                    "You do not have permission to view this profile."
+                    "Bạn không có quyền xem hồ sơ này."
                 )
             queryset = queryset.filter(profile_id=profile_id)
         return queryset
@@ -359,7 +332,7 @@ class ProfileScopedMedicalRecordViewSet(viewsets.ModelViewSet):
             required_permission="edit",
         ):
             raise PermissionDenied(
-                "You do not have permission to add records to this profile."
+                "Bạn không có quyền thêm dữ liệu vào hồ sơ này."
             )
         serializer.save()
 
@@ -401,31 +374,29 @@ class MedicalDocumentViewSet(
     queryset = MedicalDocument.objects.select_related("profile", "visit")
 
     def get_queryset(self):
-        queryset = super().get_queryset()
         if not self.request.user.is_authenticated:
-            return queryset.none()
-        if self.request.method == "DELETE":
-            return queryset
+            return MedicalDocument.objects.none()
 
-        accessible_profile_ids = [
-            profile_id
-            for profile_id in queryset.values_list("profile_id", flat=True).distinct()
-            if PermissionService.has_profile_access(
-                self.request.user,
-                profile_id,
-                required_permission="view",
-            )
-        ]
-        queryset = queryset.filter(profile_id__in=accessible_profile_ids)
+        # Keep the authorization boundary in SQL for every method, including
+        # DELETE/retrieve. Never expose the unscoped document table to a request.
+        queryset = MedicalDocument.objects.select_related("profile", "visit").filter(
+            profile_id__in=PermissionService.accessible_profiles(
+                self.request.user
+            ).values("pk")
+        )
         profile_id = self.request.query_params.get("profile_id")
         if profile_id:
             try:
                 profile_id = UUID(profile_id)
             except ValueError as error:
                 raise ValidationError(
-                    {"profile_id": "Must be a valid UUID."}
+                    {"profile_id": "Mã hồ sơ phải là UUID hợp lệ."}
                 ) from error
             queryset = queryset.filter(profile_id=profile_id)
+            if not PermissionService.has_profile_access(
+                self.request.user, profile_id, required_permission="view"
+            ):
+                raise PermissionDenied("Bạn không có quyền truy cập hồ sơ này.")
         return queryset.order_by("-uploaded_at")
 
     def perform_create(self, serializer):
@@ -436,7 +407,7 @@ class MedicalDocumentViewSet(
             required_permission="edit",
         ):
             raise PermissionDenied(
-                "You do not have permission to add documents to this profile."
+                "Bạn không có quyền thêm tài liệu vào hồ sơ này."
             )
 
         profile = PersonProfile.objects.get(pk=profile_id)
@@ -449,7 +420,7 @@ class MedicalDocumentViewSet(
             required_permission="edit",
         ):
             raise PermissionDenied(
-                "You do not have permission to delete documents from this profile."
+                "Bạn không có quyền xóa tài liệu khỏi hồ sơ này."
             )
 
         if instance.file:
@@ -465,7 +436,7 @@ class MedicalDocumentViewSet(
             required_permission="view",
         ):
             raise PermissionDenied(
-                "You do not have permission to download documents from this profile."
+                "Bạn không có quyền tải tài liệu từ hồ sơ này xuống."
             )
 
         response_headers = {
@@ -484,7 +455,7 @@ class MedicalDocumentViewSet(
             response = HttpResponseRedirect(document.file_url)
         else:
             return Response(
-                {"detail": "This document has no downloadable file."},
+                {"detail": "Tài liệu này không có tệp để tải xuống."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 

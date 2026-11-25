@@ -21,7 +21,7 @@ class ProfileScopedMedicalRecordSerializer(serializers.ModelSerializer):
     def validate_profile_id(self, profile):
         if self.instance and profile.pk != self.instance.profile_id:
             raise serializers.ValidationError(
-                "A medical record cannot be moved to another profile."
+                "Không thể chuyển hồ sơ y tế sang hồ sơ người dùng khác."
             )
         return profile
 
@@ -83,7 +83,7 @@ class VisitScopedMedicalRecordSerializer(ProfileScopedMedicalRecordSerializer):
         visit = attrs.get("visit", self.instance.visit if self.instance else None)
         if visit and profile and visit.profile_id != profile.pk:
             raise serializers.ValidationError(
-                {"visit": "The visit must belong to the same profile."}
+                {"visit": "Lần khám phải thuộc cùng hồ sơ sức khỏe."}
             )
         return attrs
 
@@ -167,19 +167,19 @@ class MedicalDocumentSerializer(serializers.ModelSerializer):
 
     def validate_file(self, uploaded_file):
         if uploaded_file.size > self.MAX_FILE_SIZE:
-            raise serializers.ValidationError("File size must not exceed 10 MB.")
+            raise serializers.ValidationError("Dung lượng tệp không được vượt quá 10 MB.")
 
         extension = "." + uploaded_file.name.rsplit(".", 1)[-1].lower()
         allowed_content_types = self.ALLOWED_FILE_TYPES.get(extension)
         if allowed_content_types is None:
             raise serializers.ValidationError(
-                "Only PDF, JPEG, and PNG files are supported."
+                "Chỉ hỗ trợ tệp PDF, JPEG và PNG."
             )
 
         content_type = getattr(uploaded_file, "content_type", None)
         if content_type and content_type not in allowed_content_types:
             raise serializers.ValidationError(
-                "The file extension and content type do not match."
+                "Phần mở rộng tệp không khớp với định dạng nội dung."
             )
 
         return uploaded_file

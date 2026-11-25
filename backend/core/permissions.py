@@ -1,114 +1,143 @@
-from django.db.models import Q
+from django.db.models import F, Q
 from rest_framework import permissions
-from profiles.models import PersonProfile
+
 from households.models import HouseholdMember, ProfileShare
+from profiles.models import PersonProfile
+
 
 class PermissionService:
-    """
-    Dịch vụ trung tâm xử lý logic phân quyền object-level theo Sơ đồ 2.4.
-    """
+    """Central object-level authorization for profiles and their child records."""
+
+    @staticmethod
+    def _user_memberships(user):
+        return HouseholdMember.objects.filter(
+            account=user,
+            status="ACTIVE",
+        )
 
     @classmethod
-    def has_profile_ai_consent(cls, profile):
+    def owner_household_ids(cls, user):
+        return cls._user_memberships(user).filter(role="OWNER").values_list(
+            "household_id", flat=True
+        )
+
+    @classmethod
+    def is_active_owner(cls, user, household=None):
+        memberships = cls._user_memberships(user).filter(role="OWNER")
+        if household is not None:
+            memberships = memberships.filter(household=household)
+        return memberships.exists()
+
+    @classmethod
+    def accessible_profiles(cls, user):
+        """Return a database-filtered queryset of profiles the account may view."""
+        if not user or not user.is_authenticated:
+            return PersonProfile.objects.none()
+
+        memberships = cls._user_memberships(user)
+        owner_households = memberships.filter(role="OWNER").values_list(
+            "household_id", flat=True
+        )
+        # A share is valid only when its member and target profile both belong to
+        # the same household. Validate that relation in SQL, not in Python loops.
+        shared_profile_ids = ProfileShare.objects.filter(
+            member__in=memberships,
+            member__status="ACTIVE",
+            profile__household_links__household_id=F("member__household_id"),
+            profile__household_links__status="ACTIVE",
+            share_level__in=("VIEW_ONLY", "VIEW_AND_LOG"),
+        )
+        return PersonProfile.objects.filter(
+            Q(account=user, profile_type="SELF")
+            | Q(household_links__household_id__in=owner_households,
+                household_links__status="ACTIVE")
+            | Q(pk__in=shared_profile_ids.filter(
+                share_level__in=("VIEW_ONLY", "VIEW_AND_LOG"),
+                member__status="ACTIVE",
+            ).values("profile_id")),
+            is_archived=False,
+        ).distinct()
+
+    @classmethod
+    def has_profile_access(cls, user, profile_id, required_permission="view"):
+        if not user or not user.is_authenticated:
+            return False
+        try:
+            profile = PersonProfile.objects.get(pk=profile_id, is_archived=False)
+        except (PersonProfile.DoesNotExist, ValueError, TypeError):
+            return False
+
+        # SELF and explicitly linked profiles belong to the linked account.
+        if profile.profile_type == "SELF" and profile.account_id == user.pk:
+            return True
+
+        # A current active OWNER has household-wide access, subject to a live
+        # membership for the target profile in that same household.
+        target_households = HouseholdMember.objects.filter(
+            profile=profile,
+            status="ACTIVE",
+        ).values_list("household_id", flat=True)
+        owner_access = cls._user_memberships(user).filter(
+            household_id__in=target_households,
+            role="OWNER",
+        ).exists()
+        if owner_access:
+            return True
+
+        # No shared role can edit profiles or existing records. VIEW_AND_LOG
+        # grants MEMBER and CAREGIVER creation of a new manual measurement.
+        shares = ProfileShare.objects.filter(
+            profile=profile,
+            member__in=cls._user_memberships(user),
+            member__household_id__in=target_households,
+        )
+        if required_permission == "view":
+            return shares.filter(
+                share_level__in=("VIEW_ONLY", "VIEW_AND_LOG")
+            ).exists()
+        if required_permission in {"measurement_write", "measurement_create"}:
+            return shares.filter(
+                share_level="VIEW_AND_LOG",
+                member__role__in=("MEMBER", "CAREGIVER"),
+            ).exists()
+        return False
+
+    @classmethod
+    def is_caregiver_for_profile(cls, user, profile):
+        target_households = HouseholdMember.objects.filter(
+            profile=profile, status="ACTIVE"
+        ).values_list("household_id", flat=True)
+        return ProfileShare.objects.filter(
+            profile=profile,
+            member__in=cls._user_memberships(user),
+            member__household_id__in=target_households,
+            member__role="CAREGIVER",
+            share_level__in=("VIEW_ONLY", "VIEW_AND_LOG"),
+        ).exists()
+
+    @staticmethod
+    def has_profile_ai_consent(profile):
         from ai_services.services.consent import AIConsentService
 
         return AIConsentService.has_consent(profile)
 
-    @staticmethod
-    def is_caregiver_for_profile(user, profile):
-        return ProfileShare.objects.filter(
-            profile=profile,
-            member__status='ACTIVE',
-            member__role='CAREGIVER',
-        ).filter(
-            Q(member__account=user) | Q(member__profile__account=user)
-        ).exists()
-    
-    @staticmethod
-    def has_profile_access(user, profile_id, required_permission='view'):
-        """
-        Kiểm tra xem user có quyền truy cập vào một PersonProfile cụ thể hay không.
-        - required_permission: 'view', 'measurement_write' hoặc 'edit'
-        """
-        if not user or not user.is_authenticated:
-            return False
-            
-        try:
-            profile = PersonProfile.objects.select_related('account').get(pk=profile_id, is_archived=False)
-        except PersonProfile.DoesNotExist:
-            return False
-
-        # 1. Trường hợp chính chủ (Owner của profile)
-        if profile.account_id == user.id or profile.created_by_id == user.id:
-            return True
-
-        # 2. Kiểm tra qua quan hệ Household (User thuộc household chứa profile này với trạng thái ACTIVE)
-        user_profiles = PersonProfile.objects.filter(
-            Q(account=user) | Q(created_by=user),
-            is_archived=False,
-        )
-        
-        target_households = HouseholdMember.objects.filter(
-            profile=profile, status='ACTIVE'
-        ).values_list('household_id', flat=True)
-
-        is_household_member = HouseholdMember.objects.filter(
-            household_id__in=target_households,
-            profile__in=user_profiles,
-            status='ACTIVE',
-            role='OWNER',
-        ).exists()
-
-        if is_household_member:
-            member_record = HouseholdMember.objects.filter(
-                household_id__in=target_households,
-                profile__in=user_profiles,
-            status='ACTIVE',
-            role='OWNER',
-            ).first()
-            
-            if member_record and member_record.role == 'OWNER':
-                return True
-
-        # 3. Kiểm tra qua ProfileShare (Chia sẻ trực tiếp profile cho user với member phải đang ACTIVE)
-        shares = ProfileShare.objects.filter(
-            profile=profile,
-            member__profile__in=user_profiles,
-            member__status='ACTIVE'
-        )
-        
-        for share in shares.select_related('member'):
-            level = getattr(share, 'share_level', '')
-            if required_permission == 'view' and level in ['VIEW_ONLY', 'VIEW_AND_LOG']:
-                return True
-            if (
-                required_permission == 'measurement_write'
-                and level == 'VIEW_AND_LOG'
-                and share.member.role != 'CAREGIVER'
-            ):
-                return True
-
-        return False
 
 class IsProfileOwnerOrShared(permissions.BasePermission):
-    """
-    Custom permission kiểm tra IDOR ở cấp độ Object cho các endpoint liên quan đến PersonProfile hoặc dữ liệu con của profile.
-    """
+    message = "Bạn không có quyền truy cập hoặc chỉnh sửa hồ sơ này."
+
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated)
 
     def has_object_permission(self, request, view, obj):
-        profile_id = None
         if isinstance(obj, PersonProfile):
-            profile_id = obj.id
-        elif hasattr(obj, 'profile_id'):
-            profile_id = obj.profile_id
-        elif hasattr(obj, 'profile'):
-            profile_id = obj.profile.id
-            
-        if not profile_id:
+            profile_id = obj.pk
+        else:
+            profile_id = getattr(obj, "profile_id", None)
+            if profile_id is None:
+                profile_id = getattr(getattr(obj, "profile", None), "pk", None)
+        if profile_id is None:
             return False
-
-        req_type = 'edit' if request.method in ['POST', 'PUT', 'PATCH', 'DELETE'] else 'view'
-        
-        return PermissionService.has_profile_access(request.user, profile_id, required_permission=req_type)
+        permission = "view" if request.method in permissions.SAFE_METHODS else "edit"
+        return PermissionService.has_profile_access(
+            request.user, profile_id, required_permission=permission
+        )
