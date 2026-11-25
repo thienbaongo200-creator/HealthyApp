@@ -5,17 +5,51 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "frontend",
+            "name": "frontend (phone Wi-Fi)",
             "cwd": "frontend",
             "request": "launch",
-            "type": "dart"
+            "type": "dart",
+            "toolArgs": [
+                "--dart-define=API_BASE_URL=http://192.168.1.24:8000/api",
+                "--dart-define=PHONE_SYNC_PORT=8181",
+                "--dart-define=WATCH_SYNC_TOKEN=${input:watchSyncToken}"
+            ]
+        },
+        {
+            "name": "frontend (Android Emulator)",
+            "cwd": "frontend",
+            "request": "launch",
+            "type": "dart",
+            "toolArgs": [
+                "--dart-define=API_BASE_URL=http://10.0.2.2:8000/api",
+                "--dart-define=WATCH_SYNC_TOKEN=${input:watchSyncToken}"
+            ]
         },
         {
             "name": "frontend (profile mode)",
             "cwd": "frontend",
             "request": "launch",
             "type": "dart",
-            "flutterMode": "profile"
+            "flutterMode": "profile",
+            "toolArgs": [
+                "--dart-define=API_BASE_URL=http://192.168.1.24:8000/api",
+                "--dart-define=PHONE_SYNC_PORT=8181",
+                "--dart-define=WATCH_SYNC_TOKEN=${input:watchSyncToken}"
+            ]
+        },
+        {
+            "name": "Wear OS emulator (HTTP fallback)",
+            "cwd": "frontend",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main_wear.dart",
+            "deviceId": "emulator-5554",
+            "toolArgs": [
+                "--dart-define=WATCH_SYNC_URL=http://10.0.2.2:18080/sync",
+                "--dart-define=WATCH_SYNC_TOKEN=${input:watchSyncToken}",
+                "--dart-define=WATCH_DEVICE_IDENTIFIER=wear-os-demo-device",
+                "--dart-define=USE_MOCK_WEAR_OS=true"
+            ]
         },
         {
             "name": "frontend (release mode)",
@@ -23,6 +57,14 @@
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "watchSyncToken",
+            "type": "promptString",
+            "description": "Shared WATCH_SYNC_TOKEN (not stored in launch.json)",
+            "password": true
         }
     ]
 }
