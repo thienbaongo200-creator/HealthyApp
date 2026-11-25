@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/error_mapper.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
@@ -22,12 +23,17 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     'OTHER': 'Khác',
   };
   static const _roleLabels = <String, String>{
-    'OWNER': '[Chủ sở hữu]',
-    'CAREGIVER': '[Người chăm sóc]',
-    'MEMBER': '[Thành viên]',
+    'OWNER': 'Chủ hộ',
+    'CAREGIVER': 'Người chăm sóc',
+    'MEMBER': 'Thành viên',
+  };
+  static const _shareLabels = <String, String>{
+    'VIEW_ONLY': 'Chỉ xem',
+    'VIEW_AND_LOG': 'Xem và ghi chỉ số',
   };
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _households = [];
+  List<Map<String, dynamic>> _accountMembers = [];
   List<Map<String, dynamic>> _invitations = [];
   bool _loading = true;
   String? _error;
@@ -49,19 +55,28 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       if (!mounted) return;
       final households = await ApiService.fetchHouseholds();
       if (!mounted) return;
+      final accountMembers = <Map<String, dynamic>>[];
+      for (final household in households) {
+        if (household['viewer_role']?.toString() != 'OWNER') continue;
+        final householdId = household['id']?.toString();
+        if (householdId == null) continue;
+        accountMembers.addAll(await ApiService.fetchHouseholdMembers(householdId));
+      }
+      if (!mounted) return;
       final invitations = await ApiService.fetchHouseholdInvitations();
       if (!mounted) return;
       ProfileSelectionScope.of(context).setProfiles(profiles);
       setState(() {
         _profiles = profiles;
         _households = households;
+        _accountMembers = accountMembers;
         _invitations = invitations;
         _loading = false;
       });
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorMapper.toUserMessage(e.toString());
           _loading = false;
         });
       }
@@ -102,8 +117,40 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
         _message(profile == null ? 'Đã thêm hồ sơ.' : 'Đã cập nhật hồ sơ.');
       }
     } catch (e) {
-      if (mounted) _message(e.toString());
+      if (mounted) _message(ErrorMapper.toUserMessage(e.toString()));
     }
+  }
+
+  bool get _hasOwnedHousehold => _households.any(
+    (household) => household['viewer_role']?.toString() == 'OWNER',
+  );
+
+  Future<bool> _createHousehold() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _HouseholdNameEditor(),
+    );
+    if (!mounted || name == null || name.trim().isEmpty) return false;
+
+    try {
+      await ApiService.createHousehold(name: name.trim());
+      if (!mounted) return false;
+      await _load();
+      if (mounted) _message('Đã tạo hộ gia đình.');
+      return true;
+    } catch (error) {
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
+      return false;
+    }
+  }
+
+  Future<void> _startDependentProfileCreation() async {
+    if (!_hasOwnedHousehold) {
+      final householdCreated = await _createHousehold();
+      if (!householdCreated) return;
+    }
+    if (!mounted) return;
+    await _edit();
   }
 
   Future<void> _inviteMember(String householdId) async {
@@ -123,7 +170,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       await _load();
       if (mounted) _message('Đã gửi lời mời.');
     } catch (error) {
-      if (mounted) _message(error.toString());
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
     }
   }
 
@@ -144,7 +191,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
         );
       }
     } catch (error) {
-      if (mounted) _message(error.toString());
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
     }
   }
 
@@ -175,7 +222,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       await ApiService.archiveProfile(profile['id'].toString());
       await _load();
     } catch (e) {
-      if (mounted) _message(e.toString());
+      if (mounted) _message(ErrorMapper.toUserMessage(e.toString()));
     }
   }
 
@@ -206,7 +253,38 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       await _load();
       if (mounted) _message('Đã rời hộ gia đình.');
     } catch (error) {
-      if (mounted) _message(error.toString());
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
+    }
+  }
+
+  Future<void> _dissolveHousehold(Map<String, dynamic> household) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Giải tán hộ gia đình?'),
+        content: Text(
+          'Hộ gia đình ${household['name']} sẽ bị xóa cùng các lời mời, '
+          'thành viên và quyền chia sẻ. Các hồ sơ sức khỏe vẫn được giữ lại.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Giải tán'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    try {
+      await ApiService.dissolveHousehold(household['id'].toString());
+      await _load();
+      if (mounted) _message('Đã giải tán hộ gia đình.');
+    } catch (error) {
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
     }
   }
 
@@ -216,62 +294,83 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canManageProfiles = _profiles.any(
-      (profile) => _viewerRoleOf(profile) == 'OWNER',
-    );
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Quản lý thành viên gia đình'),
+        title: const Text(
+          'Quản lý thành viên gia đình',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
-          if (canManageProfiles)
+          if (!_hasOwnedHousehold)
             IconButton(
-              onPressed: () => _edit(),
-              icon: const Icon(Icons.add),
-              tooltip: 'Thêm hồ sơ',
+              onPressed: _loading ? null : _createHousehold,
+              icon: const Icon(Icons.home_work_outlined),
+              tooltip: 'Tạo hộ gia đình',
             ),
+          IconButton(
+            onPressed: _loading ? null : _startDependentProfileCreation,
+            icon: const Icon(Icons.person_add_alt_1),
+            tooltip: 'Thêm hồ sơ phụ thuộc',
+          ),
         ],
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            )
-          : _error != null
-          ? ErrorState(message: _error!, onRetry: _load)
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(AppSpacing.x4),
-                children: [
-                  const ProfileContextBanner(),
-                  SectionHeader(title: '${_profiles.length} hồ sơ'),
-                  if (_invitations.isNotEmpty) ...[
+      body: SafeArea(
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              )
+            : _error != null
+            ? ErrorState(message: _error!, onRetry: _load)
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.x4),
+                  children: [
+                    const ProfileContextBanner(),
+                    SectionHeader(title: '${_profiles.length} hồ sơ'),
                     const SizedBox(height: AppSpacing.x4),
                     const SectionHeader(title: 'Lời mời đang chờ'),
-                    for (final invitation in _invitations)
-                      _invitationCard(invitation),
-                  ],
-                  if (_households.isNotEmpty) ...[
+                    if (_invitations.isEmpty)
+                      const PendingInvitationsEmptyState()
+                    else ...[
+                      for (final invitation in _invitations)
+                        _invitationCard(invitation),
+                    ],
                     const SizedBox(height: AppSpacing.x4),
                     const SectionHeader(title: 'Hộ gia đình'),
-                    for (final household in _households)
-                      _householdCard(household),
-                  ],
-                  const SizedBox(height: AppSpacing.x3),
-                  if (_profiles.isEmpty)
-                    EmptyState(
-                      title: 'Chưa có hồ sơ thành viên',
-                      message: 'Thêm hồ sơ để quản lý sức khỏe gia đình.',
-                      icon: Icons.groups_outlined,
-                      action: PrimaryButton(
-                        label: 'Thêm hồ sơ',
-                        icon: Icons.add,
-                        onPressed: () => _edit(),
+                    if (_households.isEmpty)
+                      HouseholdEmptyState(
+                        onCreateHousehold: _createHousehold,
+                        onCreateDependent: _startDependentProfileCreation,
+                      )
+                    else ...[
+                      for (final household in _households)
+                        _householdCard(household),
+                    ],
+                    if (_accountMembers.any(_isAccountMember)) ...[
+                      const SizedBox(height: AppSpacing.x4),
+                      const SectionHeader(title: 'Tài khoản được mời'),
+                      for (final member in _accountMembers.where(_isAccountMember))
+                        _accountMemberCard(member),
+                    ],
+                    const SizedBox(height: AppSpacing.x3),
+                    if (_profiles.isEmpty)
+                      EmptyState(
+                        title: 'Chưa có hồ sơ thành viên',
+                        message: 'Thêm hồ sơ để quản lý sức khỏe gia đình.',
+                        icon: Icons.groups_outlined,
+                        action: PrimaryButton(
+                          label: 'Thêm hồ sơ phụ thuộc',
+                          icon: Icons.person_add_alt_1,
+                          onPressed: _startDependentProfileCreation,
+                        ),
                       ),
-                    ),
-                  for (final p in _profiles) _profileCard(p),
-                ],
+                    for (final p in _profiles) _profileCard(p),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -315,38 +414,57 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   Widget _householdCard(Map<String, dynamic> household) => AppCard(
     margin: const EdgeInsets.only(top: AppSpacing.x2),
     padding: const EdgeInsets.all(AppSpacing.x3),
-    child: Row(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.groups_outlined, color: AppColors.primary),
-        const SizedBox(width: AppSpacing.x2),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                household['name']?.toString() ?? 'Hộ gia đình',
-                style: Theme.of(context).textTheme.titleMedium,
+        Row(
+          children: [
+            const Icon(Icons.groups_outlined, color: AppColors.primary),
+            const SizedBox(width: AppSpacing.x2),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    household['name']?.toString() ?? 'Hộ gia đình',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.x1),
+                  StatusBadge(
+                    label:
+                        _roleLabels[household['viewer_role']] ??
+                        _roleLabels['MEMBER']!,
+                  ),
+                ],
               ),
-              const SizedBox(height: AppSpacing.x1),
-              StatusBadge(
-                label:
-                    _roleLabels[household['viewer_role']] ??
-                    _roleLabels['MEMBER']!,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-        if (household['viewer_role'] == 'OWNER')
-          TextButton.icon(
-            onPressed: () => _inviteMember(household['id'].toString()),
-            icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('Mời'),
-          )
-        else
-          TextButton(
-            onPressed: () => _leaveHousehold(household),
-            child: const Text('Rời hộ'),
-          ),
+        const SizedBox(height: AppSpacing.x2),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: AppSpacing.x1,
+          runSpacing: AppSpacing.x1,
+          children: [
+            if (household['viewer_role'] == 'OWNER')
+              TextButton.icon(
+                onPressed: () => _inviteMember(household['id'].toString()),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Mời'),
+              ),
+            if (household['viewer_role'] == 'OWNER')
+              TextButton.icon(
+                onPressed: () => _dissolveHousehold(household),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Giải tán hộ gia đình'),
+              ),
+            if (household['viewer_role'] != 'OWNER')
+              TextButton(
+                onPressed: () => _leaveHousehold(household),
+                child: const Text('Rời hộ gia đình'),
+              ),
+          ],
+        ),
       ],
     ),
   );
@@ -406,29 +524,181 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                 ],
                 const SizedBox(height: AppSpacing.x1),
                 StatusBadge(
-                  label:
-                      _roleLabels[_roleOf(profile)] ?? _roleLabels['MEMBER']!,
+                  label: profile['profile_type'] == 'DEPENDENT'
+                      ? 'Hồ sơ phụ thuộc'
+                      : profile['is_current_user'] == true
+                      ? 'Hồ sơ chính'
+                      : _roleLabels[_roleOf(profile)] ?? 'Thành viên',
                   tone: selected ? StatusTone.success : StatusTone.neutral,
                 ),
               ],
             ),
           ),
-          if (selected)
-            const Icon(Icons.check_circle, color: AppColors.success)
-          else if (!canEdit)
-            const Icon(Icons.shield_outlined, color: AppColors.textSecondary)
-          else
+          if (profile['profile_type'] == 'DEPENDENT' && canEdit)
             PopupMenuButton<String>(
+              tooltip: 'Thao tác hồ sơ phụ thuộc',
               onSelected: (value) =>
                   value == 'edit' ? _edit(profile) : _delete(profile),
               itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('Sửa')),
-                PopupMenuItem(value: 'delete', child: Text('Lưu trữ')),
+                PopupMenuItem(value: 'edit', child: Text('Sửa hồ sơ')),
+                PopupMenuItem(value: 'delete', child: Text('Lưu trữ hồ sơ')),
               ],
+            )
+          else if (selected)
+            const Icon(Icons.check_circle, color: AppColors.success)
+          else
+            const Icon(Icons.shield_outlined, color: AppColors.textSecondary)
+        ],
+      ),
+    );
+  }
+
+  bool _isAccountMember(Map<String, dynamic> member) =>
+      member['profile_type'] == 'SELF' &&
+      member['role'] != 'OWNER' &&
+      (member['user_email']?.toString().isNotEmpty ?? false);
+
+  Widget _accountMemberCard(Map<String, dynamic> member) {
+    final householdId = member['household']?.toString();
+    final householdName = member['household_name']?.toString() ?? 'Hộ gia đình';
+    final role = member['role']?.toString() ?? 'MEMBER';
+    final status = member['status']?.toString();
+    final shares = member['shares'] is List
+        ? (member['shares'] as List).whereType<Map<String, dynamic>>().toList()
+        : <Map<String, dynamic>>[];
+    final share = shares.isEmpty ? null : shares.first;
+    final shareLevel = share?['share_level']?.toString();
+    final canManage = _households.any(
+      (h) => h['id']?.toString() == householdId && h['viewer_role'] == 'OWNER',
+    );
+
+    return AppCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.x2),
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            backgroundColor: AppColors.primarySoft,
+            foregroundColor: AppColors.primary,
+            child: Icon(Icons.account_circle_outlined),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  member['profile_name']?.toString() ?? 'Thành viên',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if ((member['user_email']?.toString() ?? '').isNotEmpty)
+                  Text(
+                    member['user_email'].toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                const SizedBox(height: AppSpacing.x1),
+                Wrap(
+                  spacing: AppSpacing.x1,
+                  runSpacing: AppSpacing.x1,
+                  children: [
+                    StatusBadge(
+                      label: _roleLabels[role] ?? 'Thành viên',
+                      tone: StatusTone.neutral,
+                    ),
+                    if (shareLevel != null)
+                      StatusBadge(
+                        label: _shareLabels[shareLevel] ?? shareLevel,
+                        tone: StatusTone.success,
+                      ),
+                    if (status == 'PENDING')
+                      const StatusBadge(label: 'Chờ xác nhận'),
+                  ],
+                ),
+                Text(
+                  householdName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          if (canManage && status == 'ACTIVE')
+            IconButton(
+              tooltip: 'Quản lý vai trò và quyền chia sẻ',
+              onPressed: () => _manageAccountMember(member, share),
+              icon: const Icon(Icons.manage_accounts_outlined),
+            ),
+          if (canManage)
+            IconButton(
+              tooltip: 'Gỡ khỏi hộ gia đình',
+              onPressed: () => _removeAccountMember(member),
+              icon: const Icon(Icons.person_remove_outlined),
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _manageAccountMember(
+    Map<String, dynamic> member,
+    Map<String, dynamic>? share,
+  ) async {
+    final result = await showDialog<_MemberDraft>(
+      context: context,
+      builder: (_) => _HouseholdMemberEditor(member: member, share: share),
+    );
+    if (result == null) return;
+    try {
+      await ApiService.updateHouseholdMember(
+        householdId: member['household'].toString(),
+        memberId: member['id'].toString(),
+        role: result.role,
+        shareLevel: result.shareLevel,
+        shareProfileId: share?['profile_id']?.toString(),
+      );
+      await _load();
+      if (mounted) _message('Đã cập nhật quyền thành viên.');
+    } catch (error) {
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
+    }
+  }
+
+  Future<void> _removeAccountMember(Map<String, dynamic> member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Gỡ khỏi hộ gia đình?'),
+        content: Text(
+          'Tài khoản ${member['user_email'] ?? member['profile_name'] ?? ''} '
+          'sẽ mất quyền truy cập được chia sẻ.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Gỡ thành viên'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.removeHouseholdMember(
+        householdId: member['household'].toString(),
+        memberId: member['id'].toString(),
+      );
+      await _load();
+    } catch (error) {
+      if (mounted) _message(ErrorMapper.toUserMessage(error.toString()));
+    }
   }
 
   String _relationshipLabel(Map<String, dynamic> profile) {
@@ -469,6 +739,77 @@ class _ProfileDraft {
   final String gender;
 }
 
+class _MemberDraft {
+  const _MemberDraft(this.role, this.shareLevel);
+  final String role;
+  final String shareLevel;
+}
+
+class _HouseholdMemberEditor extends StatefulWidget {
+  const _HouseholdMemberEditor({required this.member, required this.share});
+  final Map<String, dynamic> member;
+  final Map<String, dynamic>? share;
+
+  @override
+  State<_HouseholdMemberEditor> createState() => _HouseholdMemberEditorState();
+}
+
+class _HouseholdMemberEditorState extends State<_HouseholdMemberEditor> {
+  late String _role = widget.member['role']?.toString() ?? 'MEMBER';
+  late String _shareLevel =
+      widget.share?['share_level']?.toString() ?? 'VIEW_ONLY';
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    insetPadding: const EdgeInsets.all(AppSpacing.x6),
+    title: const Text('Quản lý thành viên'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButtonFormField<String>(
+          initialValue: _role,
+          decoration: const InputDecoration(labelText: 'Vai trò'),
+          items: const [
+            DropdownMenuItem(value: 'MEMBER', child: Text('Thành viên')),
+            DropdownMenuItem(value: 'CAREGIVER', child: Text('Người chăm sóc')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => _role = value);
+          },
+        ),
+        DropdownButtonFormField<String>(
+          initialValue: _shareLevel,
+          decoration: const InputDecoration(labelText: 'Mức chia sẻ'),
+          items: const [
+            DropdownMenuItem(value: 'VIEW_ONLY', child: Text('Chỉ xem')),
+            DropdownMenuItem(
+              value: 'VIEW_AND_LOG',
+              child: Text('Xem và ghi chỉ số'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => _shareLevel = value);
+          },
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(
+          context,
+          _MemberDraft(_role, _shareLevel),
+        ),
+        child: const Text('Lưu'),
+      ),
+    ],
+  );
+}
+
 class _InvitationDraft {
   const _InvitationDraft(this.email, this.role);
   final String email;
@@ -495,6 +836,8 @@ class _InvitationEditorState extends State<_InvitationEditor> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    insetPadding: const EdgeInsets.all(AppSpacing.x6),
     title: const Text('Mời thành viên'),
     content: Form(
       key: _formKey,
@@ -678,6 +1021,119 @@ class _ProfileEditorState extends State<_ProfileEditor> {
           );
         },
         child: const Text('Lưu'),
+      ),
+    ],
+  );
+}
+
+class PendingInvitationsEmptyState extends StatelessWidget {
+  const PendingInvitationsEmptyState({super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.x3),
+    child: Row(
+      children: [
+        const Icon(Icons.mark_email_unread_outlined, color: AppColors.textSecondary),
+        const SizedBox(width: AppSpacing.x2),
+        const Expanded(
+          child: Text('Hiện không có lời mời nào đang chờ.'),
+        ),
+      ],
+    ),
+  );
+}
+
+class HouseholdEmptyState extends StatelessWidget {
+  const HouseholdEmptyState({
+    super.key,
+    required this.onCreateHousehold,
+    required this.onCreateDependent,
+  });
+
+  final Future<bool> Function() onCreateHousehold;
+  final Future<void> Function() onCreateDependent;
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+    margin: const EdgeInsets.only(top: AppSpacing.x2),
+    padding: const EdgeInsets.all(AppSpacing.x3),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Chưa có hộ gia đình',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: AppSpacing.x1),
+        const Text(
+          'Tạo hộ gia đình để thêm hồ sơ phụ thuộc và mời thành viên.',
+        ),
+        const SizedBox(height: AppSpacing.x2),
+        Wrap(
+          spacing: AppSpacing.x2,
+          runSpacing: AppSpacing.x1,
+          children: [
+            FilledButton.icon(
+              onPressed: onCreateHousehold,
+              icon: const Icon(Icons.home_work_outlined),
+              label: const Text('Tạo hộ gia đình'),
+            ),
+            OutlinedButton.icon(
+              onPressed: onCreateDependent,
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Thêm hồ sơ phụ thuộc'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _HouseholdNameEditor extends StatefulWidget {
+  const _HouseholdNameEditor();
+
+  @override
+  State<_HouseholdNameEditor> createState() => _HouseholdNameEditorState();
+}
+
+class _HouseholdNameEditorState extends State<_HouseholdNameEditor> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Tạo hộ gia đình'),
+    content: Form(
+      key: _formKey,
+      child: TextFormField(
+        controller: _nameController,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(labelText: 'Tên hộ gia đình'),
+        validator: (value) => value == null || value.trim().isEmpty
+            ? 'Nhập tên hộ gia đình'
+            : null,
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (!_formKey.currentState!.validate()) return;
+          Navigator.pop(context, _nameController.text.trim());
+        },
+        child: const Text('Tạo'),
       ),
     ],
   );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/error_mapper.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
@@ -238,7 +239,9 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
       } catch (error) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Không thể tải hồ sơ: $error')),
+            SnackBar(
+              content: Text(ErrorMapper.toUserMessage(error.toString())),
+            ),
           );
         }
         return;
@@ -472,9 +475,7 @@ class _HealthJournalScreenState extends State<HealthJournalScreen> {
   }) => OutlinedButton.icon(
     onPressed: onTap,
     icon: Icon(icon, size: 17),
-    label: Flexible(
-      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-    ),
+    label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     style: OutlinedButton.styleFrom(
       foregroundColor: _ink,
       backgroundColor: AppColors.surface,

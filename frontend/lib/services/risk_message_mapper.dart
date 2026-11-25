@@ -2,13 +2,13 @@ class RiskMessageMapper {
   const RiskMessageMapper._();
 
   static const Map<String, String> _messages = {
-    'R01': 'Huyết áp ghi nhận ở mức cần lưu ý.',
-    'R02': 'Nhịp tim đo được cao hơn mức bình thường.',
-    'R03': 'Thân nhiệt ghi nhận có dấu hiệu sốt.',
-    'R04': 'Chỉ số đường huyết nằm ngoài khoảng khuyến nghị.',
-    'R05': 'Chỉ số khối cơ thể (BMI) hoặc cân nặng cần được chú ý.',
+    'R01': 'Nhịp tim vượt ngưỡng 120 bpm; cần theo dõi và đo lại.',
+    'R02': 'Nhịp tim đo được cao hơn ngưỡng theo dõi.',
+    'R03': 'Tổng số bước trong ngày thấp hơn mục tiêu 6.000 bước.',
+    'R04': 'Lượng calo trong ngày thấp hơn mục tiêu 300 kcal.',
+    'R05': 'Huyết áp cao hơn ngưỡng theo dõi.',
     'R06': 'Thời lượng giấc ngủ khai báo thấp hơn mức khuyến nghị.',
-    'R07': 'Mức độ vận động trong ngày chưa đạt mục tiêu.',
+    'R07': 'Thân nhiệt đạt hoặc vượt ngưỡng 37,8 °C.',
     'R08': 'Kết quả xét nghiệm có giá trị cần theo dõi thêm.',
     'R09': 'Phát hiện nguy cơ liên quan giữa thuốc sử dụng và tiền sử dị ứng.',
     'R10': 'Bệnh nền kết hợp với các dấu hiệu hiện tại làm tăng mức độ cần theo dõi.',

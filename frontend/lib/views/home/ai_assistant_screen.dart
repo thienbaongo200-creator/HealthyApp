@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'main_navigation_wrapper.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/error_mapper.dart';
 import 'package:frontend/services/ai_service.dart';
 import 'package:frontend/services/risk_message_mapper.dart';
 import 'package:frontend/state/profile_selection.dart';
@@ -235,10 +236,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     } catch (error) {
       if (!mounted || requestId != _profileLoadRequest) return;
       setState(
-        () => _chatProfileError = error.toString().replaceFirst(
-          'Exception: ',
-          '',
-        ),
+        () => _chatProfileError = ErrorMapper.toUserMessage(error.toString()),
       );
     } finally {
       if (mounted && requestId == _profileLoadRequest) {
@@ -294,8 +292,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
         return;
       }
       setState(() {
-        _chatHistoryError =
-            'Không thể tải lịch sử hội thoại. Vui lòng thử lại. ($error)';
+          _chatHistoryError =
+            'Không thể tải lịch sử hội thoại. Vui lòng thử lại.';
       });
     } finally {
       if (mounted &&
@@ -338,7 +336,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
           _chatProfileId == profileId) {
         setState(() {
           _chatHistoryError =
-              'Không thể mở hội thoại đã chọn. Vui lòng thử lại. ($error)';
+              'Không thể mở hội thoại đã chọn. Vui lòng thử lại.';
         });
       }
     } finally {
@@ -460,8 +458,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen>
     } catch (error) {
       if (!mounted || _chatProfileId != requestProfileId) return;
       final message = error is AiFallbackException
-          ? 'Phản hồi dự phòng (chưa được lưu): ${_assistantDisplayText(error.fallbackReply)}\n\n${error.message}'
-          : 'Không gửi được tin nhắn. $error';
+          ? 'Phản hồi dự phòng (chưa được lưu): ${_assistantDisplayText(error.fallbackReply)}\n\n${ErrorMapper.toUserMessage(error.message)}'
+          : 'Không gửi được tin nhắn. ${ErrorMapper.toUserMessage(error.toString())}';
       setState(() {
         if (error is AiFallbackException) {
           _conversationId = error.conversationId;

@@ -16,25 +16,22 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _usernameFocusNode = FocusNode();
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   final _confirmPasswordFocusNode = FocusNode();
   bool _isLoading = false;
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
+  final Map<String, String> _fieldErrors = {};
 
   @override
   void dispose() {
-    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _usernameFocusNode.dispose();
     _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
@@ -44,10 +41,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     FocusManager.instance.primaryFocus?.unfocus();
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _fieldErrors.clear();
+    });
 
     final result = await ApiService.register(
-      username: _usernameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text,
       passwordConfirm: _confirmPasswordController.text,
@@ -81,11 +80,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } else {
-      setState(() => _isLoading = false);
-      _showSnackBar(
-        result['message']?.toString() ?? 'Đăng ký thất bại.',
-        AppColors.danger,
-      );
+      final rawFieldErrors = result['fieldErrors'];
+      final fieldErrors = <String, String>{};
+      if (rawFieldErrors is Map) {
+        for (final entry in rawFieldErrors.entries) {
+          if (entry.value != null && entry.value.toString().isNotEmpty) {
+            fieldErrors[entry.key.toString()] = entry.value.toString();
+          }
+        }
+      }
+      setState(() {
+        _isLoading = false;
+        _fieldErrors.addAll(fieldErrors);
+      });
+      if (fieldErrors.isEmpty) {
+        _showSnackBar(
+          result['message']?.toString() ?? 'Đăng ký thất bại.',
+          AppColors.danger,
+        );
+      }
+    }
+  }
+
+  void _clearFieldError(String field) {
+    if (_fieldErrors.containsKey(field)) {
+      setState(() => _fieldErrors.remove(field));
     }
   }
 
@@ -160,7 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   const SizedBox(height: AppSpacing.x1),
                   Text(
-                    'Đăng ký để trải nghiệm chăm sóc sức khỏe xanh 🌿',
+                    'Khởi đầu hành trình chăm sóc sức khỏe chủ động',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
@@ -173,25 +192,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     padding: const EdgeInsets.all(AppSpacing.x4),
                     child: Column(
                       children: [
-                        // Username
-                        TextFormField(
-                          controller: _usernameController,
-                          focusNode: _usernameFocusNode,
-                          style: Theme.of(context).textTheme.bodyLarge,
-                          textInputAction: TextInputAction.next,
-                          onFieldSubmitted: (_) =>
-                              _emailFocusNode.requestFocus(),
-                          decoration: const InputDecoration(
-                            labelText: 'Tên đăng nhập',
-                            hintText: 'Nhập username',
-                            prefixIcon: Icon(Icons.person_outline),
-                          ),
-                          validator: (v) => v!.trim().isEmpty
-                              ? 'Vui lòng nhập tên đăng nhập'
-                              : null,
-                        ),
-                        const SizedBox(height: AppSpacing.x3),
-
                         // Email
                         TextFormField(
                           controller: _emailController,
@@ -201,11 +201,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           onFieldSubmitted: (_) =>
                               _passwordFocusNode.requestFocus(),
                           keyboardType: TextInputType.emailAddress,
+                          onChanged: (_) => _clearFieldError('email'),
                           decoration: const InputDecoration(
                             labelText: 'Email liên hệ',
-                            hintText: 'example@email.com',
+                            hintText: 'Ví dụ: ten@example.com',
                             prefixIcon: Icon(Icons.email_outlined),
                           ),
+                          forceErrorText: _fieldErrors['email'],
                           validator: (v) => !v!.contains('@')
                               ? 'Định dạng Email không hợp lệ'
                               : null,
@@ -221,9 +223,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           textInputAction: TextInputAction.next,
                           onFieldSubmitted: (_) =>
                               _confirmPasswordFocusNode.requestFocus(),
+                          onChanged: (_) => _clearFieldError('password'),
                           decoration: InputDecoration(
                             labelText: 'Mật khẩu',
-                            hintText: 'Ít nhất 8 ký tự',
+                            hintText: 'Ví dụ: Healthy@123 (tối thiểu 8 ký tự)',
                             prefixIcon: const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               icon: Icon(
@@ -236,6 +239,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               }),
                             ),
                           ),
+                          forceErrorText: _fieldErrors['password'],
                           validator: (v) => v!.length < 8
                               ? 'Mật khẩu phải từ 8 ký tự trở lên'
                               : null,
@@ -250,9 +254,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           style: Theme.of(context).textTheme.bodyLarge,
                           textInputAction: TextInputAction.done,
                           onFieldSubmitted: (_) => _handleRegister(),
+                          onChanged: (_) =>
+                              _clearFieldError('password_confirm'),
                           decoration: InputDecoration(
                             labelText: 'Xác nhận mật khẩu',
-                            hintText: 'Nhập lại mật khẩu',
+                            hintText: 'Nhập lại mật khẩu đã tạo',
                             prefixIcon: const Icon(Icons.lock_clock_outlined),
                             suffixIcon: IconButton(
                               icon: Icon(
@@ -266,6 +272,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               }),
                             ),
                           ),
+                          forceErrorText: _fieldErrors['password_confirm'],
                           validator: (v) => v != _passwordController.text
                               ? 'Mật khẩu xác nhận không khớp'
                               : null,

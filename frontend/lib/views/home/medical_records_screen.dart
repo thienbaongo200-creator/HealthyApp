@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/core/network/token_storage.dart';
 import 'package:frontend/services/api_service.dart';
+import 'package:frontend/services/error_mapper.dart';
 import 'package:frontend/state/profile_selection.dart';
 import 'package:frontend/theme/app_colors.dart';
 import 'package:frontend/theme/app_spacing.dart';
@@ -100,7 +101,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     } catch (error) {
       if (!mounted || requestId != _loadRequestId) return;
       setState(() {
-        _error = error is ApiException ? error.message : error.toString();
+        _error = ErrorMapper.toUserMessage(error.toString());
         _isLoading = false;
       });
     }

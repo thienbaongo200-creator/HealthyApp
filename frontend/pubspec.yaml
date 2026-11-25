@@ -32,6 +32,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  crypto: ^3.0.7
   http: ^1.2.0                    # Gọi API Django
   permission_handler: ^12.0.3    # Quản lý quyền truy cập
   dio: ^5.11.1

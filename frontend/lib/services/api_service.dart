@@ -5,15 +5,17 @@ import 'package:http/http.dart' as http;
 import '../core/network/token_storage.dart';
 import 'authenticated_http.dart';
 import 'api_config.dart';
+import 'error_mapper.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.statusCode, this.message);
+  ApiException(this.statusCode, String message)
+    : message = ErrorMapper.toUserMessage(message);
 
   final int statusCode;
   final String message;
 
   @override
-  String toString() => 'HTTP $statusCode: $message';
+  String toString() => message;
 }
 
 class BatchSyncResult {
@@ -66,7 +68,6 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> register({
-    required String username,
     required String email,
     required String password,
     required String passwordConfirm,
@@ -77,7 +78,6 @@ class ApiService {
         Uri.parse('$baseUrl/auth/register/'),
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'username': username,
           'email': email,
           'password': password,
           'password_confirm': passwordConfirm,
@@ -85,14 +85,49 @@ class ApiService {
         retryUnauthorized: false,
       );
       final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 201) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Đăng ký thành công.',
+          'fieldErrors': <String, String>{},
+        };
+      }
+
+      final fieldErrors = <String, String>{};
+      for (final field in [
+        'email',
+        'password',
+        'password_confirm',
+      ]) {
+        final value = data[field];
+        if (value is String && value.isNotEmpty) {
+          fieldErrors[field] = ErrorMapper.toUserMessage(value);
+        } else if (value is List && value.isNotEmpty) {
+          fieldErrors[field] = ErrorMapper.toUserMessage(
+            value.map((item) => item.toString()).join(' '),
+          );
+        }
+      }
+
+      final detail = data['detail']?.toString() ?? '';
+      final normalizedDetail = ErrorMapper.toUserMessage(detail);
+      if (fieldErrors.isEmpty &&
+          normalizedDetail == 'Email này đã được đăng ký tài khoản trước đó.') {
+        fieldErrors['email'] = normalizedDetail;
+      }
+
       return {
-        'success': response.statusCode == 201,
-        'message': data['detail'] ?? data['message'] ?? 'Đăng ký thất bại.',
+        'success': false,
+        'message': ErrorMapper.toUserMessage(
+          detail.isNotEmpty ? detail : 'Đăng ký thất bại.',
+        ),
+        'fieldErrors': fieldErrors,
       };
     } catch (_) {
       return {
         'success': false,
         'message': 'Mất kết nối server hoặc lỗi hệ thống.',
+        'fieldErrors': <String, String>{},
       };
     }
   }
@@ -214,7 +249,7 @@ class ApiService {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       throw ApiException(
         response.statusCode,
-        data['detail']?.toString() ?? 'Could not request a reset code.',
+        data['detail']?.toString() ?? 'Không thể gửi yêu cầu đặt lại mật khẩu.',
       );
     }
   }
@@ -241,7 +276,7 @@ class ApiService {
         response.statusCode,
         data['detail']?.toString() ??
             data['new_password']?.toString() ??
-            'Could not reset password.',
+            'Không thể đặt lại mật khẩu.',
       );
     }
   }
@@ -578,6 +613,91 @@ class ApiService {
     return payload.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
+  static Future<Map<String, dynamic>> createHousehold({
+    required String name,
+  }) async {
+    final response = await _httpClient.request(
+      'POST',
+      Uri.parse('$baseUrl/households/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({'name': name}),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Kh\u00f4ng th\u1ec3 t\u1ea1o h\u1ed9 gia \u0111\u00ecnh.'),
+      );
+    }
+    final payload = jsonDecode(utf8.decode(response.bodyBytes));
+    if (payload is! Map<String, dynamic>) {
+      throw const FormatException('Household response must be an object.');
+    }
+    return payload;
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchHouseholdMembers(
+    String householdId,
+  ) async {
+    final response = await _httpClient.request(
+      'GET',
+      Uri.parse('$baseUrl/households/$householdId/members/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể tải thành viên hộ gia đình.'),
+      );
+    }
+    final payload = jsonDecode(utf8.decode(response.bodyBytes));
+    if (payload is! List) {
+      throw const FormatException('Household member response must be a list.');
+    }
+    return payload.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  static Future<void> updateHouseholdMember({
+    required String householdId,
+    required String memberId,
+    String? role,
+    String? shareLevel,
+    String? shareProfileId,
+  }) async {
+    final response = await _httpClient.request(
+      'PATCH',
+      Uri.parse('$baseUrl/households/$householdId/members/$memberId/'),
+      headers: {'Content-Type': 'application/json', ...await _authHeaders()},
+      body: jsonEncode({
+        if (role != null) 'role': role,
+        if (shareLevel != null) 'share_level': shareLevel,
+        if (shareProfileId != null) 'share_profile_id': shareProfileId,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể cập nhật thành viên.'),
+      );
+    }
+  }
+
+  static Future<void> removeHouseholdMember({
+    required String householdId,
+    required String memberId,
+  }) async {
+    final response = await _httpClient.request(
+      'DELETE',
+      Uri.parse('$baseUrl/households/$householdId/members/$memberId/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể gỡ thành viên.'),
+      );
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> fetchDevices({
     required String profileId,
   }) async {
@@ -716,6 +836,20 @@ class ApiService {
       throw ApiException(
         response.statusCode,
         _responseMessage(response.body, 'Không thể rời hộ gia đình.'),
+      );
+    }
+  }
+
+  static Future<void> dissolveHousehold(String householdId) async {
+    final response = await _httpClient.request(
+      'DELETE',
+      Uri.parse('$baseUrl/households/$householdId/'),
+      headers: await _authHeaders(),
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(
+        response.statusCode,
+        _responseMessage(response.body, 'Không thể giải tán hộ gia đình.'),
       );
     }
   }
@@ -939,11 +1073,13 @@ class ApiService {
       if (decoded is Map<String, dynamic>) {
         final detail =
             decoded['detail'] ?? decoded['file'] ?? decoded['profile_id'];
-        if (detail is String) return detail;
-        if (detail is List && detail.isNotEmpty) return detail.first.toString();
+        if (detail is String) return ErrorMapper.toUserMessage(detail);
+        if (detail is List && detail.isNotEmpty) {
+          return ErrorMapper.toUserMessage(detail.first.toString());
+        }
       }
     } on FormatException {
-      if (body.trim().isNotEmpty) return body;
+      if (body.trim().isNotEmpty) return ErrorMapper.toUserMessage(body);
     }
     return fallback;
   }

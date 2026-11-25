@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/theme/app_colors.dart';
 import '../../services/api_service.dart';
+import '../../services/error_mapper.dart';
 import '../../state/profile_selection.dart';
 import '../../widgets/widgets.dart';
 import '../home/dashboard_screen.dart';
@@ -134,7 +135,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       );
     } catch (error) {
       if (mounted) {
-        _showSnackBar('Không thể xác nhận hồ sơ: $error', Colors.redAccent);
+        _showSnackBar(
+          'Không thể cập nhật hồ sơ: ${ErrorMapper.toUserMessage(error.toString())}',
+          Colors.redAccent,
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

@@ -51,6 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final token = await _apiService.login(inputAccount, password);
       await _apiService.setToken(token);
+      if (!mounted) return;
       // Drop cached profiles before fetching the newly authenticated account.
       ProfileSelectionScope.of(context).clear();
       _showSnackBar('Đăng nhập thành công!', AppColors.success);
@@ -98,14 +99,14 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on TimeoutException catch (e, stackTrace) {
       developer.log(
-        'Login timed out: $e',
+        'Login timed out for ${ApiService.baseUrl}: $e',
         name: 'LoginScreen',
         level: 1000,
         error: e,
         stackTrace: stackTrace,
       );
       _showSnackBar(
-        'Server không phản hồi trong thời gian chờ.',
+        'Server không phản hồi. Kiểm tra API_BASE_URL, Wi-Fi và backend cổng 8000.',
         AppColors.danger,
       );
     } on http.ClientException catch (e, stackTrace) {
@@ -267,7 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: AppSpacing.x2),
                     Text(
-                      'Quản lý sức khỏe của bạn\nđều đặn và hiệu quả',
+                      'Theo dõi sức khỏe toàn diện với trợ lý AI',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppColors.textSecondary,
@@ -275,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: AppSpacing.x8),
 
-                    // 🌿 Ô nhập Tài khoản (Email hoặc số điện thoại)
+                    // Backend authenticates accounts by email.
                     TextFormField(
                       controller: _accountController,
                       focusNode: _accountFocusNode,
@@ -288,8 +289,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         filled: false,
                         fillColor: Colors.transparent,
                         contentPadding: const EdgeInsets.all(AppSpacing.x4),
-                        labelText: 'Email hoặc số điện thoại',
-                        hintText: 'Nhập email hoặc số điện thoại',
+                        labelText: 'Email',
+                        hintText: 'Nhập email',
                         prefixIcon: const Icon(
                           Icons.person_outline,
                           color: AppColors.textSecondary,
@@ -310,9 +311,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-                      validator: (v) => v!.trim().isEmpty
-                          ? 'Vui lòng nhập email hoặc số điện thoại'
-                          : null,
+                      validator: (v) {
+                        final email = v?.trim() ?? '';
+                        if (email.isEmpty) return 'Vui lòng nhập email';
+                        if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                            .hasMatch(email)) {
+                          return 'Vui lòng nhập email hợp lệ';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: AppSpacing.x5),
 
